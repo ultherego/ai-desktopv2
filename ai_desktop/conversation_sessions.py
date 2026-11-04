@@ -22,7 +22,7 @@ import unicodedata
 
 from . import execution
 
-MAX_FILE = 64 * 1024
+MAX_FILE = 256 * 1024
 MAX_SESSIONS = 128
 MAX_HISTORY = 8                 # `ask` keeps the last eight turns; records written with up to four still open
 LEGACY_HISTORY = 4              # material/project sessions keep their previous window

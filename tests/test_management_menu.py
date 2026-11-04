@@ -267,16 +267,15 @@ class CompleteManagementMenuTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(self.store.load().config.profiles["default"].skills, ())
 
-    def test_four_skill_cap_and_combined_instruction_limit_do_not_partially_write(self):
+    def test_no_skill_count_cap_and_combined_instruction_limit_does_not_partially_write(self):
         selected = profiles.Profile(skills=("demo", "other", "third", "fourth"))
         self.store.mutate(lambda config: config.put("default", selected))
-        before = self.store.load()
-        code, output, _ = self.run_menu("Dodaj Skill", "Zapisz", argv=("skills",))
+        code, output, _ = self.run_menu("Dodaj Skill", "fifth", "Zapisz", argv=("skills",))
         self.assertEqual(code, 0)
-        self.assertIn("najwyżej cztery", output)
-        self.assertEqual(self.store.load(), before)
-        self.skill("oversize-total", "x" * 7400)
-        self.store.mutate(lambda config: config.put("default", profiles.Profile(instructions="a" * 1000)))
+        self.assertEqual(self.store.load().config.profiles["default"].skills, ("demo", "other", "third", "fourth", "fifth"))
+        self.skill("big-one", "x" * (60 * 1024))
+        self.skill("oversize-total", "x" * (60 * 1024))
+        self.store.mutate(lambda config: config.put("default", profiles.Profile(skills=("big-one",))))
         before = self.store.load()
         code, _, _ = self.run_menu("Dodaj Skill", "Następna strona", "oversize-total", argv=("skills",))
         self.assertEqual(code, 2)

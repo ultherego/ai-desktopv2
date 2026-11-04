@@ -237,7 +237,7 @@ Możesz dopisać je u siebie, jeśli świadomie tego chcesz. Program niezainstal
 
 ## Własne Skille
 
-Skill to instrukcja dla modelu do 8 KiB, nie uprawnienie. O plikach i poleceniach decyduje `permissions.toml`. Pakiet zawiera tylko ogólne Skille; to, co dotyczy Twojego komputera, trzymasz u siebie:
+Skill to instrukcja dla modelu do 96 KiB, nie uprawnienie. Agent może mieć dowolnie wiele Skilli, ale razem z rolą do 104 KiB: cała instrukcja idzie do klienta Claude jako jeden argument, a Linux ogranicza go do 128 KiB. Przypisane Skille są wysyłane przy każdym pytaniu i zużywają limit usługi, więc przypisuj tylko potrzebne. O plikach i poleceniach decyduje `permissions.toml`. Pakiet zawiera tylko ogólne Skille; to, co dotyczy Twojego komputera, trzymasz u siebie:
 
 ```fish
 ai-desktop skills new moj-system      # tworzy ~/.config/ai-desktop/skills/moj-system/SKILL.md

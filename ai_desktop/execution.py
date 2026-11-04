@@ -23,7 +23,7 @@ ACCESS = ("read-only", "changes")
 # pinned client, which refuses an unknown or unentitled one (reported as codex-model-unavailable). Same shape as the
 # protocol's own check; "default" omits the id and lets the client choose.
 CODEX_MODEL = re.compile(r"[a-z][a-z0-9._-]{0,95}\Z", re.ASCII)
-MAX_INSTRUCTIONS_BYTES = 8192
+MAX_INSTRUCTIONS_BYTES = 104 * 1024   # same ceiling as agent_profiles.MAX_EXECUTION_INSTRUCTIONS
 MAX_HISTORY = 8          # `ask` conversation window (pairs); material/project keep their own, smaller windows
 HISTORY_QUESTION_BYTES = 2048
 HISTORY_ANSWER_BYTES = 3072 + 64  # bounded text plus the visible truncation suffix

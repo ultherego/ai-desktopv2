@@ -291,9 +291,6 @@ class _SettingsMenu:
                 profiles.instructions_for(draft)
                 return draft
             if action == 0:
-                if len(draft.skills) >= 4:
-                    print("Profil może mieć najwyżej cztery Skills.")
-                    continue
                 name = self.pick("Dodaj Skill", tuple(name for name in names if name not in draft.skills))
                 if name is not None:
                     candidate = replace(draft, skills=draft.skills + (name,))

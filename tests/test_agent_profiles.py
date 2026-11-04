@@ -162,10 +162,13 @@ class ProfileStoreTests(unittest.TestCase):
         big = root / "big"
         big.mkdir(mode=0o755)
         path = big / "SKILL.md"
-        path.write_text("---\nname: big\ndescription: Large test skill\n---\n" + "x" * 7500)
+        path.write_text("---\nname: big\ndescription: Large test skill\n---\n" + "x" * (90 * 1024))
         path.chmod(0o644)
+        (root / "big2").mkdir(mode=0o755)
+        (root / "big2" / "SKILL.md").write_text("---\nname: big2\ndescription: Large test skill\n---\n" + "x" * (90 * 1024))
+        (root / "big2" / "SKILL.md").chmod(0o644)
         original = profiles.defaults().put("custom", profiles.Profile(
-            instructions="a" * profiles.MAX_INSTRUCTIONS, skills=("big",)))
+            instructions="a" * profiles.MAX_INSTRUCTIONS, skills=("big", "big2")))
         self.write(original.data())
         before = self.store.path.read_bytes()
         with patch.object(skills, "ROOT", root), self.assertRaises(profiles.ProfileError):

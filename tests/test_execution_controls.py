@@ -71,7 +71,7 @@ class ExecutionValidationTests(unittest.TestCase):
         for key, value in (("provider", "openai"), ("model", "sonnet --tools Bash"),
                            ("model", "../model"), ("effort", "ultracode"), ("effort", True),
                            ("profile", "../reviewer"), ("profile", "Review"), ("profile", "x" * 65),
-                           ("access", "bypass"), ("instructions", "x" * 8193),
+                           ("access", "bypass"), ("instructions", "x" * (execution.MAX_INSTRUCTIONS_BYTES + 1)),
                            ("instructions", "\x1b[31m"), ("instructions", "\u202e"),
                            ("instructions", "\ud800")):
             cases.append(dict(good, **{key: value}))

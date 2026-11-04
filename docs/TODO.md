@@ -27,7 +27,7 @@ Stan: pakiet `0.1.0-70`. Ograniczenia obecnej wersji opisuje [KNOWN_LIMITATIONS.
 - [ ] Etap edycji (`ask_edit`, `project`) nie dostaje wcześniejszych ustaleń rozmowy, tylko samo „zrób to".
 - [ ] Zapis rozmowy odmawia przy 33 zależnych plikach (limit 32), a odczyt dopuszcza 64.
 - [ ] Kosz: 129. usunięcie się wykonuje, a potem lista historii kosza przestaje działać.
-- [ ] Skill 8192 B przechodzi walidację, ale jego przypisanie do agenta odmawia (wspólny limit z prefiksem).
+- [x] Skill o największym dopuszczalnym rozmiarze można przypisać do agenta.
 - [ ] Codex: poprawne zakończenie logowania/wylogowania bywa zgłaszane jako błąd (`not-found` z kodem 1).
 - [ ] Skrypty odbioru: `update_candidate.fish` wymaga `0.1.0-17`; część skryptów odwołuje się do nieistniejących gałęzi.
 - [ ] Dokumentacja: `systemctl status` pokazuje wpisy dziennika, a README twierdzi, że domyślne polecenia nie wysyłają logów; README błędnie opisuje zakończenie rozmowy po timeoucie.
