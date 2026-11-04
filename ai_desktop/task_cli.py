@@ -28,15 +28,15 @@ def build_parser():
     run = commands.add_parser("run", help="Polecenie -> propozycja -> test -> diff -> zgoda na zapis")
     add_arguments(run)
     run.add_argument("instruction", help="Zadanie dla wybranego asystenta, bez dowolnego terminala modelu")
-    run.add_argument("--workspace", required=True, help="Konkretny katalog projektu (nie cale HOME)")
-    run.add_argument("--file", action="append", required=True, help="Wzgledny plik do edycji/utworzenia; powtarzalne")
-    run.add_argument("--context", action="append", default=[], help="Plik tylko do odczytu, np. niezalezne testy")
+    run.add_argument("--workspace", required=True, help="Konkretny katalog projektu (nie cały HOME)")
+    run.add_argument("--file", action="append", required=True, help="Względny plik do edycji lub utworzenia; powtarzalne")
+    run.add_argument("--context", action="append", default=[], help="Plik tylko do odczytu, np. niezależne testy")
     run.add_argument("--test", choices=task_sandbox.CHECKS, required=True)
-    run.add_argument("--preview", action="store_true", help="Podglad danych offline, bez AI, testow i zapisow")
+    run.add_argument("--preview", action="store_true", help="Podgląd danych offline, bez AI, testów i zapisów")
     run.add_argument("--format", choices=("auto", "plain", "markdown"), default="auto")
     status = commands.add_parser("status", help="Odczytaj metadane dziennika zadania")
     status.add_argument("--workspace", required=True)
-    undo = commands.add_parser("rollback", help="Cofnij zatwierdzone zapisy; odmow przy pozniejszej edycji")
+    undo = commands.add_parser("rollback", help="Cofnij zatwierdzone zapisy; odmowa przy późniejszej edycji")
     undo.add_argument("--workspace", required=True)
     undo.add_argument("--plan", help="Opcjonalny identyfikator; bez niego wybierzesz zadanie z listy")
     restore = commands.add_parser("restore", help="Przywróć pliki usunięte w trybie project (kosz zadania)")
@@ -158,7 +158,7 @@ def finish_task(before, source, response, args, reader, *, write_guard=None, con
         if args.test != "text":
             print("Test obejmuje tylko wybrane pliki; nie potwierdza poprawności całego projektu.")
         print("Zapis obejmie tylko pokazane zmiany; będzie można je cofnąć.")
-        print("Prywatne kopie cofania w .ai-desktop-tasks; bez uruchamiania ich na hoscie.")
+        print("Prywatne kopie cofania w .ai-desktop-tasks; bez uruchamiania ich na hoście.")
         print("SHA256 planu:", plan.sha256)
     if not confirm("write", reader=reader):
         print("TASK: CANCELLED; projekt niezmieniony" if args.details else "Anulowano zapis. Projekt bez zmian.")
@@ -174,7 +174,7 @@ def finish_task(before, source, response, args, reader, *, write_guard=None, con
         print("Zapis przerwany. Sprawdź ai-desktop task status i task rollback dla tego katalogu.")
         raise
     print("TASK: PASS test=" + args.test if args.details else "Zapisano zmiany.")
-    print("Cofniecie: " + shlex.join(["ai-desktop", "task", "rollback", "--workspace", args.workspace]))
+    print("Cofnięcie: " + shlex.join(["ai-desktop", "task", "rollback", "--workspace", args.workspace]))
     return 0
 
 
@@ -261,7 +261,7 @@ def rollback_task(args, records, reader):
     if not candidates:
         if args.plan:
             raise ValueError("unknown plan")
-        print("Brak powiązanych zadań do cofnięcia." if detached else "Brak zadan do cofniecia w tym workspace.")
+        print("Brak powiązanych zadań do cofnięcia." if detached else "Brak zadań do cofnięcia w tym katalogu.")
         return 2 if detached else 0
     expires = time.monotonic() + 180
     if len(candidates) > 1 or args.details:
@@ -273,7 +273,7 @@ def rollback_task(args, records, reader):
     else:
         select_reader = fresh_input if reader is input else reader
         while True:
-            answer = select_reader("Wybierz numer zadania lub wpisz n/nie, aby anulowac: ").strip()
+            answer = select_reader("Wybierz numer zadania lub wpisz n/nie, aby anulować: ").strip()
             if time.monotonic() > expires:
                 raise ValueError("expired consent")
             if answer.casefold() in ("n", "nie"):
@@ -287,7 +287,7 @@ def rollback_task(args, records, reader):
         print("=== WYBRANE COFNIECIE ===")
     print("Cofnięcie w: " + json.dumps(args.workspace, ensure_ascii=False))
     show_record(record, details=args.details)
-    print("Przywroci oryginalne bajty/tryb lub usunie utworzony plik. Pozniejsze zmiany powoduja konflikt.")
+    print("Przywróci oryginalne bajty i tryb albo usunie utworzony plik. Późniejsze zmiany powodują konflikt.")
     if not confirm("rollback", reader=reader):
         print("TASK ROLLBACK: CANCELLED; pliki niezmienione" if args.details else "Anulowano. Pliki bez zmian.")
         return 2
@@ -342,7 +342,7 @@ def main(argv=None, *, reader=input):
     except AnalysisDenied as exc:
         if args.details:
             print(str(exc))
-        print(failure_hint(exc.reason, HINTS.get(exc.reason, "Zadanie zatrzymane przez brame bezpieczenstwa."),
+        print(failure_hint(exc.reason, HINTS.get(exc.reason, "Zadanie zatrzymane przez bramę bezpieczeństwa."),
                            config=display_state["execution"],
                            **({"diagnostic": exc.diagnostic} if exc.diagnostic is not None else {})))
     except (EOFError, KeyboardInterrupt):

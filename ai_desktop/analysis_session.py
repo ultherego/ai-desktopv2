@@ -39,10 +39,10 @@ def status():
         print("Pliki i jednostki: gotowe. Sesja analizy: " + ("uruchomiona." if active else "zatrzymana."))
         print("Wersja klienta i logowanie: niesprawdzone offline; kontrola przy zatwierdzonej analizie.")
         print("Zapytaj: ai-desktop ask")
-        print("Twoje dostepy ask: ~/.config/ai-desktop/permissions.toml")
-        print("Podglad: ai-desktop ask --preview")
-        print("Rozmowa: ai-desktop ask (zgoda na rozmowe, potem sudo na czas sesji)")
-        print("Zmien pliki i przetestuj: ai-desktop task run --help")
+        print("Twoje dostępy ask: ~/.config/ai-desktop/permissions.toml")
+        print("Podgląd: ai-desktop ask --preview")
+        print("Rozmowa: ai-desktop ask (zgoda na rozmowę, potem sudo na czas sesji)")
+        print("Zmień pliki i przetestuj: ai-desktop task run --help")
         print("Logowanie: ai-desktop login")
         print("Przerwanie lub odzyskanie sesji: ai-desktop stop")
         print("STATUS: PASS auth=unchecked network=unused")
@@ -50,7 +50,7 @@ def status():
     except (AnalysisDenied, OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
         reason = exc.reason if isinstance(exc, AnalysisDenied) else "runtime"
         print("STATUS: REFUSED reason=" + reason)
-        print("Sprawdz instalacje pakietu i dostepnosc systemd. Status nie uruchamia klienta ani logowania.")
+        print("Sprawdź instalację pakietu i dostępność systemd. Status nie uruchamia klienta ani logowania.")
         return 2
 
 

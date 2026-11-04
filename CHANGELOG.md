@@ -2,6 +2,7 @@
 
 ## Niewydane
 
+- Polskie znaki w komunikatach i pomocy: pytania o zapis i cofnięcie, `task`, `analyze`, `status` i opisy poleceń.
 - `ai-desktop task`: gdy `--workspace` wskazuje plik, program mówi to wprost zamiast ogólnej odmowy.
 - `ai-desktop task status` i `task rollback` wypisują wpisy od najnowszego, z datą ostatniej zmiany (czas pliku dziennika). Numer 1 to najnowsze zadanie.
 
