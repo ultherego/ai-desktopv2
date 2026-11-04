@@ -14,7 +14,7 @@ from .run_controls import recipient, recipient_config, wait_message
 from .execution import current as current_execution
 from . import ask_context, ask_discovery, ask_edit, conversation_state, file_context, permissions, ask_followup
 from .assistant_contract import PlanError, parse_plan, validate_access, _constant as _no_constant, _unique as _unique_keys
-from .analysis_contract import terminal_text
+from .analysis_contract import AnalysisDenied, terminal_text
 from .question_consent import QuestionConsent
 from .terminal_consent import confirm
 from .terminal_style import card, paint, size_label, symbol
@@ -256,6 +256,8 @@ def _run_command(snapshot, ledger, plan, permit, args, reader):
         except ask_discovery.BudgetExhausted:
             return COMMITTED_OUTPUT
 
+    change_ran = []
+
     def run_step(words, role, host):
         room = spend() if role == "change" else committed_room()
         if room is None:
@@ -267,11 +269,15 @@ def _run_command(snapshot, ledger, plan, permit, args, reader):
         permit.check()
         step = command_ops.execute(path, words, output_limit=room, timeout=policy.limits().command_timeout,
                                    host=host, role=role)
-        permit.check()
+        if role == "change":
+            change_ran.append(True)
+        # The command has already run on the live system: its result is recorded and shown before consent can stop the
+        # question. A lapsed consent stops what comes next, it does not erase what happened.
         add(words, role, step["status"], step["exit"], step["output"], step["truncated"])
         print(_finished(_LABEL[role], step))
         if args.details:
             print(terminal_text(step["output"]))
+        permit.check()
         return step
 
     changing = command_ops.match(policy.changes(), argv)
@@ -330,27 +336,37 @@ def _run_command(snapshot, ledger, plan, permit, args, reader):
         print("Nie wykonano zmiany.")
         spend() is None or add(argv, "change", "declined")
         return
-    changed = run_step(argv, "change", True)
-    if changed is None:
-        return                      # nothing ran (refused or budget closed): there is nothing to test or undo
-    tested = None
-    if changed["status"] == "ok":
-        tested = run_step(test, "test", True)
-        if tested is None:
-            conversation_state.note_action("Test po zmianie %s: pominięty, brak budżetu" % " ".join(test))
-    healthy = (changed is not None and changed["status"] == "ok" and changed["exit"] == 0
-               and tested is not None and tested["status"] == "ok" and tested["exit"] == 0)
-    if healthy:
-        print("Test po zmianie zaliczony.")
-        return
-    print("Zmiana lub test po zmianie NIE powiodły się. Wycofanie: " + shown(undo))
-    with permit.waiting():
-        undo_agreed = confirm("run-undo", reader=reader, config=selected)
-    if undo_agreed:
-        run_step(undo, "undo", True)
-    else:
-        conversation_state.note_action("Wycofanie %s: odrzucone przez użytkownika, nie uruchomiono" % " ".join(undo))
-        print("Nie wykonano wycofania. Stan systemu może być zmieniony.")
+    try:
+        changed = run_step(argv, "change", True)
+        if changed is None:
+            return                  # nothing ran (refused or budget closed): there is nothing to test or undo
+        tested = None
+        if changed["status"] == "ok":
+            tested = run_step(test, "test", True)
+            if tested is None:
+                conversation_state.note_action("Test po zmianie %s: pominięty, brak budżetu" % " ".join(test))
+        healthy = (changed is not None and changed["status"] == "ok" and changed["exit"] == 0
+                   and tested is not None and tested["status"] == "ok" and tested["exit"] == 0)
+        if healthy:
+            print("Test po zmianie zaliczony.")
+            return
+        print("Zmiana lub test po zmianie NIE powiodły się. Wycofanie: " + shown(undo))
+        with permit.waiting():
+            undo_agreed = confirm("run-undo", reader=reader, config=selected)
+        if undo_agreed:
+            run_step(undo, "undo", True)
+        else:
+            conversation_state.note_action("Wycofanie %s: odrzucone przez użytkownika, nie uruchomiono" % " ".join(undo))
+            print("Nie wykonano wycofania. Stan systemu może być zmieniony.")
+    except AnalysisDenied:
+        if change_ran:
+            # No further command runs under a lapsed consent or changed policy, and nothing more is sent. The owner decides.
+            conversation_state.note_action("Zmiana %s: przerwano po wykonaniu, dalsze kroki nie uruchomione" % " ".join(argv))
+            print("Zmiana została WYKONANA, ale zgoda wygasła lub zmieniły się uprawnienia. Kolejne kroki nie zostaną "
+                  "uruchomione i nic więcej nie zostanie wysłane.")
+            print("Sprawdź stan systemu. Test: " + shown(test))
+            print("Wycofanie możesz uruchomić sam: " + shown(undo))
+        raise
 
 
 def _budget_stop(policy, name):
