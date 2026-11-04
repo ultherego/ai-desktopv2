@@ -172,7 +172,7 @@ print("Natywny klient skopiowany z przyjętego pakietu; bez uruchamiania i OAuth
     test -f "$aid_package"; and not test -L "$aid_package"; or return 2
     set -l aid_package_info (/usr/bin/pacman -Qp "$aid_package")
     or return $status
-    __aid18_step PACKAGE_VERSION test "$aid_package_info" = 'ai-desktop 0.1.0-69'
+    __aid18_step PACKAGE_VERSION test "$aid_package_info" = 'ai-desktop 0.1.0-70'
     or return $status
     bsdtar -xOf "$aid_package" .INSTALL > "$aid_tmp/package.install"
     or return $status

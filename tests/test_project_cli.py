@@ -610,7 +610,7 @@ class EditTests(Base):
     def run_edit(self, answers, edit_decision=None):
         edit_decision = edit_decision or {"action": "edit", "files": ["src/util.py"], "create": [], "check": "python-syntax"}
         self.model = script({"action": "read", "path": "src/util.py", "ranges": [{"first": 1, "last": 2}]}, edit_decision)
-        prepared = pcli.ask_edit.PreparedEdit({}, {}, "python-syntax", str(self.proj), object())
+        prepared = pcli.ask_edit.PreparedEdit({}, {"files": []}, "python-syntax", str(self.proj), object())
         with patch.object(pcli.ask_edit, "prepare", side_effect=lambda *a, **k: self.calls.append(("prepare", a[0])) or prepared), \
                 patch.object(pcli.ask_cli, "request", side_effect=lambda *a, **k: self.calls.append(("request", a[0])) or "{}"), \
                 patch.object(pcli.ask_edit, "finish", side_effect=lambda *a, **k: self.calls.append(("finish", None)) or pcli.ask_edit.CompletedTask(0)):
@@ -620,7 +620,7 @@ class EditTests(Base):
         self.model = script({"action": "read", "path": "src/util.py", "ranges": [{"first": 1, "last": 2}]},
                             {"action": "edit", "files": ["src/util.py"], "create": [], "check": "text"},
                             {"action": "answer", "text": "Dalej.", "sources": [], "progress": "Zrobiono: komentarz w util.py. Dalej: testy."})
-        prepared = pcli.ask_edit.PreparedEdit({}, {}, "text", str(self.proj), object())
+        prepared = pcli.ask_edit.PreparedEdit({}, {"files": []}, "text", str(self.proj), object())
         with patch.object(pcli.ask_edit, "prepare", return_value=prepared), patch.object(pcli.ask_cli, "request", return_value="{}"), \
                 patch.object(pcli.ask_edit, "finish", return_value=pcli.ask_edit.CompletedTask(0)):
             self.run_cli(["Dodaj komentarz", "tak, i rób dalej", "/koniec"], ["tak", "tak", "tak"])
@@ -730,7 +730,7 @@ class EditTests(Base):
                 self._add_paste(body)
         marker = qi.paste_token(1, body)
         self.model = script({"action": "edit", "files": [], "create": ["a.txt"], "check": "text"})
-        prepared = pcli.ask_edit.PreparedEdit({}, {}, "text", str(self.proj), object())
+        prepared = pcli.ask_edit.PreparedEdit({}, {"files": []}, "text", str(self.proj), object())
         with patch.object(pcli, "PromptSession", Seeded), \
                 patch.object(pcli.ask_edit, "prepare", return_value=prepared) as prepare, \
                 patch.object(pcli.ask_cli, "request", return_value="{}") as request, \

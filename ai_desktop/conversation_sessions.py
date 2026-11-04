@@ -360,8 +360,44 @@ class Store:
             return self._read(root, ident)[0]
 
     def list(self):
+        """Readable records only: one damaged file must not hide all the others (see damaged)."""
+        return self._scan()[0]
+
+    def damaged(self):
+        """Ids of records that cannot be read, so the user can see and remove them."""
+        return self._scan()[1]
+
+    def _scan(self):
+        good, bad = [], []
         with self._root(optional=True) as root:
-            return [] if root is None else [self._read(root, ident)[0] for ident in self._ids(root)]
+            if root is None:
+                return good, bad
+            for ident in self._ids(root):
+                try:
+                    good.append(self._read(root, ident)[0])
+                except (SessionError, OSError):
+                    bad.append(ident)
+        return good, bad
+
+    def remove_damaged(self, ident):
+        """Remove a record that cannot be read. A readable one still needs remove(), with its review and conflict checks."""
+        with self._root() as root, self._locked(root):
+            try:
+                self._read(root, ident)
+            except SessionError as exc:
+                if str(exc) == "session-conflict":          # changing right now: not proven damaged
+                    raise
+            except OSError:
+                pass
+            else:
+                raise SessionError("session-conflict")
+            lease = self._lease(root, ident)
+            try:
+                os.unlink(ident + ".json", dir_fd=root)     # never follows a link; removes the entry itself
+                os.unlink(ident + ".lease", dir_fd=root)
+                os.fsync(root)
+            finally:
+                os.close(lease)
 
     def active(self, ident):
         try:
