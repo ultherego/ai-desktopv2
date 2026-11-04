@@ -8,7 +8,7 @@ import sys
 
 from .run_controls import recipient, failure_hint, wait_message
 from .execution import UNSET
-from . import conversation_memory, conversation_state, permissions
+from . import ask_commands, conversation_memory, conversation_state, permissions
 from .assistant_contract import PlanError, PLAN_CHECKS
 from .analysis_cli import HINTS
 from .terminal_style import paint, rule
@@ -273,6 +273,8 @@ def main(argv=None, *, reader=input):
             raise AnalysisDenied("consent")
         question = args.question
         prompt_session = PromptSession()
+        prompt_session.commands = ask_commands.COMMANDS
+        controls = ask_commands.Controls()
         if args.preview and args.session:
             print("Podgląd nie zapisuje ani nie wznawia rozmowy. Usuń --session albo --preview.")
             return 2
@@ -289,6 +291,11 @@ def main(argv=None, *, reader=input):
             while True:
                 question = (_read_message(prompt_session, False) if reader is input else reader(QUESTION_PROMPT))
                 validate_question(question)
+                local = controls.handle(question)
+                if local == ask_commands.EXIT:
+                    return 0
+                if local:
+                    continue
                 if question.strip():
                     break
                 print("Wpisz pytanie.")
@@ -412,6 +419,11 @@ def main(argv=None, *, reader=input):
                     return leave(code)
                 idle = 0
                 validate_question(question)
+                local = controls.handle(question, conversation)
+                if local == ask_commands.EXIT:
+                    return leave(code)
+                if local:
+                    continue
                 break
             if not question.strip():
                 return leave(code)

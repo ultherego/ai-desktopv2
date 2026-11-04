@@ -87,9 +87,12 @@ class ConversationTests(unittest.TestCase):
                 ("project", str(self.home / "material.txt"), "a" * 64, CONFIG),
                 ("material", str(self.home / "other.txt"), "a" * 64, CONFIG),
                 ("material", str(self.home / "material.txt"), "b" * 64, CONFIG),
-                ("material", str(self.home / "material.txt"), "a" * 64, {**CONFIG, "instructions": "Inna rola."}),
                 ("material", str(self.home / "material.txt"), "a" * 64, {**CONFIG, "access": "changes"})):
             self.assertRefused(lambda: self.store.open(value.session_id, kind, path, digest, config), "session-binding")
+        # A changed model or Skill set of the same agent keeps the conversation and is recorded.
+        changed = {**CONFIG, "instructions": "Inne Skille.", "model": "haiku"}
+        with self.store.open(value.session_id, "material", str(self.home / "material.txt"), "a" * 64, changed) as reopened:
+            self.assertEqual(reopened.record["execution"], changed)
         # No serialized grants/permissions or native session identifiers exist.
         self.assertEqual(set(value.record), sessions._KEYS)
         self.assertNotIn("grant", self.path(value).read_text())

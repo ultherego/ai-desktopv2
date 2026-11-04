@@ -172,6 +172,8 @@ Rozmowa pamięta ostatnie 8 wymian i krótką pamięć zadania. Jeśli cofniesz 
 
 Wyszukiwanie internetowe włączasz przez `web = true`. Jest to osobne żądanie: tylko Twoje pytanie, bez plików i danych lokalnych. Pogoda (`weather = true`) ujawnia nazwę miejscowości i Twój adres IP serwisowi Open-Meteo, a wynik idzie do modelu.
 
+Podczas rozmowy możesz wpisać polecenie zaczynające się od `/`. Po wpisaniu `/` pod wierszem pojawia się lista, strzałki wybierają, Tab uzupełnia. Polecenia działają lokalnie, nic nie wysyłają i nie kasują rozmowy: `/pomoc`, `/model`, `/sila`, `/skills`, `/agent`, `/ustawienia`, `/uprawnienia`, `/koniec`. Po zmianie modelu lub Skilli program raz jeszcze pyta o zgodę na wysyłkę. `/skills` działa w tej rozmowie; na stałe służy `ai-desktop agents`. Pytanie zaczynające się od ścieżki, np. `/etc/fstab co to?`, idzie do modelu normalnie. Aby wysłać pojedyncze słowo z `/`, zacznij od spacji.
+
 ### `ai-desktop material PLIK`
 
 Jeden plik tekstowy UTF-8 do `file_size`, objęty `files.read`. Pytasz zwykłym zdaniem; przed pytaniem nic nie jest wysyłane.

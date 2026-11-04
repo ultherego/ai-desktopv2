@@ -215,6 +215,25 @@ class ConversationPtyTests(unittest.TestCase):
         driver.send(b"nie\n")
         self.assertEqual(driver.finish(), 0, driver.text()[-800:])
 
+    def test_typing_a_slash_lists_commands_tab_completes_and_a_control_is_not_sent(self):
+        driver = Driver(self)
+        self.addCleanup(driver.close)
+        mark = driver.wait_for("W czym mogę pomóc?")
+        mark = driver.wait_for("> ", mark)
+        driver.send("/mo")
+        mark = driver.wait_for("zmień model", mark)
+        driver.send(b"\t")
+        driver.send("haiku\r")
+        mark = driver.wait_for("model: haiku", mark)
+        mark = driver.wait_for("poprosi o zgodę", mark)
+        mark = driver.wait_for("> ", mark)
+        driver.send("Pytanie po zmianie\r")
+        mark = driver.wait_for(CONSENT, mark)
+        driver.send(b"tak\n")
+        mark = driver.wait_for("SENT 1 Q:Pytanie po zmianie H:0", mark)       # the control itself never reached the model
+        mark = driver.wait_for("> ", mark)
+        driver.send("/ko\r")                                                   # Enter runs what the list has highlighted
+
     def test_a_new_message_cancels_the_intention_to_exit(self):
         driver = Driver(self)
         self.addCleanup(driver.close)

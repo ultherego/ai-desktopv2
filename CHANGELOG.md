@@ -2,6 +2,8 @@
 
 ## Niewydane
 
+- `ai-desktop ask`: polecenia `/` w trakcie rozmowy, z listą pod wierszem (`/model`, `/sila`, `/skills`, `/agent`, `/ustawienia`, `/uprawnienia`, `/pomoc`, `/koniec`). Zmiana nie kasuje rozmowy.
+- Zapisana rozmowa jest związana z usługą, agentem i poziomem dostępu. Zmiana modelu, rozumowania albo treści Skilla nie odcina jej już od wznowienia.
 - Nowe Skille dla CachyOS, każdy o jednej rzeczy: pakiety, jądra, sched-ext, rozruch i migawki, sprzęt, gry oraz rozbudowana diagnostyka. Oparte na wiki CachyOS. Skill `desktop-documentation` kieruje do dokumentacji pulpitu zamiast zgadywać.
 - Skille: bez limitu liczby na agenta, do 96 KiB na Skill i 104 KiB razem. Górny limit wynika z ograniczenia długości argumentu w Linuksie.
 - **Bezpieczeństwo:** gdy zgoda wygaśnie lub `permissions.toml` zmieni się podczas polecenia z `[commands] change`, wynik wykonanej zmiany jest pokazany i odnotowany, a program mówi wprost, że zmiana została wykonana, i podaje polecenie testu i wycofania. Kolejne kroki nie są uruchamiane i nic więcej nie jest wysyłane. Wcześniej wynik ginął bez śladu.
