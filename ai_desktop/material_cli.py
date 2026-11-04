@@ -888,6 +888,24 @@ class Session:
             self._line("CZAS: %s %.1f s; odpowiedź %.1f s (sudo i czas pisania pytań nie wliczone)" % (
                 "sesja ponownie użyta" if delivery.reused else "nowa sesja", delivery.opening, delivery.waiting))
 
+    def _access_unchanged(self, session, packet):
+        """The policy read at start decides every later hand-off too: if permissions.toml changed in any way, or the
+        service is no longer allowed, nothing more is sent. Data already in memory is not a grant."""
+        from .run_controls import provider_allowed
+        try:
+            self.policy.recheck()
+            allowed = provider_allowed(self.policy)
+        except (OSError, ValueError):
+            allowed = False
+        if allowed:
+            return True
+        if self._whole_progress:
+            self._whole_progress.clear()
+        session.cancel(packet)
+        print("Uprawnienia w permissions.toml zmieniły się lub cofnięto dostęp; dane tego żądania nie zostały wysłane. "
+              "Uruchom polecenie ponownie.")
+        return False
+
     def _deliver(self, session, packet, *, on_handoff=None):
         """Pace, gate, open/reuse the A+ session, hand off ONCE, send, record. None on any failure."""
         handed_off = False
@@ -908,6 +926,8 @@ class Session:
                                  lambda: (self._ensure_section(), _countdown_end()))
             if compact:
                 compact.clear()
+            if not self._access_unchanged(session, packet):
+                return None
             kwargs = self._gate_kwargs(packet)
             gate = AnalysisConsent(None, **kwargs)
             selected = json.loads(gate.payload).get("execution")
@@ -921,6 +941,8 @@ class Session:
             opening_started = self._clock()
             self.window.ensure()
             opening = self._clock() - opening_started
+            if not self._access_unchanged(session, packet):
+                return None
             approval = gate.authorize(None, sha256=gate.sha256, nonce=gate.nonce, **kwargs)
             sending_started = self._clock()
             if compact:

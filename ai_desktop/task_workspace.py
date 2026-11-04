@@ -17,7 +17,7 @@ import stat
 from .analysis_contract import canonical
 from .e2_ipc import _unique_pairs
 from . import fs_identity, task_contract as contract, permissions
-from .fs_publish import rename_noreplace
+from .fs_publish import rename_exchange, rename_noreplace
 from .workspace_executor import ExecutionDenied, _parent
 from .task_plan import TaskPlan
 
@@ -437,7 +437,8 @@ def recovery_records(workspace):
                           "files": [] if detached else [{"path": item["path"],
                                      "action": "restore" if value["before"]["files"][item["path"]]["file"] is not None else "remove"}
                                     for item in value["entries"]],
-                          "journal_sha256": sha(canonical(value).encode("utf-8"))}
+                          "journal_sha256": sha(canonical(value).encode("utf-8")),
+                          "modified": os.stat(name, dir_fd=fd).st_mtime}
                 if binding == "rebound":
                     record["rebound"] = True
                 if record["status"] == "conflict":
@@ -548,7 +549,24 @@ def apply(session, authorization, *, write_guard=None):
                         # file another editor created after our last state check.
                         rename_noreplace(parent, entry["temp"], parent, leaf)
                     else:
-                        os.replace(entry["temp"], leaf, src_dir_fd=parent, dst_dir_fd=parent)
+                        # Swap instead of replace: whatever sat at the name is now at the stage name, where it is
+                        # compared with what this plan saw. An editor that wrote in the meantime is put back, never
+                        # silently destroyed. (A write into an inode someone already holds open can still land after
+                        # this check; see docs/KNOWN_LIMITATIONS.md.)
+                        rename_exchange(parent, entry["temp"], parent, leaf)
+                        try:
+                            displaced = read_file(parent, entry["temp"])
+                            if displaced != saved["file"]:
+                                raise ValueError("changed target")
+                        except BaseException:
+                            rename_exchange(parent, entry["temp"], parent, leaf)
+                            # Their file is back; what is left under the stage name is ours, so it can go.
+                            try:
+                                os.unlink(entry["temp"], dir_fd=parent)
+                            except OSError:
+                                pass
+                            raise
+                        os.unlink(entry["temp"], dir_fd=parent)
                     os.fsync(parent)
                     entry["published"] = True
                     _save(fd, name, value)
@@ -679,11 +697,12 @@ def rollback(workspace, plan, *, expected_journal=None):
                         continue
                     # Both apply and undo stages have durable names. Never
                     # claim success while either is present but unrecognized.
-                    for stage_name, fingerprint in ((entry["temp"], entry["after"]),
-                                                     (entry["undo_temp"], entry["undo"])):
+                    # After a crash between the swap and the unlink the apply stage holds the displaced original.
+                    for stage_name, known in ((entry["temp"], (entry["after"], original)),
+                                              (entry["undo_temp"], (entry["undo"],))):
                         staged = read_file(parent, stage_name)
                         if staged is not None:
-                            if fingerprint is None or staged != fingerprint:
+                            if staged not in [fingerprint for fingerprint in known if fingerprint is not None]:
                                 raise ValueError("unknown stage")
                             os.unlink(stage_name, dir_fd=parent)
                             os.fsync(parent)

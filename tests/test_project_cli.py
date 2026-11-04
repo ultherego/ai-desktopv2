@@ -444,6 +444,21 @@ class QuestionTests(Base):
         self.assertEqual(len(self.sent), 4)
         self.assertRegex(self.output, r"Zmienione\s+src/util.py \(w trakcie zadania lub po skanie\)")
 
+    def test_access_revoked_after_an_answer_stops_the_next_question_and_leaks_no_names(self):
+        revoked = 'version = 1\n[files]\nread = []\ndeny = ["~/proj/"]\n[network]\nclaude = false\n'
+        state = {"n": 0}
+
+        def model(payload):
+            state["n"] += 1
+            if state["n"] == 1:                                          # answered, then access is withdrawn
+                self.config.write_text(revoked)
+                self.config.chmod(0o600)
+            return '{"action":"answer","text":"Gotowe.","sources":[]}'
+        self.model = model
+        self.run_cli(["Pierwsze?", "Drugie?", "/koniec"], ["tak", "tak"])
+        self.assertEqual(len(self.sent), 1)                              # only the request approved before the change
+        self.assertNotIn("util.py", json.dumps(self.payloads()[1:]))
+
     def test_local_helpers_rescan_and_report_a_changed_policy_correctly(self):
         def commands():
             yield "/pliki"

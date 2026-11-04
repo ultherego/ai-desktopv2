@@ -19,21 +19,21 @@ from .terminal_style import rule
 ANSWER_SEPARATOR = "─" * 48
 
 HINTS = {
-    "network": "Nie udalo sie nawiazac dozwolonego polaczenia. Sprawdz siec i dostepnosc uslugi; potem uruchom polecenie ponownie i zatwierdz wysylke.",
-    "rate-limit": "Usluga odrzucila zadanie z powodu limitu. Odczekaj i uruchom polecenie ponownie z nowa zgoda; bez automatycznej ponownej wysylki.",
-    "provider-unavailable": "Usluga Claude zglosila chwilowy blad. Sprobuj pozniej, uruchamiajac polecenie ponownie z nowa zgoda.",
+    "network": "Nie udało się nawiązać dozwolonego połączenia. Sprawdź sieć i dostępność usługi; potem uruchom polecenie ponownie i zatwierdź wysyłkę.",
+    "rate-limit": "Usługa odrzuciła żądanie z powodu limitu. Odczekaj i uruchom polecenie ponownie z nową zgodą; bez automatycznej ponownej wysyłki.",
+    "provider-unavailable": "Usługa Claude zgłosiła chwilowy błąd. Spróbuj później, uruchamiając polecenie ponownie z nową zgodą.",
     "runtime": "Brak zaufanego klienta Claude Code 2.1.312 w pakiecie ai-desktop.",
     "version": "Klient lub izolacja nie przeszly kontroli wersji 2.1.312.",
-    "endpoint": "Nie udalo sie uruchomic lub polaczyc sesji. Sprawdz ai-desktop status; odzyskanie: ai-desktop stop.",
+    "endpoint": "Nie udało się uruchomić lub połączyć sesji. Sprawdź ai-desktop status; odzyskanie: ai-desktop stop.",
     "auth-required": "Połącz konto: ai-desktop login (wybierz Claude). Potem uruchom nową analizę i zatwierdź nowy podgląd.",
-    "auth-method": "Wymagane logowanie subskrypcji claude.ai w osobnym profilu; inne metody sa odrzucone.",
-    "busy": "Sesja lub profil jest zajety albo pozostal niedokonczony cykl. Sprawdz ai-desktop status; odzyskanie wlasnej sesji: ai-desktop stop.",
+    "auth-method": "Wymagane logowanie subskrypcji claude.ai w osobnym profilu; inne metody są odrzucone.",
+    "busy": "Sesja lub profil jest zajęty albo pozostał niedokończony cykl. Sprawdź ai-desktop status; odzyskanie własnej sesji: ai-desktop stop.",
     "timeout": "Przekroczono limit czasu. Wynik nie jest potwierdzony; brak automatycznego ponowienia.",
-    "client": "Klient nie zakonczyl analizy. Sprawdz dostep do sieci i stan subskrypcji. Brak automatycznego ponowienia i przejscia na API.",
-    "consent": "Nie zatwierdzono wysylki lub zgoda wygasla. Przy nowej analizie sprawdz podglad i wpisz tak (t), aby zatwierdzic, albo nie (n), aby odmowic. Raport nie zostal przekazany.",
-    "authorization": "Nie uzyskano uprawnien do uruchomienia osobnej sesji. Raport nie zostal przekazany.",
-    "cleanup": "Nie potwierdzono zatrzymania sesji. Uruchom ai-desktop stop; nie ponawiaj automatycznie wysylki.",
-    "cancelled": "Przerwano analize. Wyslanych danych nie mozna wycofac; brak automatycznego ponowienia.",
+    "client": "Klient nie zakończył analizy. Sprawdź dostęp do sieci i stan subskrypcji. Brak automatycznego ponowienia i przejścia na API.",
+    "consent": "Nie zatwierdzono wysyłki lub zgoda wygasła. Przy nowej analizie sprawdź podgląd i wpisz tak (t), aby zatwierdzić, albo nie (n), aby odmówić. Raport nie został przekazany.",
+    "authorization": "Nie uzyskano uprawnień do uruchomienia osobnej sesji. Raport nie został przekazany.",
+    "cleanup": "Nie potwierdzono zatrzymania sesji. Uruchom ai-desktop stop; nie ponawiaj automatycznie wysyłki.",
+    "cancelled": "Przerwano analizę. Wysłanych danych nie można wycofać; brak automatycznego ponowienia.",
 }
 
 
@@ -111,7 +111,7 @@ def main(*, preview=False, question="", ask=False, report_path=None, output_form
     except AnalysisDenied as exc:
         if details:
             print(str(exc))
-        print(failure_hint(exc.reason, HINTS.get(exc.reason, "Analiza zatrzymana przez brame bezpieczenstwa; brak zmian w systemie."),
+        print(failure_hint(exc.reason, HINTS.get(exc.reason, "Analiza zatrzymana przez bramę bezpieczeństwa; brak zmian w systemie."),
                            config=shown_execution,
                            **({"diagnostic": exc.diagnostic} if exc.diagnostic is not None else {})))
         return 2

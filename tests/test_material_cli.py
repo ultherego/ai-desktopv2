@@ -527,6 +527,29 @@ class NaturalTests(Base):
         self.run_cli(["odrzucone?", "przyjęte?", "/koniec"], ["nie", "tak"])
         self.assertEqual(self.payloads()[0]["material"]["history"], [])
 
+    def test_access_revoked_between_questions_stops_every_later_hand_off(self):
+        for label, revoke in (("service off", lambda: self.write_policy_with(read='["~/data/*"]', network="claude = false\n")),
+                              ("read scope removed", lambda: self.write_policy_with(read="[]", network=self.network)),
+                              ("deny added", lambda: self.write_policy_with(read='["~/data/*"]', network=self.network,
+                                                                            deny='["~/data/"]'))):
+            with self.subTest(label):
+                self.write_policy()
+                answer = '{"action":"answer","text":"Pierwsza.","sources":[]}'
+
+                def first_then_revoke(payload, revoke=revoke):
+                    revoke()
+                    return answer
+                self.sent.clear()
+                self.model = first_then_revoke
+                self.run_cli(["Pierwsze?", "Drugie?", "/koniec"], ["tak", "tak"])
+                self.assertEqual(len(self.sent), 1)                       # only the request approved before the change
+                self.assertIn("Uprawnienia w permissions.toml zmieniły się", self.output)
+                self.assertIn("nie zostały wysłane", self.output)
+
+    def write_policy_with(self, *, read, network, deny="[]"):
+        self.config.write_text("version = 1\n[files]\nread = %s\ndeny = %s\n[network]\n%s" % (read, deny, network))
+        self.config.chmod(0o600)
+
     # --- failures, session, pacing, details -------------------------------------------------
     def test_failure_after_hand_off_stops_the_loop_is_unknown_and_never_retried(self):
         self.big()

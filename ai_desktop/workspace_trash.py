@@ -363,7 +363,8 @@ def recovery_records(workspace):
                     raise ValueError("trash workspace")
                 result.append({"plan": value["plan"], "status": value["status"], "kind": "trash",
                                "files": [{"path": e["path"], "action": "restore"} for e in value["entries"]],
-                               "journal_sha256": tw.sha(canonical(value).encode("utf-8"))})
+                               "journal_sha256": tw.sha(canonical(value).encode("utf-8")),
+                               "modified": os.stat(name, dir_fd=state).st_mtime})
             return result
         finally:
             os.close(state)

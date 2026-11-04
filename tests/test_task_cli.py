@@ -54,6 +54,20 @@ class TaskCliTests(unittest.TestCase):
         record = workspace.status(str(self.root))[0]
         self.assertTrue(workspace.rollback(str(self.root), record[0]))
 
+    def test_workspace_that_is_a_file_gets_a_clear_message_for_every_action(self):
+        for action in ("run", "status", "rollback", "restore"):
+            for details in (False, True):
+                args = {"run": ["run", "fix", "--file", "calc.py", "--test", "python-syntax"], "restore": ["restore", "--plan", "a" * 64]}.get(action, [action])
+                with self.subTest(action=action, details=details):
+                    out = io.StringIO()
+                    with contextlib.redirect_stdout(out), patch.object(cli.sys.stdin, "isatty", return_value=True), \
+                            patch.object(cli.sys.stdout, "isatty", return_value=True), \
+                            patch.object(cli, "send_once") as send:
+                        code = cli.main(args + ["--workspace", str(self.root / "calc.py")] + (["--details"] if details else []))
+                    self.assertEqual(code, 2)
+                    self.assertIn("workspace-not-directory" if details else "a to jest plik", out.getvalue())
+                    send.assert_not_called()
+
     def test_unchanged_proposal_has_its_own_message_and_changes_nothing(self):
         self.proposal = json.dumps({"summary": "same", "files": [{"path": "calc.py", "content": "old\n"}]})
         result, output, send, check, _ = self.invoke()
@@ -148,6 +162,11 @@ class TaskCliTests(unittest.TestCase):
             result = cli.main(["rollback", "--workspace", str(self.root)], reader=reader)
         return result, out.getvalue(), prompts
 
+    def test_real_journal_records_carry_a_modification_time(self):
+        self.invoke()
+        record = workspace.recovery_records(str(self.root))[0]
+        self.assertGreater(record["modified"], 1_600_000_000)
+
     def test_rollback_single_task_uses_short_consent_without_plan_argument(self):
         self.assertEqual(self.invoke()[0], 0)
         code, output, prompts = self.undo(["TAK"])
@@ -172,7 +191,7 @@ class TaskCliTests(unittest.TestCase):
         self.args[self.args.index("--file") + 1] = "second.py"
         self.proposal = json.dumps({"summary": "ok", "files": [{"path": "second.py", "content": "changed\n"}]})
         self.assertEqual(self.invoke()[0], 0)
-        records = workspace.recovery_records(str(self.root))
+        records = cli.newest_first(workspace.recovery_records(str(self.root)))
         selected = next(i for i, record in enumerate(records, 1) if record["files"][0]["path"] == "second.py")
         for answer in ("", "tak", "0", "3", "-1", "01"):
             code, _, prompts = self.undo([answer, "nie"])
@@ -531,6 +550,26 @@ class TaskPresentationTests(unittest.TestCase):
             self.assertIn("calc.py", out.getvalue())
             self.assertEqual("TASK STATUS: PASS records=1" in out.getvalue(), details)
             self.assertEqual("a" * 64 in out.getvalue(), details)
+
+    def test_status_and_rollback_list_newest_entries_first_with_a_date(self):
+        old = dict(self.record(), plan="c" * 64, modified=1_700_000_000.0)
+        new = dict(self.record(), plan="d" * 64, modified=1_800_000_000.0)
+        undated = dict(self.record(), plan="e" * 64)
+        self.assertEqual([r["plan"] for r in cli.newest_first([undated, old, new])], ["d" * 64, "c" * 64, "e" * 64])
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            cli.show_record(new, 1)
+            cli.show_record(undated, 2)
+        first, second = out.getvalue().splitlines()[0], [l for l in out.getvalue().splitlines() if l.startswith("2.")][0]
+        self.assertRegex(first, r"^1\. \d{4}-\d{2}-\d{2} \d{2}:\d{2} · Stan: zapisano$")
+        self.assertEqual(second, "2. Stan: zapisano")
+        with contextlib.redirect_stdout(io.StringIO()), patch.object(cli.os, "getuid", return_value=1000), \
+                patch.object(cli.os, "geteuid", return_value=1000), \
+                patch.object(workspace, "recovery_records", return_value=[old]), \
+                patch("ai_desktop.workspace_trash.recovery_records", return_value=[new]), \
+                patch.object(cli, "show_record") as shown:
+            self.assertEqual(cli.main(["status", "--workspace", "/tmp/project"]), 0)
+        self.assertEqual([call.args[0]["plan"] for call in shown.call_args_list], ["d" * 64, "c" * 64])
 
     def test_multiple_rollback_selection_keeps_chosen_digest_and_reports_conflict(self):
         args = cli.build_parser().parse_args(["rollback", "--workspace", "/tmp/project"])

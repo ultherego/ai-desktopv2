@@ -58,7 +58,9 @@ class TaskWorkspaceTests(unittest.TestCase):
                     "files": [{"path": "calc.py", "action": "restore"},
                               {"path": "new.txt", "action": "remove"}],
                     "journal_sha256": workspace.sha(canonical(json.loads(raw)).encode("utf-8"))}
-        self.assertEqual(workspace.recovery_records(str(self.root)), [expected])
+        records = workspace.recovery_records(str(self.root))
+        self.assertAlmostEqual(records[0].pop("modified"), modified / 1e9, places=3)   # float rounding differs per platform
+        self.assertEqual(records, [expected])
         self.assertEqual((journal.read_bytes(), journal.stat().st_mtime_ns), (raw, modified))
         self.assertEqual((self.root / "calc.py").read_text(), "new\n")
         self.assertTrue(workspace.rollback(str(self.root), plan.sha256,
@@ -116,7 +118,10 @@ class TaskWorkspaceTests(unittest.TestCase):
         first_record = workspace.recovery_records(str(self.root))[0]
         journal = self.root / workspace.STATE / (first.sha256 + ".json")
         journal.write_text(json.dumps(json.loads(journal.read_text()), indent=2))
-        self.assertEqual(workspace.recovery_records(str(self.root)), [first_record])
+        again = workspace.recovery_records(str(self.root))
+        for record in (first_record, again[0]):
+            self.assertIsInstance(record.pop("modified"), float)  # the file time may change; the digest must not
+        self.assertEqual(again, [first_record])
         (self.root / "other.py").write_text("other\n")
         second = self.plan(names=["other.py"]); self.apply(second)
         self.assertEqual([r["plan"] for r in workspace.recovery_records(str(self.root))],
@@ -162,11 +167,11 @@ root=sys.argv[1]
 before=w.snapshot(root,['calc.py','new.txt'])
 source={'instruction':'x','files':[{'path':p,'content':f['file']['content'] if f['file'] else None,'writable':True} for p,f in before['files'].items()]}
 plan=TaskPlan(before,source,{'summary':'x','files':[{'path':p,'content':'new\\n'} for p in before['files']]},'python-syntax')
-real=w.os.replace
-def crash(src,dst,**kw):
-    real(src,dst,**kw)
-    if dst=='calc.py': os._exit(77)
-w.os.replace=crash
+real=w.rename_exchange
+def crash(src_dir,src,dst_dir,dst):
+    real(src_dir,src,dst_dir,dst)
+    if dst=='calc.py': os._exit(77)      # killed right after the swap: the original still sits under the stage name
+w.rename_exchange=crash
 w.apply(plan,plan.authorize('ZAPISZ '+plan.sha256))
 '''
         done = subprocess.run([sys.executable, "-B", "-c", script, str(self.root)], capture_output=True)
@@ -226,6 +231,46 @@ w.apply(plan,plan.authorize('ZAPISZ '+plan.sha256))
         self.assertEqual(result.returncode, 0, result.stderr)
         (self.root / workspace.STATE / ".gitignore").write_text("wrong")
         with self.assertRaises(ValueError): workspace.status(str(self.root))
+
+    def test_editor_write_after_the_last_check_is_kept_not_overwritten(self):
+        """The window the old os.replace left open: the editor saves after the final comparison, before the publish."""
+        for how in ("in place", "by rename"):
+            with self.subTest(how):
+                target = self.root / "calc.py"
+                target.write_text("old\n")
+                target.chmod(0o640)
+                plan = self.plan(names=["calc.py"])
+                real = workspace.rename_exchange
+
+                def editor_then_swap(src_dir, src, dst_dir, dst, how=how):
+                    if dst == "calc.py":
+                        if how == "in place":
+                            target.write_text("editor version\n")
+                        else:
+                            other = self.root / "editor.tmp"
+                            other.write_text("editor version\n")
+                            other.chmod(0o640)
+                            os.replace(other, target)
+                    return real(src_dir, src, dst_dir, dst)
+                with patch.object(workspace, "rename_exchange", side_effect=editor_then_swap), \
+                        self.assertRaises(ValueError):
+                    self.apply(plan)
+                self.assertEqual(target.read_text(), "editor version\n")       # their save survives
+                self.assertEqual(list(self.root.glob(".ai-task-*")), [])                # our stage is gone
+                self.assertFalse(workspace.rollback(str(self.root), plan.sha256))       # a later edit is never undone
+                self.assertEqual(target.read_text(), "editor version\n")
+                for journal in (self.root / workspace.STATE).glob("*.json"):
+                    journal.unlink()
+
+    def test_crash_between_the_swap_and_removing_the_old_file_rolls_back_cleanly(self):
+        plan = self.plan(names=["calc.py"])
+        with patch.object(workspace.os, "unlink", side_effect=OSError("killed")), self.assertRaises(OSError):
+            self.apply(plan)
+        self.assertEqual((self.root / "calc.py").read_text(), "new\n")            # published
+        self.assertEqual(len(list(self.root.glob(".ai-task-*"))), 1)             # the displaced original is still there
+        self.assertTrue(workspace.rollback(str(self.root), plan.sha256))
+        self.assertEqual((self.root / "calc.py").read_text(), "old\n")
+        self.assertEqual(list(self.root.glob(".ai-task-*")), [])
 
     def test_write_failure_keeps_original_and_unknown_partial_file_is_not_deleted(self):
         plan = self.plan()

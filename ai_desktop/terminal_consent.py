@@ -22,7 +22,7 @@ PROMPTS = {
     "systemd-read": "Zezwolić na ten odczyt systemd? [t/n]: ",
     "weather": "Pobrać pogodę z Open-Meteo? [t/n]: ",
     "ask-transfer": "Wysłać do Claude? [t/n]: ",
-    "transfer": "Wyslac pokazane dane do Claude? [t/n]: ",
+    "transfer": "Wysłać pokazane dane do Claude? [t/n]: ",
     "material-transfer": "Przekazać do Claude? [t/n]: ",
     "material-whole": "Przekazać cały plik do Claude w tych żądaniach? [t/n]: ",
     "material-task": "Przekazać do Claude? [t/n]: ",
@@ -31,8 +31,8 @@ PROMPTS = {
     "restore": "Przywrócić usunięte pliki? [t/n]: ",
     "project-continue": "Kontynuować analizę z Claude (kolejny etap)? [t/n]: ",
     "project-edit": "Przekazać te pliki do Claude i przygotować diff? [t/n]: ",
-    "write": "Zapisac pokazane zmiany? [t/n]: ",
-    "rollback": "Cofnac pokazane zmiany? [t/n]: ",
+    "write": "Zapisać pokazane zmiany? [t/n]: ",
+    "rollback": "Cofnąć pokazane zmiany? [t/n]: ",
 }
 MAX_ANSWER_BYTES = 64
 

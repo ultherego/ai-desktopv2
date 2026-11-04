@@ -10,6 +10,7 @@ AI Desktop jest wersją rozwojową, nie wydaniem 1.0. Testy automatyczne nie dow
 - Nie ma ochrony przed wrogim procesem tego samego użytkownika ani gwarancji przy utracie zasilania.
 
 ## Zachowanie
+- Zapis istniejącego pliku wymienia go atomowo i odrzuca zapis, gdy edytor zmienił plik po ostatnim sprawdzeniu. Zapis do pliku, który edytor już trzymał otwarty, może jeszcze trafić do starej wersji tuż po porównaniu, zanim zostanie usunięta. Wymaga systemu plików z `RENAME_EXCHANGE` (Btrfs, ext4, xfs, tmpfs); na innych zapis jest odrzucany.
 - Ucięty dziennik zadania blokuje zapis w danym katalogu do czasu ręcznego sprawdzenia. Kosz zadania nie ma automatycznego czyszczenia, a limit to 128 wpisów na katalog.
 - Nazwa pliku w `deny` musi być zapisana tak samo jak na dysku: reguły nie normalizują znaków Unicode.
 - W jednym pytaniu żądanie edycji nie zawiera wyników wcześniejszych poleceń, a edytowane pliki mają limit 64 KiB (razem 128 KiB).

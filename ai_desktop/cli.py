@@ -30,24 +30,24 @@ def build_parser():
     commands.add_parser("codex", help="Zgodność: administracja Codex; logowanie przez login", add_help=False)
     commands.add_parser("agents", help="Twórz i wybieraj profile agentów", add_help=False)
     commands.add_parser("sessions", help="Lista i wznawianie zapisanych rozmów", add_help=False)
-    commands.add_parser("task", help="Zmien wybrane pliki, przetestuj, zatwierdz diff lub cofnij zapis")
+    commands.add_parser("task", help="Zmień wybrane pliki, przetestuj, zatwierdź diff lub cofnij zapis")
 
     commands.add_parser("audit", help="Lokalny audyt tylko do odczytu")
     diagnostic_status = commands.add_parser("doctor", help="Sprawdzenie wymagań bez uruchamiania AI")
     diagnostic_status.add_argument("--v", "--verbose", "-v", "--details", dest="details", action="store_true",
                                    help="Pełny raport wymagań w JSON")
-    commands.add_parser("status", help="Gotowosc analizy offline, bez klienta i OAuth")
-    commands.add_parser("stop", help="Zatrzymaj lub odzyskaj wlasna tymczasowa sesje analizy")
-    analysis = commands.add_parser("analyze", help="Zatwierdz raport i odbierz analize subskrypcji Claude")
-    analysis.add_argument("--preview", action="store_true", help="Tylko podglad offline, bez klienta i OAuth")
+    commands.add_parser("status", help="Gotowość analizy offline, bez klienta i OAuth")
+    commands.add_parser("stop", help="Zatrzymaj lub odzyskaj własną tymczasową sesję analizy")
+    analysis = commands.add_parser("analyze", help="Zatwierdź raport i odbierz analizę subskrypcji Claude")
+    analysis.add_argument("--preview", action="store_true", help="Tylko podgląd offline, bez klienta i OAuth")
     analysis.add_argument("--v", "--verbose", "-v", "--details", dest="details", action="store_true",
                           help="Pełny podgląd zasad i diagnostyka analizy")
     question = analysis.add_mutually_exclusive_group()
-    question.add_argument("--question", default="", help="Wlasne pytanie o raport (do 2048 bajtow UTF-8)")
-    question.add_argument("--ask", action="store_true", help="Wpisz pytanie w terminalu przed podgladem i zgoda")
-    analysis.add_argument("--report", help="Zapisany raport JSON AI Desktop; zamiast zbierania biezacego stanu")
+    question.add_argument("--question", default="", help="Własne pytanie o raport (do 2048 bajtów UTF-8)")
+    question.add_argument("--ask", action="store_true", help="Wpisz pytanie w terminalu przed podglądem i zgodą")
+    analysis.add_argument("--report", help="Zapisany raport JSON AI Desktop; zamiast zbierania bieżącego stanu")
     analysis.add_argument("--format", choices=("auto", "plain", "markdown"), default="auto",
-                          help="Odpowiedz: formatowanie terminala, bez kolorow lub surowy Markdown")
+                          help="Odpowiedź: formatowanie terminala, bez kolorów lub surowy Markdown")
     from .run_controls import add_arguments
     add_arguments(analysis)
     login = commands.add_parser("login", help="Logowanie i wybór aktywnej usługi Claude lub Codex")
@@ -60,16 +60,16 @@ def build_parser():
     login.add_argument("--v", "--verbose", "-v", "--details", dest="details", action="store_true",
                        help="Pokaż diagnostykę jednostki logowania")
 
-    validation = commands.add_parser("validate-report", help="Waliduj istniejacy plik JSON offline")
+    validation = commands.add_parser("validate-report", help="Waliduj istniejący plik JSON offline")
     validation.add_argument("path", help="Lokalny raport JSON lub - dla stdin")
 
-    comparison = commands.add_parser("compare", help="Porownaj dwa lokalne raporty JSON offline")
+    comparison = commands.add_parser("compare", help="Porównaj dwa lokalne raporty JSON offline")
     comparison.add_argument("before", help="Poprzedni raport JSON lub - dla stdin")
     comparison.add_argument("after", help="Nowszy raport JSON lub - dla stdin")
     comparison.add_argument("--summary", action="store_true",
-                            help="Pokaz tylko nazwy zmienionych pol, bez wartosci")
+                            help="Pokaż tylko nazwy zmienionych pól, bez wartości")
     comparison.add_argument("--exit-on-change", action="store_true",
-                            help="Zakoncz kodem 3, gdy raporty sa poprawne, ale sie roznia")
+                            help="Zakończ kodem 3, gdy raporty są poprawne, ale się różnią")
 
     diagnostic = commands.add_parser("diagnose", help="Diagnostyka i opcjonalna analiza AI")
     diagnostic.add_argument("action", choices=("preview", "snapshot", "save", "ask"))
@@ -83,14 +83,14 @@ def build_parser():
 
     # Isolated, one-shot local transport only. Neither action escalates UID,
     # starts Claude, performs network IO or writes host files.
-    handoff = commands.add_parser("handoff-once", help="Pokaz i zatwierdz raport do odrebnego workera")
+    handoff = commands.add_parser("handoff-once", help="Pokaż i zatwierdź raport do odrębnego workera")
     handoff.add_argument("session", help="Losowy identyfikator jednorazowej sesji")
-    commands.add_parser("handoff", help="Zatwierdz raport i aktywuj offline worker przez systemd")
-    worker = commands.add_parser("worker-once", help="Odbierz jeden raport jako uzytkownik ai-desktop")
+    commands.add_parser("handoff", help="Zatwierdź raport i aktywuj offline worker przez systemd")
+    worker = commands.add_parser("worker-once", help="Odbierz jeden raport jako użytkownik ai-desktop")
     worker.add_argument("session", help="Losowy identyfikator jednorazowej sesji")
     worker.add_argument("desktop_uid", type=int, help="Zaufany UID aplikacji pulpitu")
 
-    commands.add_parser("workspace", help="Plan, zatwierdzenie i zapis nowych plikow w workspace",
+    commands.add_parser("workspace", help="Plan, zatwierdzenie i zapis nowych plików w workspace",
                         add_help=False)
 
     skill = commands.add_parser("skills", help="Zarządzanie własnymi Skills")
