@@ -6,10 +6,13 @@ Pełny opis architektury i zagrożeń: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.
 
 ## Zgłaszanie problemu
 
-Nie ma osobnego adresu kontaktowego. Otwórz zgłoszenie (issue) na <https://github.com/ultherego/ai-desktopv2>.
+Luki bezpieczeństwa zgłaszaj **prywatnie**: na stronie repozytorium <https://github.com/ultherego/ai-desktopv2> wybierz
+Security → „Report a vulnerability”. Zgłoszenie widzi tylko opiekun projektu. Zwykłe błędy i pytania możesz otworzyć jako
+publiczne zgłoszenie (issue).
 
-Zgłoszenie jest publiczne, więc **nie umieszczaj w nim szczegółów wrażliwych**: tokenów, kodów logowania, treści prywatnych plików,
-wyniku `--v`, działającego exploita ani danych swojego komputera. Opisz wersję pakietu, ogólny objaw i stały komunikat błędu.
+Publiczne zgłoszenie jest widoczne dla wszystkich, więc **nie umieszczaj w nim szczegółów wrażliwych**: tokenów, kodów logowania,
+treści prywatnych plików, wyniku `--v`, działającego exploita ani danych swojego komputera. Opisz wersję pakietu, ogólny objaw i
+stały komunikat błędu.
 
 ## Granice zaufania
 
