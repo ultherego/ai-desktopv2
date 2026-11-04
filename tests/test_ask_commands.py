@@ -6,7 +6,7 @@ import io
 import unittest
 from unittest.mock import patch
 
-from ai_desktop import ask_commands as commands, agent_profiles as profiles, execution, question_input
+from ai_desktop import analysis_contract, ask_commands as commands, agent_profiles as profiles, conversation_state, execution, question_input
 
 BASE = {"provider": "claude", "model": "default", "effort": "default", "instructions": "", "profile": "default", "access": "changes"}
 
@@ -97,6 +97,28 @@ class ControlsTests(unittest.TestCase):
         output = self.run_line("/agent reviewer", Conversation())[1]
         self.assertEqual(execution.current(), before)
         self.assertIn("związana", output)
+
+
+class LongConversationTests(unittest.TestCase):
+    def test_a_long_message_is_kept_for_follow_ups_and_older_turns_leave_first(self):
+        talk = conversation_state.Conversation()
+        pasted = "linia logu\n" * 9000                                          # about 100 KiB
+        talk.finish("krótkie", "odpowiedź", None, ())
+        talk.finish(pasted, "odpowiedź", None, ())
+        self.assertEqual(talk.history()[-1]["question"], pasted)
+        self.assertEqual(execution.validate_history(talk.history()), talk.history())
+        talk.finish(pasted, "odpowiedź", None, ())
+        kept = talk.history()
+        self.assertEqual(len(kept), 1)                                            # the newest stays, the older left
+        self.assertLessEqual(sum(len(t["question"].encode()) for t in kept), execution.HISTORY_TOTAL_BYTES)
+
+    def test_the_wire_accepts_a_long_ask_message_and_material_keeps_its_short_limit(self):
+        text = "x" * analysis_contract.MAX_MESSAGE_BYTES
+        self.assertEqual(analysis_contract.validate_question(text, analysis_contract.MAX_MESSAGE_BYTES), text)
+        with self.assertRaises(ValueError):
+            analysis_contract.validate_question(text)
+        with self.assertRaises(ValueError):
+            analysis_contract.validate_question(text + "x", analysis_contract.MAX_MESSAGE_BYTES)
 
 
 class SuggestionTests(unittest.TestCase):

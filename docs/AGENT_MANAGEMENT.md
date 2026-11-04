@@ -83,7 +83,7 @@ Uruchom `ai-desktop ask` raz i pracuj dalej: po odpowiedzi wraca `>`. Strzałki 
 
 **Pamięć ma dwie warstwy:**
 
-1. Ostatnie 8 wymian (pytanie do 2 KiB, odpowiedź do 3 KiB z widocznym ucięciem).
+1. Ostatnie 32 wymiany, razem do 128 KiB (pytanie do 128 KiB, odpowiedź do 8 KiB z widocznym ucięciem).
 2. Pamięć zadania: do 40 wpisów (po 400 B, razem 10 KiB) z celem, kryterium, próbami, wartościami, korektami i decyzjami. Model proponuje aktualizacje w odpowiedzi, a przy braku limitu najpierw wypadają najstarsze wpisy niechronione. Program sam dopisuje fakty: co uruchomił i z jakim kodem, co zastosował, co odrzucono.
 
 Pamięć nie daje uprawnień. Przy cofnięciu dostępu do pliku zależne od niego odpowiedzi i wpisy modelu są usuwane przed następnym pytaniem, a program o tym informuje. Program nie pamięta tur starszych niż 8, poza tym co trafiło do pamięci zadania.

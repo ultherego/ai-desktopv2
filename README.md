@@ -153,7 +153,7 @@ ai-desktop ask --question "Dlaczego jednostka nie startuje?"
 ai-desktop ask --question "Czym jest inode?" --no-context
 ```
 
-Bez `--question` to jedna rozmowa: po każdej odpowiedzi wraca `>`. Pusta linia lub dwa Ctrl-D kończą rozmowę, a program pyta, czy ją zapisać. Ctrl-C podczas oczekiwania przerywa tylko bieżącą turę. Pytanie ma do 2 KiB.
+Bez `--question` to jedna rozmowa: po każdej odpowiedzi wraca `>`. Pusta linia lub dwa Ctrl-D kończą rozmowę, a program pyta, czy ją zapisać. Ctrl-C podczas oczekiwania przerywa tylko bieżącą turę. Wiadomość ma do 128 KiB razem z wklejkami (duża wklejka pojawia się jako znacznik).
 
 Jak działają zgody:
 
@@ -168,7 +168,7 @@ Po zastosowanej zmianie model sam podejmuje następny krok albo kończy odpowied
 
 Sprawdzenie na kopii pochodzi z listy: `python-unittest`, `python-syntax`, `json`, `toml`, `bash-syntax`, `fish-syntax`, `text`. Check `text` potwierdza tylko poprawny tekst UTF-8: **składnia i działanie nie są sprawdzane**. Żaden check nie dowodzi poprawności projektu.
 
-Rozmowa pamięta ostatnie 8 wymian i krótką pamięć zadania. Jeśli cofniesz dostęp do pliku, zależne od niego odpowiedzi znikają z pamięci przed kolejnym pytaniem. Limit czasu lub limit usługi kończy rozmowę, a niezapisana historia przepada.
+Rozmowa pamięta ostatnie 32 wymiany (razem do 128 KiB, najstarsze wypadają pierwsze) i krótką pamięć zadania. Długa historia zużywa limit usługi, bo idzie z każdym pytaniem. Jeśli cofniesz dostęp do pliku, zależne od niego odpowiedzi znikają z pamięci przed kolejnym pytaniem. Limit czasu lub limit usługi kończy rozmowę, a niezapisana historia przepada.
 
 Wyszukiwanie internetowe włączasz przez `web = true`. Jest to osobne żądanie: tylko Twoje pytanie, bez plików i danych lokalnych. Pogoda (`weather = true`) ujawnia nazwę miejscowości i Twój adres IP serwisowi Open-Meteo, a wynik idzie do modelu.
 

@@ -202,9 +202,9 @@ class ConversationPtyTests(unittest.TestCase):
         driver.wait_for("SENT 1 Q:Wynik: Startup finished in 13.339s (firmware) + 10.671s (userspace) = 36.610s|"
                         "graphical.target reached after 10.622s H:0", mark)
         mark = driver.wait_for("> ", mark)
-        big = ("linia z logu o dosyć długiej treści\n" * 80).encode()                 # > 2048 B
-        driver.send(start + big + end + b"\r")
-        mark = driver.wait_for("limit to 2048 B", mark)
+        big = ("linia z logu o dosyć długiej treści\n" * 3800).encode()               # > 128 KiB
+        driver.send(start + big + end)
+        mark = driver.wait_for("Wklejka jest za duża", mark)                       # the conversation goes on
         mark = driver.wait_for("> ", mark)
         self.assertEqual(driver.text().count("SENT "), 1)                          # nothing was sent for the oversized one
         driver.send(b"\x04")

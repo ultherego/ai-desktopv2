@@ -395,9 +395,9 @@ class ConversationControlsTests(unittest.TestCase):
                 {"question": "poprzednie pytanie", "answer": "poprzednia odpowiedź"}])
         self.assertEqual(execution.current_history(), [])
         for bad in (None, (), {}, [{"question": "q"}], [{"question": "q", "answer": "a", "tools": "Bash"}],
-                    [{"question": "q", "answer": "a"}] * 9,
-                    [{"question": "x" * 2049, "answer": "a"}],
-                    [{"question": "q", "answer": "x" * 3137}],
+                    [{"question": "q", "answer": "a"}] * 33,
+                    [{"question": "x" * (128 * 1024 + 1), "answer": "a"}],
+                    [{"question": "q", "answer": "x" * 8257}],
                     [{"question": "q", "answer": "\x1b[31m"}],
                     [{"question": "q", "answer": "\ud800"}]):
             with self.subTest(bad=repr(bad)[:60]), self.assertRaisesRegex(ValueError, "conversation"):

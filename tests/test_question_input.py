@@ -65,7 +65,7 @@ class QuestionLineTests(unittest.TestCase):
 
     def test_invalid_limit_refuses_before_terminal_access(self):
         with patch.object(editor.sys.stdin, "isatty") as tty:
-            for maximum in (0, -1, 2049, True, "2048", None):
+            for maximum in (0, -1, (128 * 1024 + 1), True, "2048", None):
                 with self.subTest(maximum=maximum), self.assertRaises(editor.QuestionInputError):
                     editor.read_question(max_bytes=maximum)
             tty.assert_not_called()

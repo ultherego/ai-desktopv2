@@ -58,7 +58,7 @@ class AskContractTests(unittest.TestCase):
         for context in cases:
             with self.subTest(context=context), self.assertRaises((ValueError, contract.AnalysisDenied)):
                 contract.AnalysisConsent(None, question="Pogoda?", context=context)
-        for question in ("", " ", "x" * 2049, "\x1b[2J", "\ud800"):
+        for question in ("", " ", "x" * (128 * 1024 + 1), "\x1b[2J", "\ud800"):
             with self.subTest(question=repr(question)), self.assertRaises(ValueError):
                 contract.AnalysisConsent(None, question=question, context=[])
 

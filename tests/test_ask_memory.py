@@ -130,9 +130,8 @@ class UndervoltScenarioTests(Harness):
         self.assertEqual(result.sent.call_count, 20)
         last = self.payloads[-1]
         asked = [turn["question"] for turn in last["conversation"]]
-        self.assertEqual(len(asked), 8)
-        self.assertNotIn(self.TURNS[0][0], asked)                      # the opening turns left the verbatim window ...
-        self.assertTrue(find(last, "undervolting") or find(last, "LACT"))   # ... but the goal is still in the memory
+        self.assertEqual(len(asked), 19)
+        self.assertTrue(find(last, "undervolting") or find(last, "LACT"))   # the goal is also in the task memory
         self.assertEqual(len(find(last, "Baza: 250 W, 92 FPS")), 1)
         corrected = {item["text"]: item for item in entries(last).values()}
         self.assertEqual(corrected["Próba A: 230 W, 91 FPS, stabilna"]["status"], "active")

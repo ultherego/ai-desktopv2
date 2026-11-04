@@ -205,7 +205,7 @@ class ConversationTests(unittest.TestCase):
             self.assertRefused(lambda: self.store.create("material", path, "a" * 64, CONFIG))
         value = self.conversation()
         before = self.path(value).read_bytes()
-        for question, answer in (("q\x1b[31m", "a"), ("q", "a\u202e"), ("x" * 2049, "a")):
+        for question, answer in (("q\x1b[31m", "a"), ("q", "a\u202e"), ("x" * (128 * 1024 + 1), "a")):
             self.assertRefused(lambda: value.append(question, answer))
             self.assertEqual(self.path(value).read_bytes(), before)
         for ident in ("../escape", "x" * 24, "a" * 25):

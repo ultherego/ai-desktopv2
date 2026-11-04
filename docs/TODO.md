@@ -3,6 +3,7 @@
 Stan: pakiet `0.1.0-70`. Ograniczenia obecnej wersji opisuje [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
 
 ## Najbliżej
+- [ ] Dłuższy limit oczekiwania przy najwyższym rozumowaniu: długie odpowiedzi nadal kończą się przekroczeniem czasu, a komunikat nie mówi, że chodzi o czas.
 - [x] Lista `task rollback` i `task status` od najnowszych wpisów, z datą. Dziś kolejność wynika ze skrótu planu, więc łatwo wybrać nie to zadanie.
 - [x] Jasny błąd, gdy `--workspace` wskazuje plik zamiast katalogu.
 - [x] Polskie znaki w komunikatach i pomocy widocznych dla użytkownika (`task`, `cli`, `analyze`, zgody).

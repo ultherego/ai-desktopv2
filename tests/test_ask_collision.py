@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from ai_desktop import ask_cli, ask_edit, ask_followup, assistant_flow, permissions, task_cli, task_workspace
-from ai_desktop.analysis_contract import AnalysisDenied, MAX_QUESTION_BYTES
+from ai_desktop.analysis_contract import AnalysisDenied, MAX_MESSAGE_BYTES
 from ai_desktop.question_input import FOLLOWUP_PROMPT, QuestionInputError
 from ai_desktop.terminal_consent import PROMPTS
 from tests.profile_fixture import DEFAULT_PROFILE
@@ -32,7 +32,7 @@ class FollowupTextTests(unittest.TestCase):
         self.assertIn('hello2.py', result)
         self.assertIn('Edytować, stworzyć nowy, anulować?', out.getvalue())
         self.assertNotIn(OLD, result)
-        self.assertLessEqual(len(result.encode()), MAX_QUESTION_BYTES)
+        self.assertLessEqual(len(result.encode()), MAX_MESSAGE_BYTES)
 
     def test_short_dialogue_has_exact_lines_and_blank_separators(self):
         out = io.StringIO()
@@ -86,12 +86,12 @@ class FollowupTextTests(unittest.TestCase):
 
     def test_input_and_context_budgets_are_fail_closed(self):
         with redirect_stdout(io.StringIO()):
-            for reply in ('x' * MAX_QUESTION_BYTES, '\x1b[31m', None):
+            for reply in ('x' * MAX_MESSAGE_BYTES, '\x1b[31m', None):
                 with self.subTest(reply=str(reply)[:10]), self.assertRaises((QuestionInputError, ValueError)):
                     ask_followup.clarify(QUESTION, 'hello.py', workspace='/home/tester', reader=lambda _: reply)
             reader = Mock()
             with self.assertRaises(QuestionInputError):
-                ask_followup.clarify('x' * MAX_QUESTION_BYTES, 'hello.py', workspace='/home/tester', reader=reader)
+                ask_followup.clarify('x' * MAX_MESSAGE_BYTES, 'hello.py', workspace='/home/tester', reader=reader)
             reader.assert_not_called()
 
     def test_noncollision_error_is_not_retried_or_turned_into_a_prompt(self):
@@ -335,9 +335,9 @@ class CollisionFilesystemTests(unittest.TestCase):
         self.assertFalse((self.home / ('p%d.py' % (ask_cli.MAX_AUTO_STEPS + 1))).exists())
 
     def test_a_long_task_still_fits_the_question_limit_after_the_prefix(self):
-        text = 'ż' * 1024
+        text = 'ż' * (ask_cli.MAX_MESSAGE_BYTES // 2)
         following = ask_cli._continuation(text)
-        ask_cli.validate_question(following)
+        ask_cli.validate_question(following, ask_cli.MAX_MESSAGE_BYTES)
         self.assertEqual(ask_cli._continuation(following), following)
 
     def delete_flow(self, answers, plan=None):

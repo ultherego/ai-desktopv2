@@ -155,13 +155,13 @@ class ConversationLoopTests(unittest.TestCase):
         r = self.run_ui([], ["Jeden", "tak", "Dwa", "nie", ""], accesses=[EMPTY, widened])
         self.assertEqual(r.sent.call_count, 1)
 
-    def test_history_window_stays_at_eight_turns_and_the_conversation_does_not_end(self):
+    def test_history_window_stays_at_thirty_two_turns_and_the_conversation_does_not_end(self):
         replies = []
-        for i in range(11):
+        for i in range(35):
             replies += ["Pytanie %d" % i] + ([] if i else ["tak"])
         r = self.run_ui([], replies + [""])
-        self.assertEqual(r.sent.call_count, 11)
-        self.assertEqual([t["question"] for t in r.histories[10]], ["Pytanie %d" % i for i in range(2, 10)])
+        self.assertEqual(r.sent.call_count, 35)
+        self.assertEqual([t["question"] for t in r.histories[34]], ["Pytanie %d" % i for i in range(2, 34)])
 
     def test_exit_by_empty_line_or_double_eof_or_interrupt_is_clean(self):
         for ending in (["", ], [EOFError, EOFError], [KeyboardInterrupt],

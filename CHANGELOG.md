@@ -2,6 +2,7 @@
 
 ## Niewydane
 
+- `ai-desktop ask`: wiadomość do 128 KiB razem z wklejkami (było 2 KiB), pamięć 32 ostatnich wymian (było 8), odpowiedź w historii do 8 KiB (było 3 KiB). Za duża wklejka nie kończy już rozmowy. `material` i `project` zachowują swoje limity.
 - `ai-desktop ask`: polecenia `/` w trakcie rozmowy, z listą pod wierszem (`/model`, `/sila`, `/skills`, `/agent`, `/ustawienia`, `/uprawnienia`, `/pomoc`, `/koniec`). Zmiana nie kasuje rozmowy.
 - Zapisana rozmowa jest związana z usługą, agentem i poziomem dostępu. Zmiana modelu, rozumowania albo treści Skilla nie odcina jej już od wznowienia.
 - Nowe Skille dla CachyOS, każdy o jednej rzeczy: pakiety, jądra, sched-ext, rozruch i migawki, sprzęt, gry oraz rozbudowana diagnostyka. Oparte na wiki CachyOS. Skill `desktop-documentation` kieruje do dokumentacji pulpitu zamiast zgadywać.

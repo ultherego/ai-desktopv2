@@ -81,7 +81,7 @@ class TerminalTests(unittest.TestCase):
         data, sha = contract.parse_request(auth.payload.encode())
         self.assertEqual(json.loads(data)["question"], "Dlaczego?")
         self.assertEqual(sha, gate.sha256)
-        for q in ("x\x1b", "x\u202e", "x" * 2049, None):
+        for q in ("x\x1b", "x\u202e", "x" * (128 * 1024 + 1), None):
             with self.assertRaises((ValueError, TypeError)):
                 contract.AnalysisConsent(report, question=q)
         gate = contract.AnalysisConsent(report, question="one")

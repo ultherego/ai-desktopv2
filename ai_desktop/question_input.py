@@ -13,7 +13,7 @@ import termios
 import time
 import unicodedata
 
-from .analysis_contract import MAX_QUESTION_BYTES, validate_question
+from .analysis_contract import MAX_MESSAGE_BYTES, MAX_QUESTION_BYTES, validate_question
 from .terminal_style import greeting, paint
 
 
@@ -57,6 +57,7 @@ class PromptSession:
         self.history, self._armed_until, self._pastes = [], 0.0, []
         self._clock = time.monotonic
         self.commands, self.pick, self.shown = (), 0, 0     # the `/` list: (name, description) pairs set by the caller
+        self.paste_bytes = PASTES_TOTAL_BYTES               # `ask` allows more: a pasted text is what it is about
 
     ARM_SECONDS = 3.0
 
@@ -77,7 +78,7 @@ class PromptSession:
     def _add_paste(self, text):
         used = sum(len(t.encode("utf-8")) for _, t in self._pastes)
         size = len(text.encode("utf-8"))
-        if len(self._pastes) >= MAX_PASTES or size > PASTE_TEXT_BYTES or used + size > PASTES_TOTAL_BYTES:
+        if len(self._pastes) >= MAX_PASTES or size > self.paste_bytes or used + size > self.paste_bytes:
             raise QuestionInputError("question paste")
         number = max((n for n, _ in self._pastes), default=0) + 1
         self._pastes.append((number, text))
@@ -104,7 +105,7 @@ def _safe_text(raw, newlines=False):
         if newlines:
             text = text.replace("\r\n", "\n").replace("\r", "\n")
         else:
-            validate_question(text)
+            validate_question(text, MAX_MESSAGE_BYTES)
         if any(unicodedata.category(char) in ("Cc", "Cf", "Cs", "Zl", "Zp") and not (newlines and char in "\n\t")
                for char in text):
             raise ValueError()
@@ -328,12 +329,13 @@ def _suggest(line, session, output):
         columns = os.get_terminal_size(output.fileno()).columns
     except OSError:
         columns = 80
+    width = columns or 80                                  # a terminal that reports no size still shows the list
     columns = max(4, columns)
     session.pick = min(session.pick, max(0, len(found) - 1))
     rows = []
     for index, (name, description) in enumerate(found):
         text = ("\u203a " if index == session.pick else "  ") + "%-14s %s" % (name, description)
-        rows.append(text[:columns - 1])
+        rows.append(text[:width - 1])
     _, cursor = line.view(columns)
     output.write("\r\n\x1b[J" + "\r\n".join(rows) + "\x1b[%dA\r\x1b[%dC" % (max(1, len(rows)), cursor))
     output.flush()
@@ -404,7 +406,7 @@ def read_question(*, max_bytes=MAX_QUESTION_BYTES, followup=False, prompt=None, 
     With a `PromptSession`: Up/Down walk the history of this command, a first Ctrl+C clears the line (or, on an empty
     line, asks for a second one) and only the second ends the command. With `attach=True` a multi-line or large paste
     becomes a marked attachment instead of being refused; the caller collects it with `session.take_pastes`."""
-    if type(followup) is not bool or type(max_bytes) is not int or not 1 <= max_bytes <= MAX_QUESTION_BYTES:
+    if type(followup) is not bool or type(max_bytes) is not int or not 1 <= max_bytes <= MAX_MESSAGE_BYTES:
         raise QuestionInputError("question limit")
     if ((session is not None and type(session) is not PromptSession) or type(attach) is not bool
             or (attach and session is None) or prompt not in (None, FOLLOWUP_PROMPT, PROMPT)):
@@ -488,7 +490,7 @@ def read_question(*, max_bytes=MAX_QUESTION_BYTES, followup=False, prompt=None, 
                     line.insert("\n")
                     _draw(line, output)
                     continue
-                text = validate_question(line.text)
+                text = validate_question(line.text, MAX_MESSAGE_BYTES)
                 if session is not None:
                     session.armed = False
                     session.remember(text)
@@ -515,7 +517,7 @@ def read_question(*, max_bytes=MAX_QUESTION_BYTES, followup=False, prompt=None, 
                 elif key == b"ignore":
                     pass
                 elif key == _PASTE_START and attach:
-                    block = _paste(fd, PASTE_TEXT_BYTES + 1024, newlines=True)
+                    block = _paste(fd, session.paste_bytes + 1024, newlines=True)
                     if "\n" in block or len(block.encode("utf-8")) >= ATTACH_MIN_BYTES:
                         line.insert(paste_token(session._add_paste(block), block))
                     else:

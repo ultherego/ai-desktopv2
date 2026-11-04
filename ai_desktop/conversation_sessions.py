@@ -22,9 +22,9 @@ import unicodedata
 
 from . import execution
 
-MAX_FILE = 256 * 1024
+MAX_FILE = 1024 * 1024
 MAX_SESSIONS = 128
-MAX_HISTORY = 8                 # `ask` keeps the last eight turns; records written with up to four still open
+MAX_HISTORY = 32                # `ask` keeps the last eight turns; records written with up to four still open
 LEGACY_HISTORY = 4              # material/project sessions keep their previous window
 MAX_PATHS = 32
 _ID = re.compile(r"[a-f0-9]{24}\Z")
@@ -108,7 +108,7 @@ def _record(value):
     for item in history:
         if type(item) is not dict or set(item) != {"question", "answer"}:
             raise SessionError("session-history")
-        _text(item["question"], 2048)
+        _text(item["question"], execution.HISTORY_QUESTION_BYTES)
         _text(item["answer"], 8192 + 64)
     if "title" in value:
         _text(value["title"], MAX_TITLE * 4)
@@ -518,7 +518,7 @@ class Conversation:
     def append(self, question, answer):
         if self._lease is None:
             raise SessionError("session-closed")
-        _text(question, 2048)
+        _text(question, execution.HISTORY_QUESTION_BYTES)
         _text(answer, 1024 * 1024)
         value = self.record
         limit = MAX_HISTORY if value["kind"] == "ask" else LEGACY_HISTORY
