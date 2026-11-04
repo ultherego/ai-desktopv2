@@ -2,6 +2,7 @@
 
 ## Niewydane
 
+- `ai-desktop task`/`ask`/`project`: zapis zmiany w istniejącym pliku nie nadpisuje już zapisu zrobionego w tym samym czasie przez edytor. Plik jest wymieniany atomowo (`renameat2` z `RENAME_EXCHANGE`), a wymieniona wersja jest porównywana z tym, co widział plan. Przy różnicy zamiana jest cofana i zapis odrzucany, a wersja edytora zostaje.
 - **Bezpieczeństwo:** `material` i `project` sprawdzają `permissions.toml` przed każdym przekazaniem danych do Claude. Zmiana pliku, wyłączenie `network.claude` albo cofnięcie dostępu do czytanych plików zatrzymuje kolejne żądania, także w analizie całego pliku. Wcześniej wystarczyło, że zgoda i pliki zostały wczytane na początku sesji.
 - Polskie znaki w komunikatach i pomocy: pytania o zapis i cofnięcie, `task`, `analyze`, `status` i opisy poleceń.
 - `ai-desktop task`: gdy `--workspace` wskazuje plik, program mówi to wprost zamiast ogólnej odmowy.

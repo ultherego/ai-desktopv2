@@ -11,7 +11,7 @@ Stan: pakiet `0.1.0-70`. Ograniczenia obecnej wersji opisuje [KNOWN_LIMITATIONS.
 
 ## Bezpieczeństwo
 - [x] `material` i `project`: ponowne sprawdzenie polityki przed każdym przekazaniem danych (test na prawdziwym systemie przed scaleniem).
-- [ ] Zapis istniejącego pliku: `os.replace()` po sprawdzeniu może nadpisać równoczesny zapis edytora, a wersji edytora nie ma w dzienniku cofania. Zastąpić ochroną jak przy nowych plikach.
+- [x] Zapis istniejącego pliku nie nadpisuje równoczesnego zapisu edytora (wymiana `RENAME_EXCHANGE` z porównaniem; test na prawdziwym systemie przed scaleniem).
 - [ ] `commands.change`: gdy zgoda wygaśnie lub polityka się zmieni w trakcie polecenia, wynik wykonanej zmiany, test i propozycja wycofania muszą zostać zapisane lokalnie (zatrzymać tylko dalszą wysyłkę).
 - [ ] README: blok instalacji nie zatrzymuje się po błędnej sumie klienta, a `PKGBUILD` sprawdza tylko nagłówek ELF, nie sumę. Dodać sprawdzenie sumy w `PKGBUILD` i `set -e`/`and` w instrukcji.
 - [ ] `ConversationConsent`: wiązanie zgody pomija `deny`, część limitów i `share_processes`.
