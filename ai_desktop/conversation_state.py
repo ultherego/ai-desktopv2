@@ -1,0 +1,211 @@
+"""The local state of one `ask` conversation: finished turns, task memory, and which sources they depend on.
+
+Nothing here is authority. History and memory are data that go into a request only after the ordinary policy, access
+snapshot and a fresh consent for THAT turn. A turn that read files remembers which files (its *taint*); every later turn
+that could see its answer or its model-written memory inherits that taint. When a tainted source is no longer allowed by
+the current policy, the affected answers and model-written memory entries are removed before the next request, so a
+revoked file's content cannot come back through a quoted answer, a note or a resumed session.
+"""
+from contextlib import contextmanager
+from contextvars import ContextVar
+
+from . import conversation_memory as memory
+from .execution import HISTORY_ANSWER_BYTES, HISTORY_QUESTION_BYTES, MAX_HISTORY
+
+MAX_TURNS = 64                 # finished turns kept for revalidation; only the last MAX_HISTORY are sent verbatim
+MAX_SOURCES = 8                # files remembered per turn (more are summarised as "too many": the turn is then tainted by all)
+REDACTED = "[odpowiedź usunięta: źródło, z którego korzystała, nie jest już dozwolone]"
+_log = ContextVar("ai_desktop_turn_sources", default=None)
+
+
+class Recorder(list):
+    """Files read during one turn (the list itself) plus the actions the controller really performed in it."""
+
+    def __init__(self):
+        super().__init__()
+        self.actions = []
+
+
+@contextmanager
+def recording():
+    """Collect the files read and the actions performed during one turn (set by the loop, filled by the flow)."""
+    sources = Recorder()
+    token = _log.set(sources)
+    try:
+        yield sources
+    finally:
+        _log.reset(token)
+
+
+def note_action(text):
+    """The controller records what it actually did (a command run or refused, a change applied or not). These facts are
+    written by the program, not by the model, so they stay true when the model's own notes are wrong."""
+    recorder = _log.get()
+    if recorder is not None and type(text) is str and text.strip() and len(recorder.actions) < 8:
+        recorder.actions.append(text)
+
+
+def note_sources(paths):
+    sources = _log.get()
+    if sources is not None:
+        for path in paths:
+            if path not in sources:
+                sources.append(path)
+
+
+def _bounded(text, limit):
+    return text if len(text.encode("utf-8")) <= limit else memory.cut(text, limit)
+
+
+class Turn:
+    __slots__ = ("n", "question", "answer", "taint", "redacted")
+
+    def __init__(self, n, question, answer, taint=(), redacted=False):
+        self.n, self.question, self.answer = n, question, answer
+        self.taint, self.redacted = tuple(sorted(set(taint))), redacted
+
+    def pair(self):
+        answer = REDACTED if self.redacted else self.answer
+        return {"question": _bounded(self.question, HISTORY_QUESTION_BYTES),
+                "answer": _bounded(answer, HISTORY_ANSWER_BYTES - 64)}
+
+
+class Conversation:
+    def __init__(self):
+        self.turns = []
+        self.memory = memory.empty()
+        self.origins = {}          # entry id -> "user" | "model"; only model-written entries can be revoked
+        self.taints = {}           # entry id -> tuple(paths) the entry may depend on
+        self.number = 0
+
+    # -- what a request carries ---------------------------------------------------------------------------------
+    def history(self):
+        return [turn.pair() for turn in self.turns[-MAX_HISTORY:]]
+
+    def task_memory(self):
+        return memory.validate(self.memory)
+
+    def visible_taint(self):
+        """Sources that anything the next request will contain may depend on."""
+        found = set()
+        for turn in self.turns[-MAX_HISTORY:]:
+            found.update(turn.taint)
+        for entry in self.memory["entries"]:
+            found.update(self.taints.get(entry["id"], ()))
+        return tuple(sorted(found))
+
+    # -- revocation ------------------------------------------------------------------------------------------------
+    def revalidate(self, allows):
+        """Drop what depends on a source `allows(path)` no longer permits. Returns the number of removed items."""
+        removed = 0
+        for turn in self.turns:
+            if turn.taint and not turn.redacted and not all(allows(path) for path in turn.taint):
+                turn.redacted, removed = True, removed + 1
+        keep = []
+        for entry in self.memory["entries"]:
+            paths = self.taints.get(entry["id"], ())
+            if self.origins.get(entry["id"]) == "model" and paths and not all(allows(path) for path in paths):
+                removed += 1
+                self.origins.pop(entry["id"], None)
+                self.taints.pop(entry["id"], None)
+                continue
+            keep.append(entry)
+        if len(keep) != len(self.memory["entries"]):
+            alive = {entry["id"] for entry in keep}
+            for entry in keep:
+                if entry.get("by") and entry["by"] not in alive:
+                    entry["status"] = "active"      # its replacement was revoked: the corrected statement stands again
+                    entry.pop("by", None)
+            self.memory = {"entries": keep, "dropped": self.memory["dropped"]}
+        return removed
+
+    # -- a finished turn -------------------------------------------------------------------------------------------
+    def finish(self, question, answer, ops, sources, actions=()):
+        """Record a completed, approved turn. `ops` is the validated memory update or None (then only the user note)."""
+        self.number += 1
+        n = self.number
+        taint = set(sources) | set(self.visible_taint())
+        first = not self.turns and not any(e["kind"] == "goal" for e in self.memory["entries"])
+        # The user's own words are kept deterministically for the goal (first message) and whenever the model sent no
+        # valid update; otherwise the model's update carries the turn.
+        if first and ops is not None:
+            # The user's own words are the goal; a second, model-worded goal entry for the same turn would duplicate it.
+            ops = {"add": [item for item in ops["add"] if item["kind"] != "goal"], "mark": ops["mark"]}
+        facts_text = {memory.cut(item) for item in actions}
+        note = question if first or ops is None else None
+        updated, notes = memory.apply(self.memory, n, ops, user_note=note, goal=first, facts=tuple(actions))
+        existing = {entry["id"] for entry in self.memory["entries"]}
+        for entry in updated["entries"]:
+            if entry["id"] not in existing:
+                user = note is not None and entry["id"] == "m%d.1" % n
+                fact = entry["status"] == "done" and entry["kind"] == "observation" and entry["text"] in facts_text
+                self.origins[entry["id"]] = "user" if user or fact else "model"      # controller facts are never revoked
+                if not (user or fact):
+                    self.taints[entry["id"]] = tuple(sorted(taint))
+        alive = {entry["id"] for entry in updated["entries"]}
+        for table in (self.origins, self.taints):
+            for ident in [ident for ident in table if ident not in alive]:
+                del table[ident]
+        self.memory = updated
+        self.turns.append(Turn(n, question, answer, taint))
+        del self.turns[:-MAX_TURNS]
+        return notes
+
+
+def title_of(text):
+    """A short single-line title from the user's own first message (no control characters, at most 80 characters)."""
+    line = " ".join("".join(char for char in text if char.isprintable() or char.isspace()).split())
+    return line if len(line) <= 80 else line[:79].rstrip() + "…"
+
+
+def export(conversation):
+    """The record fragment persisted with `--session`: verbatim last turns, memory, and the revocation metadata."""
+    turns = conversation.turns[-MAX_HISTORY:]
+    paths = []
+
+    def index(path):
+        if path not in paths:
+            paths.append(path)
+        return paths.index(path)
+
+    # A turn that depended on more sources than the table keeps cannot be revoked precisely later, so it is stored
+    # redacted (conservative) rather than with a silently shortened dependency list.
+    over = [len(t.taint) > MAX_SOURCES * 4 for t in turns]
+    history = [{"question": _bounded(t.question, HISTORY_QUESTION_BYTES),
+                "answer": _bounded(REDACTED if t.redacted or cut else t.answer, HISTORY_ANSWER_BYTES - 64)}
+               for t, cut in zip(turns, over)]
+    meta_turns = [{"n": t.n, "taint": [] if cut else [index(p) for p in t.taint], "redacted": t.redacted or cut}
+                  for t, cut in zip(turns, over)]
+    user = [e["id"] for e in conversation.memory["entries"] if conversation.origins.get(e["id"]) == "user"]
+    taints = {ident: [index(p) for p in paths_]
+              for ident, paths_ in conversation.taints.items()
+              if any(e["id"] == ident for e in conversation.memory["entries"]) and paths_}
+    # The table is bounded: when more sources are involved than fit, the least recent ones are folded away by
+    # redacting what depended on them (conservative) instead of keeping an unbounded file list.
+    exported = {"history": history, "memory": conversation.task_memory(), "paths": paths, "turns": meta_turns,
+                "meta": {"user": user, "taints": taints}}
+    if conversation.turns:
+        # The title is the user's own first message, shortened; it names the thread in the list and nothing else.
+        exported["title"] = title_of(conversation.turns[0].question)
+    return exported
+
+
+def load(state):
+    """Rebuild a conversation from a persisted ask state (or from an older record that has only `history`)."""
+    conversation = Conversation()
+    history = state.get("history", [])
+    if "memory" in state:
+        paths = state["paths"]
+        conversation.memory = memory.validate(state["memory"])
+        conversation.origins = {e["id"]: "user" if e["id"] in state["meta"]["user"] else "model"
+                                for e in conversation.memory["entries"]}
+        conversation.taints = {ident: tuple(paths[i] for i in items) for ident, items in state["meta"]["taints"].items()}
+        for pair, meta in zip(history, state["turns"]):
+            conversation.turns.append(Turn(meta["n"], pair["question"], pair["answer"],
+                                           tuple(paths[i] for i in meta["taint"]), meta["redacted"]))
+        conversation.number = max((t.n for t in conversation.turns), default=0)
+    else:
+        for pair in history:                      # a pre-memory record: verbatim turns only, no known sources
+            conversation.number += 1
+            conversation.turns.append(Turn(conversation.number, pair["question"], pair["answer"]))
+    return conversation

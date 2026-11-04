@@ -1,0 +1,25 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+*.before-*
+*.broken
+*.new
+*.tmp
+*.log
+.env
+.env.*
+!.env.example
+.credentials.json
+*.pem
+*.key
+*.sqlite*
+*.db
+packaging/arch/claude-code
+packaging/arch/codex
+packaging/arch/pkg/
+packaging/arch/src/
+packaging/arch/*.pkg.tar.*
+
+# lokalny runner odbiorów (edytowany przez asystenta)
+/local-run.fish

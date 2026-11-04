@@ -1,0 +1,165 @@
+name: Python tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit:
+    name: Unit tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Central verification gate (includes offline activation contracts; no service start)
+        env:
+          PYTHONDONTWRITEBYTECODE: "1"
+        run: |
+          python -m pip install 'rich>=13.7,<15' 'cryptography>=44'
+          python -B scripts/verify.py --mode ci --fail-fast --json "$RUNNER_TEMP/ai-desktop-check-${{ matrix.python-version }}.json"
+          test -s "$RUNNER_TEMP/ai-desktop-check-${{ matrix.python-version }}.json"
+      - name: Install-home permission fixtures under different umasks
+        run: |
+          for aid_test_umask in 0022 0077 0002; do
+            printf 'UMASK=%s\n' "$aid_test_umask"
+            (
+              umask "$aid_test_umask"
+              python -B -m unittest discover -s tests -p test_e7_home.py -v
+            )
+          done
+      - name: Full unit suite with private Codex read-only ambient profile
+        run: python -B tests/profile_environment_check.py --allow-synthetic-profile-test
+      - name: Real offline CLI integration tests (synthetic reports)
+        run: python -B -m unittest discover -s tests -p test_offline_pipeline.py -v
+      - name: Stdin diagnostic integration tests (synthetic JSON)
+        run: python -B -m unittest discover -s tests -p test_stdin_pipeline.py -v
+      - name: Private snapshot save regression tests (temporary files only)
+        run: python -B -m unittest discover -s tests -p test_private_snapshot_save.py -v
+      - name: CLI smoke tests
+        run: |
+          python -B -m ai_desktop --version
+          python -B -m ai_desktop diagnose --help
+          python -B -m ai_desktop diagnose snapshot --help
+          python -B -m ai_desktop diagnose --help
+          python -B -m ai_desktop controller --help
+          python -B -m ai_desktop status --help
+          python -B -m ai_desktop analyze --help
+          python -B -m ai_desktop ask --help
+          python -B -m ai_desktop settings --help
+          python -B -m ai_desktop claude --help
+          python -B -m ai_desktop agents --help
+          python -B -m ai_desktop sessions --help
+          python -B -m ai_desktop codex --help
+          python -B -m ai_desktop login --help
+          python -B -m ai_desktop stop --help
+          python -B -m ai_desktop validate-report --help
+          python -B -m ai_desktop compare --help
+          python -B -m ai_desktop compare --summary --help
+          python -B -m ai_desktop compare --exit-on-change --help
+      - name: Archive tracked source for reproducible offline review
+        if: matrix.python-version == '3.13'
+        run: |
+          # Tracked files only: no .git credentials, environment, HOME or native logs.
+          git archive --format=tar --output="$RUNNER_TEMP/ai-desktop-reviewed.tar" HEAD
+          git rev-parse HEAD 'HEAD^{tree}' > "$RUNNER_TEMP/ai-desktop-reviewed.sha"
+      - name: Retain reviewed source briefly
+        if: matrix.python-version == '3.13'
+        uses: actions/upload-artifact@v4
+        with:
+          name: reviewed-source
+          path: |
+            ${{ runner.temp }}/ai-desktop-reviewed.tar
+            ${{ runner.temp }}/ai-desktop-reviewed.sha
+          retention-days: 1
+          if-no-files-found: error
+
+  e2-boundary:
+    name: E2 kernel boundary (${{ matrix.bubblewrap }}, synthetic)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    strategy:
+      fail-fast: false
+      matrix:
+        bubblewrap: [distro, "0.13.1"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install disposable runner test dependencies
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y bubblewrap openssl python3-rich python3-cryptography fish
+          fish --no-config --no-execute scripts/accept_candidate.fish
+          fish --no-config --no-execute scripts/accept_ask_edit_candidate.fish
+          fish --no-config --no-execute scripts/accept_home_candidate.fish
+          fish --no-config --no-execute scripts/update_candidate.fish
+          fish --no-config --no-execute scripts/accept_web_candidate.fish
+          python -B -m unittest discover -s tests -p 'test_accept_*script.py' -v
+      - name: Checkout pinned upstream Bubblewrap 0.13.1
+        if: matrix.bubblewrap == '0.13.1'
+        uses: actions/checkout@v4
+        with:
+          repository: containers/bubblewrap
+          ref: 362936aea0d5c6e70f7af75d2d44b5a914cb4ba2
+          path: .ci-bubblewrap
+          persist-credentials: false
+      - name: Build current Bubblewrap only on the disposable runner
+        if: matrix.bubblewrap == '0.13.1'
+        run: |
+          sudo apt-get install -y meson ninja-build libcap-dev pkg-config
+          # Exercise distro builds that require modern kernel interfaces rather
+          # than silently falling back when service seccomp returns ENOSYS.
+          meson setup .ci-bubblewrap/build .ci-bubblewrap -Dtests=false -Dman=disabled -Dselinux=disabled -Dassume_kernel=6.1.0
+          meson compile -C .ci-bubblewrap/build
+          sudo install -o root -g root -m755 .ci-bubblewrap/build/bwrap /usr/bin/bwrap
+          test "$(/usr/bin/bwrap --version)" = 'bubblewrap 0.13.1'
+      - name: Record tested sandbox runtime
+        run: /usr/bin/bwrap --version
+      - name: Permit only the runner Bubblewrap launcher to create namespaces
+        # Ubuntu's userns AppArmor restriction blocks even loopback setup.
+        # This profile is loaded only in this disposable job, never on CachyOS.
+        run: |
+          cat > "$RUNNER_TEMP/ai-desktop-bwrap.apparmor" <<'PROFILE'
+          abi <abi/4.0>,
+          include <tunables/global>
+          profile bwrap /usr/bin/bwrap flags=(unconfined) {
+            userns,
+          }
+          PROFILE
+          sudo apparmor_parser -r "$RUNNER_TEMP/ai-desktop-bwrap.apparmor"
+      - name: Pinned Codex strict-config startup (offline namespace, no OAuth or inference)
+        if: matrix.bubblewrap == 'distro'
+        run: python -B tests/ci_codex_config.py --allow-disposable-codex-config-test
+      - name: Real nested namespaces, external proxy and TLS denials
+        run: |
+          bwrap --unshare-user --unshare-net --ro-bind /usr /usr --symlink usr/lib /lib --symlink usr/lib64 /lib64 /usr/bin/true
+          python -B -m unittest discover -s tests -p host_e2_subscription_checks.py -v
+      - name: Real systemd activation and confinement on the disposable runner
+        run: python -B tests/ci_e2_systemd_activation.py --allow-disposable-systemd-test
+      - name: General ask, analysis, provider failures and cleanup (synthetic client, no OAuth)
+        run: python -B tests/ci_analysis_systemd.py --allow-disposable-analysis-test
+      - name: Selected-file test executor (actual namespaces and denials, no OAuth)
+        run: python -B -m unittest discover -s tests -p host_task_checks.py -v

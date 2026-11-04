@@ -1,0 +1,63 @@
+# Static policies live in the root-owned application provisioning directory.
+# They MUST NOT be installed in automatic pacman sysusers.d/tmpfiles.d targets.
+# This hook runs ONLY after explicit, authenticated package installation.
+_ai_desktop_account_valid() {
+    _aid_line=$(getent passwd ai-desktop) || return 1
+    _aid_uid=$(id -u ai-desktop) || return 1
+    _aid_gid=$(id -g ai-desktop) || return 1
+    _aid_group=$(getent group ai-desktop) || return 1
+
+    # No interactive login, no supplementary groups, exact private group.
+    [ "$_aid_uid" -gt 0 ] && [ "$_aid_gid" -gt 0 ] || return 1
+    [ "$(printf '%s' "$_aid_line" | cut -d: -f4)" = "$_aid_gid" ] || return 1
+    [ "$(printf '%s' "$_aid_line" | cut -d: -f6)" = /var/lib/ai-desktop ] || return 1
+    [ "$(printf '%s' "$_aid_line" | cut -d: -f7)" = /usr/bin/nologin ] || return 1
+    [ "$(printf '%s' "$_aid_group" | cut -d: -f3)" = "$_aid_gid" ] || return 1
+    [ -z "$(printf '%s' "$_aid_group" | cut -d: -f4)" ] || return 1
+    [ "$(id -nG ai-desktop)" = ai-desktop ] || return 1
+}
+
+_ai_desktop_dir_valid() {
+    [ -d "$1" ] && [ ! -L "$1" ] || return 1
+    [ "$(stat -c '%a:%U:%G' -- "$1")" = "700:ai-desktop:ai-desktop" ]
+}
+
+_ai_desktop_parents_valid() {
+    [ -d /var ] && [ ! -L /var ] || return 1
+    [ -d /var/lib ] && [ ! -L /var/lib ] || return 1
+    [ "$(stat -c '%u:%g' -- /var/lib)" = "0:0" ]
+}
+
+post_install() {
+    # No chown or implicit takeover of any pre-existing foreign path/account.
+    _ai_desktop_parents_valid || return 1
+    if getent passwd ai-desktop >/dev/null || getent group ai-desktop >/dev/null; then
+        # A previous successful installation may be reused only if it is safe.
+        _ai_desktop_account_valid || return 1
+        _ai_desktop_dir_valid /var/lib/ai-desktop || return 1
+        _ai_desktop_dir_valid /var/lib/ai-desktop/claude || return 1
+        return 0
+    fi
+    [ ! -e /var/lib/ai-desktop ] && [ ! -L /var/lib/ai-desktop ] || return 1
+
+    # Use the package-owned static fragments, never a user-supplied path.
+    /usr/bin/systemd-sysusers /usr/lib/ai-desktop/provisioning/sysusers.conf || return 1
+    _ai_desktop_account_valid || return 1
+    /usr/bin/systemd-tmpfiles --create /usr/lib/ai-desktop/provisioning/tmpfiles.conf || return 1
+    _ai_desktop_dir_valid /var/lib/ai-desktop || return 1
+    _ai_desktop_dir_valid /var/lib/ai-desktop/claude || return 1
+}
+
+post_upgrade() {
+    # Do not rewrite or chown existing credentials during upgrades.
+    _ai_desktop_parents_valid || return 1
+    _ai_desktop_account_valid || return 1
+    _ai_desktop_dir_valid /var/lib/ai-desktop || return 1
+    _ai_desktop_dir_valid /var/lib/ai-desktop/claude || return 1
+}
+
+post_remove() {
+    # Deliberately preserve the UID and profile to avoid UID reuse or data loss.
+    # A separate human-reviewed removal workflow is required.
+    :
+}

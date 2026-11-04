@@ -1,0 +1,53 @@
+[Unit]
+Description=AI Desktop one-report worker for UID %i (offline)
+Requires=ai-desktop-handoff@%i.socket
+After=ai-desktop-handoff@%i.socket
+StartLimitIntervalSec=60
+StartLimitBurst=6
+
+[Service]
+Type=exec
+User=ai-desktop
+Group=ai-desktop
+ExecStart=/usr/bin/python3 -I -B /usr/lib/ai-desktop/activated-worker.py %i
+WorkingDirectory=/
+Environment=HOME=/nonexistent LANG=C.UTF-8
+UnsetEnvironment=PYTHONPATH PYTHONHOME LD_PRELOAD LD_LIBRARY_PATH
+StandardInput=null
+StandardOutput=null
+StandardError=null
+UMask=0077
+Restart=no
+RuntimeMaxSec=10
+TimeoutStopSec=2
+KillMode=control-group
+TasksMax=8
+MemoryMax=64M
+LimitCORE=0
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateNetwork=yes
+PrivateDevices=yes
+ProtectSystem=strict
+ProtectHome=yes
+TemporaryFileSystem=/etc:ro /var:ro /run:ro /tmp:ro
+BindReadOnlyPaths=/etc/passwd /etc/group /etc/nsswitch.conf -/etc/ld.so.cache
+InaccessiblePaths=-/mnt -/media -/opt -/srv
+ProtectProc=invisible
+ProcSubset=pid
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=none
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+# Readiness deliberately probes socket(): deny it with an errno, not SIGSYS.
+# Other forbidden syscalls retain the default terminating action.
+SystemCallFilter=~socket:EPERM socketpair connect bind listen

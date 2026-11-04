@@ -1,0 +1,103 @@
+# AI Desktop — CachyOS/Arch package, development version.
+# Build from this directory: makepkg --cleanbuild
+# No remote sources; provisioning policy is NOT in auto-run sysusers.d/tmpfiles.d.
+# Only the guarded package scriptlet may apply it during this approved install.
+pkgname=ai-desktop
+pkgver=0.1.0
+pkgrel=69
+pkgdesc='Terminal AI assistant for CachyOS and Arch with an isolated client and approved changes'
+arch=('x86_64')
+url='https://github.com/ultherego/ai-desktopv2'
+license=('Apache-2.0')
+depends=('python>=3.12' 'bubblewrap' 'systemd' 'ca-certificates' 'libseccomp' 'sudo' 'python-rich>=13.7' 'python-cryptography')
+options=('!strip')  # Preserve an optionally supplied official native binary.
+install=ai-desktop.install
+source=()
+sha256sums=()
+
+package() {
+    local root="${startdir}/../.."
+    local target="${pkgdir}/usr/lib/ai-desktop"
+    [[ -f "${root}/ai_desktop/__init__.py" ]] || return 1
+    [[ -d "${root}/skills" ]] || return 1
+
+    # Never package linked code/data (no arbitrary targets outside checkout).
+    if find "${root}/ai_desktop" "${root}/skills" -type l -print -quit | grep -q .; then
+        return 1
+    fi
+
+    install -d -m755 "${target}/ai_desktop" "${target}/skills"
+    local src
+    for src in "${root}"/ai_desktop/*.py; do
+        [[ -f "${src}" && ! -L "${src}" ]] || return 1
+        install -m644 "${src}" "${target}/ai_desktop/"
+    done
+    local skill
+    for skill in "${root}"/skills/*; do
+        [[ -d "${skill}" && ! -L "${skill}" ]] || return 1
+        install -d -m755 "${target}/skills/${skill##*/}"
+        [[ -f "${skill}/SKILL.md" && ! -L "${skill}/SKILL.md" ]] || return 1
+        install -m644 "${skill}/SKILL.md" "${target}/skills/${skill##*/}/SKILL.md"
+    done
+
+    # Never place these in /usr/lib/sysusers.d or /usr/lib/tmpfiles.d:
+    # pacman post-transaction triggers would bypass collision checks.
+    install -Dm644 "${startdir}/../sysusers.d/ai-desktop.conf" \
+        "${target}/provisioning/sysusers.conf"
+    install -Dm644 "${startdir}/../tmpfiles.d/ai-desktop.conf" \
+        "${target}/provisioning/tmpfiles.conf"
+
+    # Dormant units only: no enable/start, polkit rule or automatic preset.
+    local unit
+    for unit in ai-desktop-handoff@.socket ai-desktop-handoff@.service ai-desktop-analysis@.socket ai-desktop-analysis@.service; do
+        [[ -f "${startdir}/../systemd/${unit}" && ! -L "${startdir}/../systemd/${unit}" ]] || return 1
+        install -Dm644 "${startdir}/../systemd/${unit}" "${pkgdir}/usr/lib/systemd/system/${unit}"
+    done
+    [[ -f "${startdir}/../systemd/activated-worker.py" && ! -L "${startdir}/../systemd/activated-worker.py" ]] || return 1
+    install -m644 "${startdir}/../systemd/activated-worker.py" "${target}/activated-worker.py"
+    for src in analysis-worker.py analysis-client.py analysis-session.py codex-auth.py codex-client.py; do
+        [[ -f "${startdir}/../systemd/${src}" && ! -L "${startdir}/../systemd/${src}" ]] || return 1
+        install -m644 "${startdir}/../systemd/${src}" "${target}/${src}"
+    done
+    # Optional local copy of the owner's official 2.1.312 executable. No fetch,
+    # updater, user HOME/profile, credentials, or native execution during build.
+    # Without this asset offline commands work; analyze refuses reason=runtime.
+    # A PUBLIC / distributable artifact must never carry the vendor binary: with AI_DESKTOP_PUBLIC_ARTIFACT=1 a local
+    # client file (even an ignored one) aborts the build instead of being packaged. The default stays the owner's private
+    # build, which may include their own local copy.
+    if [[ "${AI_DESKTOP_PUBLIC_ARTIFACT:-}" == 1 ]]; then
+        for vendor in claude-code codex; do
+            if [[ -e "${startdir}/${vendor}" || -L "${startdir}/${vendor}" ]]; then
+                echo "REFUSED: a public artifact must not contain the official client; remove ${startdir}/${vendor}" >&2
+                return 1
+            fi
+        done
+    fi
+    if [[ -e "${startdir}/claude-code" || -L "${startdir}/claude-code" ]]; then
+        [[ -f "${startdir}/claude-code" && ! -L "${startdir}/claude-code" ]] || return 1
+        [[ "$(head -c4 "${startdir}/claude-code" | od -An -tx1 | tr -d ' \n')" == 7f454c46 ]] || return 1
+        install -m755 "${startdir}/claude-code" "${target}/claude-code"
+    fi
+    # Optional pinned official Codex client. Never fetch or execute at build time.
+    if [[ -e "${startdir}/codex" || -L "${startdir}/codex" ]]; then
+        [[ -f "${startdir}/codex" && ! -L "${startdir}/codex" ]] || return 1
+        [[ "$(head -c4 "${startdir}/codex" | od -An -tx1 | tr -d ' \n')" == 7f454c46 ]] || return 1
+        install -m755 "${startdir}/codex" "${target}/codex"
+    fi
+
+    install -d -m755 "${pkgdir}/usr/bin"
+    # Linux shebangs pass everything after the interpreter path as ONE
+    # argument: '#!/usr/bin/python3 -I -B' is not two Python flags.
+    # The fixed, root-owned shell trampoline preserves separate -I and -B,
+    # an absolute interpreter, trusted import root and the exact argv.
+    cat > "${pkgdir}/usr/bin/ai-desktop" <<'SH'
+#!/bin/sh
+exec /usr/bin/python3 -I -B -c '
+import sys
+sys.path.insert(0, "/usr/lib/ai-desktop")
+from ai_desktop.cli import main
+raise SystemExit(main())
+' "$@"
+SH
+    chmod 755 "${pkgdir}/usr/bin/ai-desktop"
+}
