@@ -75,7 +75,7 @@ class DeliveryTests(unittest.TestCase):
 
                 window = SimpleNamespace(is_open=False, seconds_left=lambda: 0, close=lambda: None,
                                          ensure=fail if failure == "opening" else lambda: None)
-                ui = material_cli.Session(material, "file", SimpleNamespace(sources=lambda: {"claude": True}),
+                ui = material_cli.Session(material, "file", SimpleNamespace(sources=lambda: {"claude": True}, recheck=lambda: None),
                     SimpleNamespace(details=False, format="plain"), input, clock=lambda: 0, window=window,
                     sender=lambda approval: fail())
                 if failure == "sender":

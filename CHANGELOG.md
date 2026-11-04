@@ -2,6 +2,7 @@
 
 ## Niewydane
 
+- **Bezpieczeństwo:** `material` i `project` sprawdzają `permissions.toml` przed każdym przekazaniem danych do Claude. Zmiana pliku, wyłączenie `network.claude` albo cofnięcie dostępu do czytanych plików zatrzymuje kolejne żądania, także w analizie całego pliku. Wcześniej wystarczyło, że zgoda i pliki zostały wczytane na początku sesji.
 - Polskie znaki w komunikatach i pomocy: pytania o zapis i cofnięcie, `task`, `analyze`, `status` i opisy poleceń.
 - `ai-desktop task`: gdy `--workspace` wskazuje plik, program mówi to wprost zamiast ogólnej odmowy.
 - `ai-desktop task status` i `task rollback` wypisują wpisy od najnowszego, z datą ostatniej zmiany (czas pliku dziennika). Numer 1 to najnowsze zadanie.

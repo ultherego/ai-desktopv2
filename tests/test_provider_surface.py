@@ -200,6 +200,8 @@ class ProviderSurfaceTests(unittest.TestCase):
         controller.args = SimpleNamespace(details=False, format="plain", max_requests=None)
         controller._handoffs = 0
         controller._whole_progress = None
+        controller.policy = SimpleNamespace(recheck=lambda: None, provider_allowed=lambda provider: True,
+                                            sources=lambda: {"claude": True})
         controller.pacer = Mock()
         controller.window = Mock(is_open=True, seconds_left=lambda: 100)
         controller._clock = lambda: 0
