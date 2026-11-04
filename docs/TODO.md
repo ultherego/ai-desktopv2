@@ -4,7 +4,7 @@ Stan: pakiet `0.1.0-70`. Ograniczenia obecnej wersji opisuje [KNOWN_LIMITATIONS.
 
 ## Najbliżej
 - [x] Lista `task rollback` i `task status` od najnowszych wpisów, z datą. Dziś kolejność wynika ze skrótu planu, więc łatwo wybrać nie to zadanie.
-- [ ] Jasny błąd, gdy `--workspace` wskazuje plik zamiast katalogu.
+- [x] Jasny błąd, gdy `--workspace` wskazuje plik zamiast katalogu.
 - [ ] Polskie znaki we wszystkich komunikatach, np. `Zapisac pokazane zmiany?` i `Cofnac pokazane zmiany?`.
 - [ ] `ai-desktop task prune`: pokazuje stare zakończone wpisy, pyta o zgodę i dopiero wtedy je usuwa. Limit to 128 dzienników na katalog, a po jego osiągnięciu zapis jest blokowany.
 

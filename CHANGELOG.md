@@ -2,6 +2,7 @@
 
 ## Niewydane
 
+- `ai-desktop task`: gdy `--workspace` wskazuje plik, program mówi to wprost zamiast ogólnej odmowy.
 - `ai-desktop task status` i `task rollback` wypisują wpisy od najnowszego, z datą ostatniej zmiany (czas pliku dziennika). Numer 1 to najnowsze zadanie.
 
 ## 0.1.0-70 — poprawki

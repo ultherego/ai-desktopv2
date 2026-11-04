@@ -54,6 +54,20 @@ class TaskCliTests(unittest.TestCase):
         record = workspace.status(str(self.root))[0]
         self.assertTrue(workspace.rollback(str(self.root), record[0]))
 
+    def test_workspace_that_is_a_file_gets_a_clear_message_for_every_action(self):
+        for action in ("run", "status", "rollback", "restore"):
+            for details in (False, True):
+                args = {"run": ["run", "fix", "--file", "calc.py", "--test", "python-syntax"], "restore": ["restore", "--plan", "a" * 64]}.get(action, [action])
+                with self.subTest(action=action, details=details):
+                    out = io.StringIO()
+                    with contextlib.redirect_stdout(out), patch.object(cli.sys.stdin, "isatty", return_value=True), \
+                            patch.object(cli.sys.stdout, "isatty", return_value=True), \
+                            patch.object(cli, "send_once") as send:
+                        code = cli.main(args + ["--workspace", str(self.root / "calc.py")] + (["--details"] if details else []))
+                    self.assertEqual(code, 2)
+                    self.assertIn("workspace-not-directory" if details else "a to jest plik", out.getvalue())
+                    send.assert_not_called()
+
     def test_unchanged_proposal_has_its_own_message_and_changes_nothing(self):
         self.proposal = json.dumps({"summary": "same", "files": [{"path": "calc.py", "content": "old\n"}]})
         result, output, send, check, _ = self.invoke()

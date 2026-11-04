@@ -312,6 +312,10 @@ def main(argv=None, *, reader=input):
             raise ValueError("identity")
         if (args.action in ("rollback", "restore") or (args.action == "run" and not args.preview)) and not (sys.stdin.isatty() and sys.stdout.isatty()):
             raise ValueError("tty")
+        if os.path.exists(args.workspace) and not os.path.isdir(args.workspace):
+            print("TASK: REFUSED; workspace-not-directory" if args.details
+                  else "--workspace musi wskazywać katalog, a to jest plik. Podaj katalog projektu; pliki wybierasz przez --file i --context.")
+            return 2
         if args.action == "run":
             return run_task(args, reader, display_state=display_state)
         if args.action == "restore":
