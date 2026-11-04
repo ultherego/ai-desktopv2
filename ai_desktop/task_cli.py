@@ -208,6 +208,17 @@ def show_diff(plan, *, details=False):
     print()
 
 
+def newest_first(records):
+    """Newest entry first, so number 1 is the task the owner most likely means; equal times fall back to the plan ID."""
+    return sorted(records, key=lambda record: (-record.get("modified", 0), record["plan"]))
+
+
+def _when(record):
+    if "modified" not in record:
+        return ""
+    return time.strftime("%Y-%m-%d %H:%M", time.localtime(record["modified"])) + " · "
+
+
 def show_record(record, number=None, *, details=False):
     prefix = str(number) + ". " if number is not None else ""
     states = {"applied": "zapisano", "rolled-back": "cofnięto", "prepared": "zapis niedokończony",
@@ -215,7 +226,7 @@ def show_record(record, number=None, *, details=False):
     if record.get("kind") == "trash" and record["status"] == "prepared":
         states["prepared"] = "usuwanie niedokończone — sprawdź kosz zadania"
     states["detached"] = "historia niepowiązana — cofnięcie zablokowane"
-    print(prefix + "Stan: " + (record["status"] if details else states.get(record["status"], record["status"])))
+    print(prefix + _when(record) + "Stan: " + (record["status"] if details else states.get(record["status"], record["status"])))
     if record["status"] == "detached":
         print("  " + workspace.DETACHED_HISTORY_HINT)
     for item in record["files"]:
@@ -310,6 +321,7 @@ def main(argv=None, *, reader=input):
             from . import workspace_trash
             import shlex
             records.extend(workspace_trash.recovery_records(args.workspace))
+            records = newest_first(records)
             for index, record in enumerate(records, 1):
                 show_record(record, index, details=args.details)
                 if record.get("kind") == "trash" and record["status"] != "restored":
@@ -320,7 +332,7 @@ def main(argv=None, *, reader=input):
             elif not records:
                 print("Brak zadań w tym katalogu.")
             return 0
-        return rollback_task(args, records, reader)
+        return rollback_task(args, newest_first(records), reader)
     except workspace.JournalLimit:
         print("Osiągnięto limit 128 zapisanych zadań. Nowego zapisu nie wykonano; historia i cofanie pozostają dostępne.")
     except AnalysisDenied as exc:

@@ -437,7 +437,8 @@ def recovery_records(workspace):
                           "files": [] if detached else [{"path": item["path"],
                                      "action": "restore" if value["before"]["files"][item["path"]]["file"] is not None else "remove"}
                                     for item in value["entries"]],
-                          "journal_sha256": sha(canonical(value).encode("utf-8"))}
+                          "journal_sha256": sha(canonical(value).encode("utf-8")),
+                          "modified": os.stat(name, dir_fd=fd).st_mtime}
                 if binding == "rebound":
                     record["rebound"] = True
                 if record["status"] == "conflict":

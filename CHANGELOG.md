@@ -1,5 +1,9 @@
 # Historia zmian
 
+## Niewydane
+
+- `ai-desktop task status` i `task rollback` wypisują wpisy od najnowszego, z datą ostatniej zmiany (czas pliku dziennika). Numer 1 to najnowsze zadanie.
+
 ## 0.1.0-70 — poprawki
 
 - `ai-desktop sessions`: uszkodzony zapis rozmowy nie ukrywa pozostałych; `sessions list` go wskazuje, a `sessions remove` usuwa.

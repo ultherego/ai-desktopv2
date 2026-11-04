@@ -58,7 +58,9 @@ class TaskWorkspaceTests(unittest.TestCase):
                     "files": [{"path": "calc.py", "action": "restore"},
                               {"path": "new.txt", "action": "remove"}],
                     "journal_sha256": workspace.sha(canonical(json.loads(raw)).encode("utf-8"))}
-        self.assertEqual(workspace.recovery_records(str(self.root)), [expected])
+        records = workspace.recovery_records(str(self.root))
+        self.assertEqual(records[0].pop("modified"), modified / 1e9)
+        self.assertEqual(records, [expected])
         self.assertEqual((journal.read_bytes(), journal.stat().st_mtime_ns), (raw, modified))
         self.assertEqual((self.root / "calc.py").read_text(), "new\n")
         self.assertTrue(workspace.rollback(str(self.root), plan.sha256,
@@ -116,7 +118,10 @@ class TaskWorkspaceTests(unittest.TestCase):
         first_record = workspace.recovery_records(str(self.root))[0]
         journal = self.root / workspace.STATE / (first.sha256 + ".json")
         journal.write_text(json.dumps(json.loads(journal.read_text()), indent=2))
-        self.assertEqual(workspace.recovery_records(str(self.root)), [first_record])
+        again = workspace.recovery_records(str(self.root))
+        for record in (first_record, again[0]):
+            self.assertIsInstance(record.pop("modified"), float)  # the file time may change; the digest must not
+        self.assertEqual(again, [first_record])
         (self.root / "other.py").write_text("other\n")
         second = self.plan(names=["other.py"]); self.apply(second)
         self.assertEqual([r["plan"] for r in workspace.recovery_records(str(self.root))],
