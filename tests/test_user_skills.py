@@ -19,6 +19,15 @@ class RepositoryContentTests(unittest.TestCase):
         self.assertFalse((ROOT / "ai_desktop/backup_state.py").exists())
         self.assertNotIn("backup_services", (ROOT / "ai_desktop/report_policy.py").read_text())
 
+    def test_the_template_sends_no_logs_network_names_or_user_data_and_does_not_reach_host_daemons(self):
+        import tomllib
+        allow = tomllib.loads((ROOT / "config/permissions.example.toml").read_text())["commands"]["allow"]
+        programs = {template.split()[0] for template in allow}
+        self.assertFalse(programs & {"nmcli", "bluetoothctl", "docker", "podman", "dmesg", "who", "last", "id", "ip", "ss",
+                                     "ps", "top", "df", "findmnt", "pactl", "wpctl", "glxinfo"})
+        self.assertEqual([t for t in allow if t.startswith("journalctl")], ["journalctl --disk-usage"])
+        self.assertFalse([t for t in allow if "--user" in t])
+
     def test_the_template_has_only_variables(self):
         self.assertNotIn("#", (ROOT / "config/permissions.example.toml").read_text())
 
