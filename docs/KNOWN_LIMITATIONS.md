@@ -3,7 +3,7 @@
 AI Desktop jest wersją rozwojową, nie wydaniem 1.0. Testy automatyczne nie dowodzą izolacji; ta lista mówi, czego jeszcze nie ma lub co nie zostało sprawdzone.
 
 ## Bezpieczeństwo
-- Piaskownica poleceń odczytu nie izoluje gniazd Unix hosta. Szablon w `[commands] allow`, który może zmieniać stan przez D-Bus lub Dockera, nie jest zatrzymany przez samą piaskownicę, a takie polecenia działają bez pytania. Wpisuj do `allow` tylko polecenia tylko do odczytu.
+- Piaskownica poleceń odczytu nie izoluje gniazd Unix hosta. Szablon w `[commands] allow`, który może zmieniać stan przez D-Bus lub Dockera, nie jest zatrzymany przez samą piaskownicę, a takie polecenia działają bez pytania. Dotyczy to np. `docker`, który działa z piaskownicy i sięga do demona na hoście, dlatego nie ma go w szablonie. Wpisuj do `allow` tylko polecenia wyłącznie do odczytu.
 - Treść pliku lub wynik polecenia może skłonić model do kolejnych dozwolonych odczytów, a ich wyniki trafiają do dostawcy. Granicą są `permissions.toml` i budżety na pytanie.
 - Klient Claude Code ma dostęp do własnego profilu logowania w osobnym koncie `ai-desktop`. Nie ma ogólnego filtra wywołań systemowych dla klienta.
 - Przypięcie klienta polega na zgłaszanej wersji, nie na sumie kontrolnej pliku w pakiecie.

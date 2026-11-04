@@ -6,3 +6,4 @@
 - `ai-desktop material` do dużych plików i `ai-desktop project` do katalogów projektów.
 - Oficjalny klient Claude Code w osobnym koncie systemowym i piaskownicy; opcjonalnie Codex.
 - Ogólne Skille w pakiecie, własne w `~/.config/ai-desktop/skills/`.
+- Szablon `permissions.toml` zawiera tylko ogólne polecenia, które działają w piaskownicy i nie wysyłają logów ani nazw sieci.

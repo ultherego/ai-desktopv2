@@ -223,6 +223,18 @@ ai-desktop task restore  --workspace KATALOG --plan ID    # powrót usuniętych 
 - Dziennik mieści się w `.ai-desktop-tasks` w katalogu zadania, zawiera starą i nową treść plików i ma prawa prywatne. Limit to 128 dzienników na katalog, bez automatycznego czyszczenia. Nie usuwaj go, aby obejść odmowę, bo tracisz możliwość cofnięcia.
 - Dziennik jest związany z katalogiem: przeniesiony lub zastąpiony katalog może dać bezpieczną odmowę, a historia z innego miejsca jest oznaczana jako niepowiązana i nie służy do cofania.
 
+### Które polecenia są w szablonie
+
+Lista `allow` w szablonie to ogólne polecenia, które działają w piaskownicy na każdym systemie i nie wysyłają logów, nazw sieci ani danych o logowaniach. Są one uruchamiane bez pytania, a ich wyniki trafiają do modelu. Celowo nie ma w niej:
+
+- `journalctl` z treścią logów, `dmesg`, `who`, `last`, `id`: logi i dane o użytkownikach;
+- `nmcli`, `bluetoothctl`: nazwy sieci i urządzeń;
+- `docker`: sięga do demona na hoście mimo piaskownicy;
+- `ip`, `ss`, `ps`, `top`, `df`, `findmnt`: w piaskownicy pokazują jej widok, nie stan systemu;
+- `systemctl --user`, `pactl`, `wpctl`, `glxinfo`: nie mają dostępu do sesji użytkownika.
+
+Możesz dopisać je u siebie, jeśli świadomie tego chcesz. Program niezainstalowany w systemie jest pomijany.
+
 ## Własne Skille
 
 Skill to instrukcja dla modelu do 8 KiB, nie uprawnienie. O plikach i poleceniach decyduje `permissions.toml`. Pakiet zawiera tylko ogólne Skille; to, co dotyczy Twojego komputera, trzymasz u siebie:
