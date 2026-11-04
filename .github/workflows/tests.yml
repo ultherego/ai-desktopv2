@@ -25,11 +25,11 @@ jobs:
         python-version: ["3.12", "3.13", "3.14"]
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: ${{ matrix.python-version }}
       - name: Central verification gate (includes offline activation contracts; no service start)
@@ -85,7 +85,7 @@ jobs:
           git rev-parse HEAD 'HEAD^{tree}' > "$RUNNER_TEMP/ai-desktop-reviewed.sha"
       - name: Retain reviewed source briefly
         if: matrix.python-version == '3.13'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: reviewed-source
           path: |
@@ -103,10 +103,10 @@ jobs:
       matrix:
         bubblewrap: [distro, "0.13.1"]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       - name: Install disposable runner test dependencies
@@ -120,7 +120,7 @@ jobs:
           python -B -m unittest discover -s tests -p 'test_accept_*script.py' -v
       - name: Checkout pinned upstream Bubblewrap 0.13.1
         if: matrix.bubblewrap == '0.13.1'
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: containers/bubblewrap
           ref: 362936aea0d5c6e70f7af75d2d44b5a914cb4ba2
