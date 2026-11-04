@@ -15,7 +15,7 @@ Pod spodem działa oficjalny klient Claude Code w dokładnej wersji **2.1.312**,
 
 To wersja rozwojowa, nie wydanie 1.0.
 
-Aktualny pakiet kandydata ma numer **0.1.0-69** (zmiany: [CHANGELOG.md](CHANGELOG.md)).
+Aktualny pakiet kandydata ma numer **0.1.0-70** (zmiany: [CHANGELOG.md](CHANGELOG.md)).
 
 Czego jeszcze nie ma i co nie zostało sprawdzone, opisuje [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md). Przeczytaj ten plik przed użyciem na ważnych danych.
 
@@ -39,7 +39,7 @@ chmod 755 claude-code
 
 # 4. Budowa i instalacja pakietu (wersja w nazwie pliku = pkgrel z PKGBUILD)
 makepkg --cleanbuild
-sudo pacman -U ai-desktop-0.1.0-69-x86_64.pkg.tar.zst
+sudo pacman -U ai-desktop-0.1.0-70-x86_64.pkg.tar.zst
 sudo systemctl daemon-reload
 
 # 5. Logowanie do Claude (interaktywnie, raz)

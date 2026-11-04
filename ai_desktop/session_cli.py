@@ -232,13 +232,18 @@ def main(argv=None, *, store=None, dispatch=None):
                 print("%s  %s  %s  %s  %d pytań%s" % (
                     value["id"], value["kind"], recipient(config=value["execution"]), profile,
                     len(value["history"]), "  [aktywna]" if active else ""))
+            for ident in store.damaged():
+                print("%s  uszkodzony zapis; usuń: ai-desktop sessions remove %s" % (ident, ident))
             return 0
         if args.action == "show":
             value = store.read(args.id)
             _show(value)
             return 0
         if args.action == "remove":
-            store.remove(args.id)
+            if args.id in store.damaged():
+                store.remove_damaged(args.id)
+            else:
+                store.remove(args.id)
             print("Usunięto zapis rozmowy.")
             return 0
         return _resume(store, args.id, dispatch)

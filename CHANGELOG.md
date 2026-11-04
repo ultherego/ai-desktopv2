@@ -1,5 +1,10 @@
 # Historia zmian
 
+## 0.1.0-70 — poprawki
+
+- `ai-desktop sessions`: uszkodzony zapis rozmowy nie ukrywa pozostałych; `sessions list` go wskazuje, a `sessions remove` usuwa.
+- `/rejestr` w `project` pokazuje też pliki przekazane do Claude przy edycji.
+
 ## 0.1.0-69 — pierwsze wydanie publiczne (wersja rozwojowa)
 
 - `ai-desktop ask`: jedna zgoda na rozmowę, odczyty i polecenia z `permissions.toml` bez dodatkowych pytań, zapis i usuwanie po pełnym diffie lub liście plików i osobnej zgodzie, cofanie zmian.

@@ -167,6 +167,7 @@ class ProjectSession(Session):
         self.window = window or SessionWindow(quiet=not args.details, clock=clock)
         self.pacer = Pacer(clock=clock, sleep=sleep)
         self.tasks, self.history = [], []
+        self.edit_transfers = []                # whole files handed over for a proposed change, shown by /rejestr
         self.prompt_session = PromptSession()
         self._skipped_shown = None              # last skipped-entry count already reported after an answer
         self.progress = ""                      # the model's own working summary (what is done, what next), session-only
@@ -177,6 +178,14 @@ class ProjectSession(Session):
 
     def _gate_kwargs(self, packet):
         return dict(question=packet.question, context=None, project=packet.material)
+
+    def ledger(self):
+        if not self.edit_transfers or any(task["session"].ledger() for task in self.tasks):
+            super().ledger()
+        for number, item in enumerate(self.edit_transfers, 1):
+            print("Edycja %d: %d plików, %d B, stan: %s: %s" % (
+                number, len(item["files"]), item["bytes"], item["state"],
+                ", ".join(_safe(path, 60) for path in item["files"][:8]) or "tylko nowe pliki"))
 
     # --- optional local helpers --------------------------------------------------------
     def files(self, prefix):
@@ -598,8 +607,14 @@ class ProjectSession(Session):
             prepared = ask_edit.prepare(plan, snapshot, args, self.reader, question_consent=permit,
                                         expected_versions=versions)
             self.pacer.record()
+            sent = prepared.source["files"]
+            transfer = {"files": [item["path"] for item in sent if item["content"] is not None],
+                        "bytes": sum(len(item["content"].encode("utf-8")) for item in sent if item["content"] is not None),
+                        "state": "nie wiadomo, czy dotarło"}      # recorded before the hand-off, like the read steps
+            self.edit_transfers.append(transfer)
             response = ask_cli.request(text, args, self.reader, task=prepared.source, write_grant=prepared.write_grant,
                                        check=permit.check, question_consent=permit)
+            transfer["state"] = "odpowiedź otrzymana"
             permit.check()
             permit.close()
             return ask_edit.finish(prepared, response, args, self.reader).code
