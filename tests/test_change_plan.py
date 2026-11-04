@@ -8,6 +8,7 @@ from unittest.mock import patch
 
 from ai_desktop import assistant_contract as plans, command_ops, conversation_state as cs, discovery_contract as dc
 from ai_desktop import permissions, terminal_consent
+from ai_desktop.analysis_contract import AnalysisDenied
 import test_ask_operations as ops
 from test_ask_discovery import ANSWER, ANSWER_PLAN
 
@@ -49,6 +50,7 @@ class ChangeBase(ops.OperationsBase):
         super().setUp()
         self.change_answer, self.undo_answer = True, True
         self.results = {}
+        self.during = {}
 
         def confirm(action, **kwargs):
             self.asked.append(action)
@@ -58,6 +60,8 @@ class ChangeBase(ops.OperationsBase):
 
         def fake(path, argv, *, output_limit, timeout, command=None, host=False, role="read"):
             self.calls.append((list(argv), host, role))
+            if tuple(argv) in self.during:
+                self.during[tuple(argv)]()
             code, text = self.results.get(tuple(argv), (0, "ok\n"))
             return {"op": "run", "argv": list(argv), "status": "ok" if code == 0 else "failed", "exit": code,
                     "output": text, "truncated": False, "role": role}
@@ -89,6 +93,47 @@ class ChangeFlowTests(ChangeBase):
                      "systemctl enable foo.service", "Test po zmianie zaliczony"):
             self.assertIn(text, shown)
         self.assertEqual(self.wire[0]["access"]["change_commands"], ["systemctl restart <unit>", "systemctl enable <unit>"])
+
+    def revoke(self):
+        self.config.write_text(self.config.read_text(encoding="utf-8") + "\n# changed while the command ran\n", encoding="utf-8")
+
+    def interrupted(self, responses):
+        with cs.recording() as recorder, self.assertRaises(AnalysisDenied) as denied:
+            self.run_flow(responses)
+        self.assertEqual(denied.exception.reason, "consent")
+        return recorder.actions
+
+    def test_access_revoked_while_the_change_runs_keeps_its_result_and_names_the_undo(self):
+        self.during[tuple(RESTART)] = self.revoke
+        facts = self.interrupted([change(RESTART, STATUS, REVERT), ANSWER_PLAN])
+        self.assertEqual(self.calls, [(RESTART, True, "change")])                   # nothing further runs on the host
+        self.assertEqual(len(self.wire), 1)                                         # and nothing further is sent
+        self.assertEqual(facts, ["Zmiana systemctl restart foo.service: ok, kod 0",
+                                 "Zmiana systemctl restart foo.service: przerwano po wykonaniu, dalsze kroki nie uruchomione"])
+        shown = self.output.getvalue()
+        for text in ("Zmiana została WYKONANA", "Test: systemctl status foo.service", "Wycofanie możesz uruchomić sam: systemctl enable foo.service"):
+            self.assertIn(text, shown)
+        self.assertNotIn("run-undo", self.asked)
+
+    def test_access_revoked_during_the_test_keeps_both_results(self):
+        self.during[tuple(STATUS)] = self.revoke
+        facts = self.interrupted([change(RESTART, STATUS, REVERT), ANSWER_PLAN])
+        self.assertEqual([role for _, _, role in self.calls], ["change", "test"])
+        self.assertEqual(len(self.wire), 1)
+        self.assertEqual(facts[:2], ["Zmiana systemctl restart foo.service: ok, kod 0",
+                                     "Test po zmianie systemctl status foo.service --no-pager: ok, kod 0"])
+        self.assertIn("Zmiana została WYKONANA", self.output.getvalue())
+
+    def test_consent_lost_before_the_change_starts_reports_no_change(self):
+        with patch("ai_desktop.question_consent.QuestionConsent.waiting", side_effect=self.lapse_on_enter):
+            with cs.recording(), self.assertRaises(AnalysisDenied):
+                self.run_flow([change(RESTART, STATUS, REVERT), ANSWER_PLAN])
+        self.assertEqual(self.calls, [])
+        self.assertNotIn("WYKONANA", self.output.getvalue())
+
+    @staticmethod
+    def lapse_on_enter(*args, **kwargs):
+        raise AnalysisDenied("consent")
 
     def test_a_failed_test_offers_the_undo_and_runs_it_only_after_a_second_yes(self):
         self.results[tuple(STATUS)] = (3, "inactive\n")
