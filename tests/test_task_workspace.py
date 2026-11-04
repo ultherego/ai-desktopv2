@@ -59,7 +59,7 @@ class TaskWorkspaceTests(unittest.TestCase):
                               {"path": "new.txt", "action": "remove"}],
                     "journal_sha256": workspace.sha(canonical(json.loads(raw)).encode("utf-8"))}
         records = workspace.recovery_records(str(self.root))
-        self.assertEqual(records[0].pop("modified"), modified / 1e9)
+        self.assertAlmostEqual(records[0].pop("modified"), modified / 1e9, places=3)   # float rounding differs per platform
         self.assertEqual(records, [expected])
         self.assertEqual((journal.read_bytes(), journal.stat().st_mtime_ns), (raw, modified))
         self.assertEqual((self.root / "calc.py").read_text(), "new\n")
