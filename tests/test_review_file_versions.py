@@ -31,6 +31,25 @@ class AtomicPublishTests(unittest.TestCase):
             finally:
                 os.close(fd)
 
+    def test_exchange_swaps_two_entries_atomically_and_fails_closed_without_the_syscall(self):
+        with tempfile.TemporaryDirectory() as home:
+            root = Path(home)
+            (root / "stage").write_text("model\n")
+            (root / "target").write_text("user\n")
+            fd = os.open(home, os.O_RDONLY | os.O_DIRECTORY)
+            try:
+                fs_publish.rename_exchange(fd, "stage", fd, "target")
+                self.assertEqual((root / "target").read_text(), "model\n")
+                self.assertEqual((root / "stage").read_text(), "user\n")
+                with self.assertRaises(FileNotFoundError):                     # both names must exist
+                    fs_publish.rename_exchange(fd, "missing", fd, "target")
+                with patch.object(fs_publish, "_RENAMEAT2", None), patch.object(os, "replace") as replace:
+                    with self.assertRaises(OSError):
+                        fs_publish.rename_exchange(fd, "stage", fd, "target")
+                    replace.assert_not_called()
+            finally:
+                os.close(fd)
+
     def test_missing_syscall_refuses_without_calling_replacing_rename(self):
         with patch.object(fs_publish, "_RENAMEAT2", None), patch.object(os, "replace") as replace:
             with self.assertRaises(OSError):
