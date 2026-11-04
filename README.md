@@ -17,7 +17,7 @@ To wersja rozwojowa, nie wydanie 1.0.
 
 Aktualny pakiet kandydata ma numer **0.1.0-70** (zmiany: [CHANGELOG.md](CHANGELOG.md)).
 
-Czego jeszcze nie ma i co nie zostało sprawdzone, opisuje [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md). Przeczytaj ten plik przed użyciem na ważnych danych.
+Czego jeszcze nie ma i co nie zostało sprawdzone, opisuje [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md). Przeczytaj ten plik przed użyciem na ważnych danych. Plany: [docs/TODO.md](docs/TODO.md).
 
 ## Instalacja na laptopie (CachyOS / Arch x86_64)
 
