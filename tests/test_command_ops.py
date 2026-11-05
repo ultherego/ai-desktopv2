@@ -181,6 +181,22 @@ class ReviewFindingsTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_access({**access, "change_commands": names})
 
+    def test_nested_commands_require_a_literal_complete_operation(self):
+        for strict in (False, True):
+            for template in ("docker container <word> demo", "docker --context inspect container <word> demo",
+                             "docker --context <word> inspect example", "docker plugin-name <word> demo",
+                             "docker compose alpha <word>", "btrfs subvolume <word> /mnt",
+                             "btrfs subv <word> /mnt", "nmcli -t connection <word> demo",
+                             "nmcli -f connection device wifi <word> demo", "nmcli radio wifi <word>"):
+                with self.subTest(template=template, strict=strict), self.assertRaises(ValueError):
+                    ops.parse_template(template, strict=strict)
+            for template in ("docker --context lab container inspect <word>", "docker -D inspect <word>",
+                             "docker --context=lab container restart <word>", "docker compose ps <word>",
+                             "btrfs subvolume get-default <word>", "nmcli -t connection show <word>",
+                             "nmcli -f DEVICE,TYPE device wifi connect <word>", "docker plugin-name list all"):
+                with self.subTest(template=template, strict=strict):
+                    self.assertEqual(ops.parse_template(template, strict=strict), tuple(template.split()))
+
     def test_a_link_to_a_forbidden_program_never_resolves(self):
         with tempfile.TemporaryDirectory() as directory:
             link = Path(directory) / "innocent"
