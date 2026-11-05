@@ -107,6 +107,7 @@ Działa i jest scalone:
 ### 2026-11-05 — E3: jakość procedur Skills
 
 - **Status: READY FOR TEST.** Gałąź `improve/skills-procedures`, baza `ba82f88c43eea65c7a3f5fe85a2a6639a5ed0d08`.
+- Ślad zmian: [PR #16](https://github.com/ultherego/ai-desktopv2/pull/16), commit procedur i regresji [`872859d`](https://github.com/ultherego/ai-desktopv2/commit/872859d1c2e77a61a71ae4ffe258d0722ef9b7b1). Wyniki wymaganych zadań CI są przypisane do aktualnego head tego PR.
 - Zakres: poprawa wszystkich 21 istniejących `SKILL.md`, bez zmiany nazw, przypisań agentów, uprawnień ani mechanizmu wykonania.
 - Kryterium: procedura wskazuje potrzebne fakty, interpretację wyników, warunki zatrzymania i wynik diagnozy; zmiana wymaga odrębnego planu, testu, zgody i przywrócenia konkretnego stanu.
 - Ryzyka podlegające przeglądowi: pełny balance bez uzasadnienia, ogólne `systemctl revert`, reset kluczy i downgrade bez diagnozy, naprawa rozruchu bez ustalenia etapu awarii oraz pomylenie izolowanego widoku z awarią hosta.
