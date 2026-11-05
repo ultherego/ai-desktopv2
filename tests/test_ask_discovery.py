@@ -174,6 +174,24 @@ class SkillsOnDemandTests(Base):
         self.assertEqual(last["discovery"]["steps"][0]["text"], self.BODY)
         self.assertEqual([step["op"] for step in last["discovery"]["steps"]], ["skill", "list"])
 
+    def test_packaged_procedures_reach_the_final_answer_without_loading_other_bodies(self):
+        """Exercise real procedure sizes through consent, discovery and the final file hand-off."""
+        from ai_desktop import agent_profiles, skills
+        for name in ("arch-btrfs", "arch-systemd", "arch-amdgpu"):
+            with self.subTest(skill=name), patch.object(skills, "user_root", return_value=self.home / "no-skills"):
+                catalog = agent_profiles.catalog_for(agent_profiles.Profile(skills=(name,)))
+                body = skills.inspect_skill(skills.ROOT, name, secure=True)[1]
+                loader = Mock(side_effect=lambda requested: body if requested == name else None)
+                self.run_flow([json.dumps({"action": "skill", "names": [name]}), plan("list", sel("gizmo")),
+                               read(sel("gizmo/settings.conf")), ANSWER], instructions=catalog, skills=loader)
+                self.assertNotIn(body, json.dumps(self.wire[0], ensure_ascii=False))
+                loader.assert_called_once_with(name)
+                last = self.wire[-1]
+                self.assertEqual(last["mode"], "question")
+                self.assertEqual(last["discovery"]["steps"][0],
+                                 {"op": "skill", "name": name, "status": "ok", "text": body})
+                self.assertEqual(last["context"][0]["files"][0]["content"], "mode=basic\n")
+
     def test_without_earlier_steps_the_final_request_is_what_it_was(self):
         self.run_flow([read(sel("gizmo/settings.conf")), ANSWER], question="Co jest w ~/.config/gizmo/settings.conf?")
         self.assertEqual(self.wire[-1]["mode"], "question")

@@ -242,6 +242,8 @@ Możesz dopisać je u siebie, jeśli świadomie tego chcesz. Program niezainstal
 
 ## Własne Skille
 
+Pakietowe Skille prowadzą od objawu przez potrzebne odczyty i interpretację wyników do ustalonej przyczyny albo jasno wskazanego braku danych. Uwzględniają ograniczenia piaskownicy: brak dostępu do sesji lub sieci nie jest dowodem awarii hosta. Proponowana naprawa wymaga oddzielnego planu, zgody i sprawdzenia wyniku; wczytanie procedury niczego nie wykonuje.
+
 Skill to instrukcja dla modelu do 96 KiB, nie uprawnienie. Agent może mieć dowolnie wiele Skilli, ale razem z rolą do 104 KiB: cała instrukcja idzie do klienta Claude jako jeden argument, a Linux ogranicza go do 128 KiB. W `ask` przy każdym pytaniu idą tylko nazwy i opisy przypisanych Skilli. Treść idzie dopiero wtedy, gdy model o nią poprosi, a program pokazuje to wierszem `Skill NAZWA`. W `material`, `project` i `task` treść przypisanych Skilli idzie przy każdym żądaniu. Skill ma opisywać, jak coś zrobić, a nie jak wygląda Twój komputer: fakty model odczyta sam, gdy będą potrzebne. O plikach i poleceniach decyduje `permissions.toml`. Pakiet zawiera tylko ogólne Skille; to, co dotyczy Twojego komputera, trzymasz u siebie:
 
 ```fish

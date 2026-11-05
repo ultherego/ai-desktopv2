@@ -1,12 +1,14 @@
 import tempfile
 import contextlib
 import io
+import json
 from pathlib import Path
 import unittest
 
 from ai_desktop.skills import inspect_skill, ROOT
 from ai_desktop import skills
 from ai_desktop import agent_profiles
+from ai_desktop import analysis_child, analysis_contract, execution
 from unittest.mock import patch
 
 
@@ -55,6 +57,25 @@ class SkillTests(unittest.TestCase):
     def test_reject_path_traversal(self):
         with self.assertRaises(ValueError):
             inspect_skill(ROOT, "../x")
+
+    def test_all_packaged_procedures_fit_a_real_workspace_request_together(self):
+        """Other modes still send full bodies: improving procedures must not break those requests."""
+        names = tuple(sorted(path.parent.name for path in ROOT.glob("*/SKILL.md")))
+        selected = agent_profiles.Profile(instructions="r" * agent_profiles.MAX_INSTRUCTIONS, skills=names)
+        instructions = agent_profiles.instructions_for(selected)
+        config = {"provider": "claude", "model": "default", "effort": "default", "profile": "programmer",
+                  "access": "changes", "instructions": instructions}
+        task = {"instruction": "Popraw wybrany plik.",
+                "files": [{"path": "example.py", "content": "answer = 1\n", "writable": True}]}
+        with execution.using(config):
+            packet = analysis_contract.application_input(None, task=task)
+        parsed, _ = analysis_contract.parse_request(packet.encode("utf-8"))
+        body, frozen = analysis_child.native_input("analyze", parsed.encode("utf-8"))
+        self.assertEqual(json.loads(body)["task"], task)
+        self.assertEqual(frozen["instructions"], instructions)
+        for name in names:
+            with self.subTest(skill=name):
+                self.assertIn(inspect_skill(ROOT, name)[1], frozen["instructions"])
 
     def test_reject_symlink(self):
         with tempfile.TemporaryDirectory() as tmp:

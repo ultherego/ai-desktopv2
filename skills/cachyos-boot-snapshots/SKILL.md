@@ -1,58 +1,43 @@
 ---
 name: cachyos-boot-snapshots
-description: Prowadzi zmiany parametrów rozruchu, przywracanie migawek i naprawę systemu, który nie startuje. Użyj przy Limine, GRUB, systemd-boot, rEFInd, Snapper, Btrfs Assistant i pracy z Live ISO.
+description: Rozpoznaje etap awarii rozruchu i warunki przywrócenia migawki CachyOS. Użyj przy problemach z bootloaderem, initramfs, parametrami jądra lub odzyskiwaniem przez Live ISO.
 ---
 
-# Rozruch i migawki CachyOS
+# Rozruch i migawki
 
-Najpierw ustal program rozruchowy i system plików. Nie zakładaj ich: CachyOS obsługuje kilka. Wskazówki: `pacman -Q limine grub systemd refind`, `findmnt /`, `findmnt /boot`.
+## Ustal etap awarii
 
-## Procedura
+Zbierz ostatni widoczny komunikat, ostatnią zmianę, możliwość uruchomienia starszego wpisu oraz faktyczny bootloader, tryb UEFI lub BIOS i układ montowania. Zainstalowany pakiet bootloadera nie dowodzi, że jest używany. Odczyty z Live ISO opisują początkowo ten nośnik, nie zainstalowany system.
 
-1. Ustal program rozruchowy i system plików, jak wyżej.
-2. Ustal, czy system startuje. Jeśli nie, przejdź do ostatniej sekcji.
-3. Przed przywróceniem migawki sprawdź, czy obejmuje aktualizację jądra, i uprzedź o skutkach.
-4. Polecenia zmieniające rozruch opisz jako plan. Nazwę dysku ma potwierdzić użytkownik.
+| Etap | Dalsza diagnoza |
+|---|---|
+| Firmware nie pokazuje właściwego wpisu | Sprawdź tryb rozruchu i właściwą ESP; nie instaluj bootloadera w ciemno. |
+| Menu działa, lecz nie znajduje jądra lub initramfs | Porównaj ścieżki wpisu, zawartość właściwej partycji i pakiety. |
+| Jądro startuje, lecz nie montuje root | Ustal dokładny błąd, identyfikatory urządzeń, szyfrowanie i podwolumen. Przy błędach I/O zatrzymaj naprawę rozruchu i chroń dane. |
+| System osiąga usługi, ale sesja użytkownika nie działa | Przekaż diagnozę usług lub sesji; nie reinstaluj z tego powodu bootloadera. |
+| Brakuje dowodów o etapie lub dyskach | Zakończ wskazaniem potrzebnych odczytów. Nie zgaduj nazw urządzeń. |
 
-## Parametry jądra
+## Odczyt i ograniczenia
 
-| Program | Plik | Zastosowanie zmian |
-|---|---|---|
-| Limine | `/etc/default/limine` (`KERNEL_CMDLINE[default]=`), menu: `/boot/limine.conf` | `sudo limine-mkinitcpio` |
-| GRUB | `/etc/default/grub` (`GRUB_CMDLINE_LINUX_DEFAULT`) | `sudo grub-mkconfig -o /boot/grub/grub.cfg` |
-| systemd-boot | `/etc/sdboot-manage.conf` (`LINUX_OPTIONS=`) | `sudo sdboot-manage gen` |
-| rEFInd | `/boot/refind_linux.conf` | działa od razu |
+Używaj tylko danych udostępnionych przez kontroler: konfiguracji wpisów, właściwego logu i potwierdzonej mapy root, `/boot` oraz ESP. `findmnt` w piaskownicy może pokazać jej widok. Narzędzia wymagające administratora, interaktywnego chroot lub restartu opisuj jako ręczny plan; brak dostępu nie uzasadnia eskalacji ani zmiany polityki.
 
-Wpisy Limine utrzymuje `limine-mkinitcpio-hook`: nie edytuj ich ręcznie. Odczyt `/boot` może wymagać uprawnień administratora.
+## Warunki przywrócenia migawki
 
-## Migawki Btrfs
+1. Potwierdź konfigurację Snappera, zakres wybranej migawki i datę względem awarii. Migawka nie obejmuje automatycznie zagnieżdżonych podwolumenów, ESP ani osobnego `/boot` i nie zastępuje backupu.
+2. Sprawdź zgodność przywracanego root z jądrem, initramfs i modułami. Przy aktualizacji jądra wynik zależy od układu i mechanizmu przywracania; nie obiecuj powodzenia ani bezwarunkowej niemożliwości rollbacku.
+3. Wskaż, jakie nowsze dane i konfiguracje zostaną zastąpione. Zaplanuj zachowanie obecnego stanu i drogę odzyskania przed zgodą.
 
-- `snap-pac` robi migawki przed i po operacjach pacmana. Snapper domyślnie obejmuje tylko `/`; podwolumeny, np. `/home`, wymagają osobnych konfiguracji.
-- **Migawki nie zastępują kopii zapasowych.** Pomagają po złej aktualizacji, błędzie konfiguracji i przypadkowym usunięciu. Nie pomagają przy awarii dysku ani programu rozruchowego.
-- Wiki zaleca trzymać około 10 migawek. Starsze mogą sprawiać kłopoty przy przywracaniu.
-- **Migawki z aktualizacją jądra może nie dać się przywrócić.** Zawsze o tym uprzedź.
-- Stan: `sudo snapper list`, `sudo snapper get-config`. Usuwanie: `sudo snapper delete NUMER`, potem odświeżenie wpisów rozruchu.
-- Graficznie: Btrfs Assistant (`btrfs-assistant-launcher`).
+## Zmiana i weryfikacja
 
-Limine: menu `/etc/limine-snapper-sync.conf` (`MAX_SNAPSHOT_ENTRIES`, `SNAPSHOT_FORMAT_CHOICE`).
+Przy parametrze jądra wskaż właściwy plik dla wykrytego bootloadera, dokładny diff i sposób regeneracji wynikający z używanego narzędzia. Nie edytuj ręcznie generowanych wpisów. Cofnięcie ma przywrócić poprzedni parametr i właściwe wygenerowane pliki.
 
-## Przywracanie
+Reinstalację bootloadera lub jądra rozważaj dopiero po dowodzie uszkodzenia albo brakujących plików. Wymaga potwierdzenia urządzeń, montowań, dostępu do odzyskania i osobnej zgody. Po zmianie sprawdź pliki i spójność konfiguracji; dopiero kontrolowany rozruch potwierdza działanie. Przywrócenie root nie cofa automatycznie zmian w ESP.
 
-- Limine: menu rozruchu, Snapshots, wybór migawki i jądra. System startuje tylko do odczytu; „Restore now" i potwierdzenie `yes`.
-- GRUB: start z migawki, Btrfs Assistant, Snapper, Browse/Restore, Restore, restart.
+## Wynik
 
-## System się nie uruchamia
+Podaj etap awarii, dowód, zakres proponowanej zmiany i warunek jej wykonania. Oddziel sprawdzoną konfigurację od nieprzetestowanego jeszcze rozruchu.
 
-1. Start z CachyOS Live ISO.
-2. `sudo cachy-chroot` (przy Btrfs z ustawieniami CachyOS potwierdź preset; montuje `/boot`, dla GRUB `/boot/efi`).
-3. Ponowna instalacja programu rozruchowego:
-   - Limine UEFI: `sudo limine-install`; MBR: `sudo limine bios-install /dev/sdX`;
-   - GRUB UEFI: `sudo grub-install --target=x86_64-efi --efi-directory=/boot/efi --bootloader-id=cachyos`;
-   - systemd-boot: `sudo bootctl install`; rEFInd: `sudo refind-install`.
-4. `sudo pacman -Syu linux-cachyos linux-cachyos-headers`, `exit`, restart.
+## Źródła
 
-Czarny ekran na starszych kartach NVIDIA: wiki podaje parametry `plymouth.enable=0 disablehooks=plymouth`.
-
-Polecenia z `/dev/sdX` są niebezpieczne: nazwę dysku ma potwierdzić użytkownik.
-
-Źródła: <https://wiki.cachyos.org/configuration/btrfs_snapshots/>, <https://wiki.cachyos.org/configuration/boot_manager_configuration/>, <https://wiki.cachyos.org/cachyos_basic/faq/>.
+- [Konfiguracja programów rozruchowych](https://wiki.cachyos.org/configuration/boot_manager_configuration/).
+- [Migawki i przywracanie](https://wiki.cachyos.org/configuration/btrfs_snapshots/#restoring-from-a-snapshot).

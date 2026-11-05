@@ -1,30 +1,36 @@
 ---
 name: arch-audio
-description: Diagnozuje dźwięk PipeWire i WirePlumber w Arch Linux. Użyj, gdy nie ma dźwięku, urządzenie nie jest widoczne, dźwięk się przerywa albo słuchawki Bluetooth zmieniają profil.
+description: Diagnozuje brak dźwięku, niewidoczne urządzenia, przerwy i zmianę profilu Bluetooth w stosie PipeWire/WirePlumber. Użyj, gdy trzeba rozdzielić problem sesji, urządzenia, routingu i pojedynczej aplikacji.
 ---
 
-# Dźwięk: PipeWire w Arch Linux
+# Diagnostyka dźwięku
 
-## Procedura
+## Zakres i dostęp
 
-1. Sprawdź usługi użytkownika: `systemctl --user status pipewire pipewire-pulse wireplumber`.
-2. Przeczytaj log: `journalctl --user -u pipewire -u pipewire-pulse -u wireplumber -b`.
-3. Sprawdź serwer: `pactl info`. Powinno być `Server Name: PulseAudio (on PipeWire ...)`.
-4. Sprawdź wyjścia: `pactl list sinks` (stan, wyciszenie, nazwa) i `wpctl status`.
-5. Ustal, czy problem dotyczy jednego programu, czy wszystkich, i dopiero wtedy wskaż przyczynę.
+Ustal wyjście lub mikrofon, program dotknięty problemem, moment wystąpienia i ostatnią zmianę. Najpierw potwierdź używany serwer dźwięku; nie przenoś konfiguracji WirePlumbera na inny stos.
 
-Te polecenia wymagają sesji użytkownika. Jeśli program uruchamia polecenia bez niej, zawiodą mimo działającego dźwięku: poproś o uruchomienie w terminalu.
+Odczyty sesji użytkownika wymagają jej gniazd. Piaskownica poleceń AI Desktop ich nie udostępnia: błąd połączenia z magistralą lub PipeWire nie dowodzi awarii dźwięku. Nie przenoś odczytu do `change`, nie montuj gniazd i nie zmieniaj polityki samodzielnie. Jeśli nie ma dostępnego źródła stanu sesji, poproś o jeden potrzebny wynik z terminala użytkownika.
 
-## Konfiguracja
+## Rozpoznanie i decyzje
 
-- Domyślne ustawienia WirePlumbera: `/usr/share/wireplumber`. Własne fragmenty dodawaj w `/etc/wireplumber` lub `~/.config/wireplumber`, nie edytuj plików z pakietu.
-- Od WirePlumbera 0.5 konfiguracja jest w `.conf`, a nie `.lua`: starsze poradniki są nieaktualne.
-- `pipewire-pulse` zastępuje PulseAudio. Sprawdź, czy nie działa równolegle `pulseaudio.service`.
+1. Gdy odpowiednie odczyty są dostępne, ustal stan `pipewire.service`, `pipewire-pulse.service` i `wireplumber.service` przez `systemctl --user status`. Aktywna usługa nie dowodzi jeszcze poprawnego routingu. Przy nieudanej jednostce czytaj tylko jej dziennik z czasu błędu.
+2. `wpctl status` pokazuje urządzenia, wyjścia, wejścia i strumienie. Brak całego urządzenia prowadzi do wykrywania sprzętu i jego profilu; brak tylko strumienia prowadzi do aplikacji.
+3. Dla identyfikatora z aktualnego wyniku użyj dozwolonego `wpctl inspect ID` i `wpctl get-volume ID`. Numery są chwilowe: nie zapisuj ich jako stałej identyfikacji urządzenia.
+4. Wyjście istnieje, ale jest wyciszone lub wybrano inne domyślne: opisz konkretną różnicę. Nie zmieniaj głośności ani domyślnego urządzenia w kroku odczytu.
+5. Tylko jedna aplikacja zawodzi przy działającym innym odtwarzaniu: zbadaj jej strumień, wybór urządzenia i ograniczenia aplikacji, zanim zaproponujesz restart całego stosu.
+6. Pogorszenie jakości Bluetooth po użyciu mikrofonu: sprawdź aktywny profil i wymagania rozmowy. Nie wyłączaj automatycznego przełączania, jeśli mikrofon jest potrzebny. Problem parowania należy do `arch-bluetooth`, jeśli ten Skill jest dostępny.
 
-## Znane sprawy
+## Zmiana i sprawdzenie
 
-- Słuchawki Bluetooth przełączają się na gorszy profil przy mikrofonie: wyłączenie `wpctl settings --save bluetooth.autoswitch-to-headset-profile false`.
-- Opóźnienie dla jednego programu: `PIPEWIRE_LATENCY="128/48000" program`.
-- Dźwięk przez HDMI z karty AMD: zobacz Skill `arch-amdgpu`.
+Najpierw pokaż bieżący i proponowany stan, koszt dla mikrofonu/innych aplikacji oraz cofnięcie. Zmiany profilu, routingu, wyciszenia i ustawień zapisanych przez `wpctl` wymagają osobnej zgody. Nie kasuj całej konfiguracji ani stanu jako pierwszej próby.
 
-Źródło: Arch Wiki, <https://wiki.archlinux.org/title/PipeWire>.
+Dla zmiany pliku ustal wersję WirePlumbera i użyj dokumentacji tej wersji; nie mieszaj starszego formatu Lua z konfiguracją 0.5+. Testuj to samo wyjście, tę samą aplikację, a przy zestawie słuchawkowym również mikrofon. Restart usługi przerywa aktywny dźwięk i nie jest testem naprawy sam w sobie.
+
+## Wynik
+
+Wskaż warstwę awarii, dowód oraz zakres: urządzenie, profil, strumień lub aplikacja. Przy braku sesji zgłoś ograniczenie obserwacji i jeden następny odczyt; nie diagnozuj na podstawie błędu piaskownicy.
+
+## Źródła
+
+- [WirePlumber: `status`, `inspect`, `get-volume`, ustawienia](https://pipewire.pages.freedesktop.org/wireplumber/man/wpctl.html).
+- [Konfiguracja i sprawdzanie sesji](https://pipewire.pages.freedesktop.org/wireplumber/daemon/getting_started.html).
