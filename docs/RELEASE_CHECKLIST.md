@@ -7,7 +7,7 @@ Dla opiekunów projektu. Odhaczaj dla konkretnego commita: wynik innego commita 
 - [ ] Numer `pkgver-pkgrel` w `packaging/arch/PKGBUILD` jest nowy.
 - [ ] Ten sam numer w README (wiersz o aktualnym pakiecie i nazwa pliku w bloku instalacji), na górze `CHANGELOG.md`,
       w `scripts/accept_web_candidate.fish` i `tests/host_analysis_acceptance.py`.
-- [ ] Wersja klienta w README i w `ai_desktop/analysis_contract.py` jest ta sama, a suma kontrolna w README pasuje do pobranego pliku.
+- [ ] Wersja klienta w README i w `ai_desktop/analysis_contract.py` jest ta sama, a suma kontrolna w README i `PKGBUILD` jest ta sama i pasuje do pobranego pliku.
 - [ ] Wpis w `CHANGELOG.md` opisuje zmiany prostym językiem.
 
 ## Testy

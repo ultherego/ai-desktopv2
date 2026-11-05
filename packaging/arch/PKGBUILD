@@ -14,6 +14,8 @@ options=('!strip')  # Preserve an optionally supplied official native binary.
 install=ai-desktop.install
 source=()
 sha256sums=()
+# The one official client this package may carry. A wrong file stops the build; it is never run during the build.
+_claude_code_sha256=4f4178ce41d83e23341ebfbaecdbcf8ea6bf7baea0690025abe49eeec3a5d01d
 
 package() {
     local root="${startdir}/../.."
@@ -76,6 +78,12 @@ package() {
     if [[ -e "${startdir}/claude-code" || -L "${startdir}/claude-code" ]]; then
         [[ -f "${startdir}/claude-code" && ! -L "${startdir}/claude-code" ]] || return 1
         [[ "$(head -c4 "${startdir}/claude-code" | od -An -tx1 | tr -d ' \n')" == 7f454c46 ]] || return 1
+        local digest
+        digest="$(sha256sum "${startdir}/claude-code")" || return 1
+        if [[ "${digest%% *}" != "${_claude_code_sha256}" ]]; then
+            echo "REFUSED: claude-code has the wrong SHA-256; remove the file and download it again" >&2
+            return 1
+        fi
         install -m755 "${startdir}/claude-code" "${target}/claude-code"
     fi
     # Optional pinned official Codex client. Never fetch or execute at build time.

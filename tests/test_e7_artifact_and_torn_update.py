@@ -2,6 +2,7 @@
 (2) a torn update of a real staged package is detected by file integrity, the protocol refuses the mix, the same artifact
 restores it, and user data never changes; (3) the hook's upgrade/removal paths are exercised, not just grepped."""
 import hashlib
+import re
 import os
 from pathlib import Path
 import shutil
@@ -89,6 +90,9 @@ class PublicArtifactTests(unittest.TestCase):
             self.assertNotEqual((self.temp / "pkg" / name).read_bytes()[:4], b"\x7fELF", name)    # no ELF anywhere in the artifact
 
     def test_the_default_private_build_keeps_the_owners_documented_local_copy_byte_for_byte(self):
+        recipe = self.tree / "packaging/arch/PKGBUILD"
+        recipe.write_text(re.sub(r"_claude_code_sha256=[0-9a-f]{64}",
+                                 "_claude_code_sha256=" + hashlib.sha256(FAKE_ELF).hexdigest(), recipe.read_text()))
         result = stage(self.tree, self.temp / "pkg", client=self.client)
         self.assertEqual(result.returncode, 0, result.stderr[-600:])
         packaged = self.temp / "pkg/usr/lib/ai-desktop/claude-code"

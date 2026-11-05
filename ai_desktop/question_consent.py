@@ -11,13 +11,14 @@ from .analysis_contract import (MAX_MESSAGE_BYTES, AnalysisConsent, AnalysisDeni
                                 validate_context, validate_question)
 from .assistant_contract import validate_access, file_selections, selected_file_ids
 from .execution import current as current_execution, current_history
+from .permissions import Policy
 
 
 class ConversationConsent:
     """The owner's single yes for one conversation, in this process only and never saved.
 
-    It covers later questions only while the captured permissions and the recipient stay the same: an edited
-    permissions.toml or another service asks again. It replaces the prompt, not the checks: every question still gets
+    It covers later questions only while the whole permissions.toml and the recipient stay the same: any edit, also one
+    that only removes a deny rule or changes a limit, or another service asks again. It replaces the prompt, not the checks: every question still gets
     its own QuestionConsent with a deadline and bound payloads, and writes and changes keep their separate approvals.
     """
 
@@ -26,7 +27,11 @@ class ConversationConsent:
 
     @staticmethod
     def _state(snapshot):
-        return canonical({"access": snapshot.access, "sources": snapshot.sources, "execution": current_execution()})
+        # `access` lists what the model may ask for; deny rules, limits and process sharing are only in the file itself.
+        source = getattr(snapshot, "policy", None)
+        policy = source.fingerprint() if type(source) is Policy else None
+        return canonical({"access": snapshot.access, "sources": snapshot.sources, "execution": current_execution(),
+                          "policy": policy})
 
     def covers(self, snapshot):
         return self._binding is not None and self._binding == self._state(snapshot)

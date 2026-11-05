@@ -2,6 +2,8 @@
 
 ## Niewydane
 
+- `ai-desktop ask`: zgoda na rozmowę obejmuje cały `permissions.toml`. Usunięcie reguły `deny`, zmiana limitu albo `share_processes` wymaga nowej zgody. Wcześniej stara zgoda nadal obowiązywała.
+- Instalacja: `PKGBUILD` sprawdza sumę SHA-256 klienta Claude i odmawia budowy przy złym pliku. Blok w README nie uruchamia pliku przy błędnej sumie.
 - Nowe Skille `arch-*` oparte na Arch Wiki: pacman, systemd, Btrfs, amdgpu, dźwięk, sieć, Bluetooth, zram, Docker.
 - `ai-desktop ask`: Skille ładowane na żądanie. Przy każdym pytaniu idą tylko nazwy i opisy; treść idzie wtedy, gdy model o nią poprosi, a program to pokazuje. Skille CachyOS zaczynają się teraz od procedury.
 - Rozumowanie `xhigh` i `max`: model może odpowiadać do 15 minut (było 260 s). Gdy czas minie, komunikat mówi o czasie, a nie o wygasłej zgodzie.

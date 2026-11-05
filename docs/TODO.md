@@ -14,12 +14,12 @@ Stan: pakiet `0.1.0-70`. Ograniczenia obecnej wersji opisuje [KNOWN_LIMITATIONS.
 - [x] `material` i `project`: ponowne sprawdzenie polityki przed każdym przekazaniem danych (test na prawdziwym systemie przed scaleniem).
 - [x] Zapis istniejącego pliku nie nadpisuje równoczesnego zapisu edytora (wymiana `RENAME_EXCHANGE` z porównaniem; test na prawdziwym systemie przed scaleniem).
 - [x] `commands.change`: gdy zgoda wygaśnie lub polityka się zmieni w trakcie polecenia, wynik jest pokazany i odnotowany, a program podaje test i wycofanie do uruchomienia ręcznie.
-- [ ] README: blok instalacji nie zatrzymuje się po błędnej sumie klienta, a `PKGBUILD` sprawdza tylko nagłówek ELF, nie sumę. Dodać sprawdzenie sumy w `PKGBUILD` i `set -e`/`and` w instrukcji.
-- [ ] `ConversationConsent`: wiązanie zgody pomija `deny`, część limitów i `share_processes`.
+- [x] Błędna suma klienta: README nie uruchamia pliku, a `PKGBUILD` odmawia budowy.
+- [x] `ConversationConsent`: zgoda na rozmowę obejmuje cały `permissions.toml`.
 - [ ] Pamięć rozmowy po cofnięciu dostępu: zredagowana odpowiedź i argumenty poleceń mogą przenosić treść cofniętego pliku.
 - [ ] Odciąć w piaskownicy poleceń odczytu gniazda Unix hosta (D-Bus, Docker), bez dawania poleceniom sieci.
 - [ ] Sprawdzić ogólny filtr wywołań systemowych dla klienta.
-- [ ] Przypiąć klienta sumą kontrolną pliku, nie tylko zgłaszaną wersją.
+- [x] Przypiąć klienta Claude sumą kontrolną przy budowie pakietu.
 - [ ] Sprawdzić w CI polecenia z prawdziwym Bubblewrap; dziś te testy są pomijane na runnerze.
 - [ ] Sprawdzić warunki Anthropic dla programu uruchamiającego Claude Code z logowaniem subskrypcyjnym.
 - [ ] Niezależny przegląd bezpieczeństwa przed wersją 1.0.

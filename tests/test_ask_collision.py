@@ -146,6 +146,8 @@ class CollisionFilesystemTests(unittest.TestCase):
         script = [QUESTION, 'tak', choice]
         if choice != 'anuluj' and not deny_read and not refused:
             script.append(write)           # a refused plan ends the turn before any write question
+        if mutation and refused:
+            script.append('tak')           # an edited permissions.toml asks for the conversation's consent again
         replies = iter(script + [''])
         def reader(prompt):
             value = next(replies)

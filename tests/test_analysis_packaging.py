@@ -1,5 +1,6 @@
 """Real staging of the optional runtime; never install or execute Claude."""
 import hashlib
+import re
 import os
 from pathlib import Path
 import shutil
@@ -12,6 +13,12 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class AnalysisPackagingTests(unittest.TestCase):
+    def test_the_readme_and_the_recipe_pin_the_same_client_and_a_wrong_sum_stops_before_the_file_runs(self):
+        recipe = (ROOT / "packaging/arch/PKGBUILD").read_text()
+        pinned = re.search(r"^_claude_code_sha256=([0-9a-f]{64})$", recipe, re.M).group(1)
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        self.assertIn("echo '" + pinned + "  claude-code' | sha256sum -c -\nand chmod 755 claude-code\nand ./claude-code --version", readme)
+
     def test_optional_native_asset_is_unchanged_or_refused_without_execution(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp) / "tree"
@@ -29,6 +36,13 @@ class AnalysisPackagingTests(unittest.TestCase):
             self.assertFalse(target.exists())
             fake = b"\x7fELF" + b"SYNTHETIC NONEXECUTABLE RUNTIME" * 50
             asset.write_bytes(fake)
+            refused = stage()                                                # the real pinned sum rejects another file
+            self.assertNotEqual(refused.returncode, 0)
+            self.assertIn(b"wrong SHA-256", refused.stderr)
+            self.assertFalse(target.exists())
+            recipe = asset.parent / "PKGBUILD"
+            recipe.write_text(re.sub(r"_claude_code_sha256=[0-9a-f]{64}",
+                                     "_claude_code_sha256=" + hashlib.sha256(fake).hexdigest(), recipe.read_text()))
             self.assertEqual(stage().returncode, 0)
             self.assertEqual(hashlib.sha256(target.read_bytes()).digest(), hashlib.sha256(fake).digest())
             self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o755)

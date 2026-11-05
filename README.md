@@ -31,11 +31,12 @@ sudo pacman -S --needed base-devel git fish python bubblewrap libseccomp sudo py
 git clone https://github.com/ultherego/ai-desktopv2.git ~/Projekty/ai-desktop
 cd ~/Projekty/ai-desktop/packaging/arch
 
-# 3. Oficjalny klient Claude Code 2.1.312 (jednorazowo; przy FAILED zatrzymaj się)
+# 3. Oficjalny klient Claude Code 2.1.312 (jednorazowo). Przy błędnej sumie plik nie zostanie uruchomiony,
+#    a budowa w kroku 4 odmówi: usuń wtedy plik i pobierz go ponownie.
 curl -fL -o claude-code https://downloads.claude.ai/claude-code-releases/2.1.312/linux-x64/claude
 echo '4f4178ce41d83e23341ebfbaecdbcf8ea6bf7baea0690025abe49eeec3a5d01d  claude-code' | sha256sum -c -
-chmod 755 claude-code
-./claude-code --version      # ma być: 2.1.312 (Claude Code)
+and chmod 755 claude-code
+and ./claude-code --version  # ma być: 2.1.312 (Claude Code)
 
 # 4. Budowa i instalacja pakietu (wersja w nazwie pliku = pkgrel z PKGBUILD)
 makepkg --cleanbuild
