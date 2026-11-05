@@ -27,13 +27,13 @@ Działa i jest scalone:
 
 | Zadanie | Stan |
 |---|---|
-| Cofanie zmiany nie nadpisuje ani nie usuwa nowszego zapisu edytora, zarówno przy edycji, jak i przy nowym pliku | w toku |
+| Cofanie zmiany nie nadpisuje ani nie usuwa nowszego zapisu edytora, zarówno przy edycji, jak i przy nowym pliku | gotowe |
 | Suma SHA-256 klienta sprawdzana przy budowie pakietu | gotowe |
 | Zgoda na rozmowę obejmuje cały `permissions.toml` | gotowe |
-| Długie polecenie zmiany nie jest odrzucane na etapie edycji (`ask` przyjmuje 128 KiB, edycja 2 KiB) | w toku |
-| Słowo zaczynające się od `/` da się wysłać jako pytanie, zgodnie z komunikatem programu | w toku |
-| 129. usunięcie do kosza jest odrzucane przed wykonaniem | w toku |
-| Edycja pliku z BOM i końcami linii Windows zachowuje jego format, a cofnięcie przywraca te same bajty | w toku |
+| Długie polecenie zmiany nie jest odrzucane na etapie edycji (`ask` przyjmuje 128 KiB, edycja 2 KiB) | gotowe |
+| Słowo zaczynające się od `/` da się wysłać jako pytanie, zgodnie z komunikatem programu | gotowe |
+| 129. usunięcie do kosza jest odrzucane przed wykonaniem | gotowe |
+| Edycja pliku z BOM i końcami linii Windows zachowuje jego format, a cofnięcie przywraca te same bajty | gotowe |
 
 **Ukończone, gdy:** testy odtwarzają równoczesny zapis przy cofaniu obu rodzajów zmian, a wersja edytora zostaje na miejscu.
 
@@ -41,8 +41,8 @@ Działa i jest scalone:
 
 | Zadanie | Stan |
 |---|---|
-| Końcowa odpowiedź po odczycie pliku dostaje wyniki poleceń i wczytane Skille | w toku |
-| Etap edycji dostaje ustalenia z rozmowy, pamięć zadania, wyniki rozpoznania i Skille | w toku |
+| Końcowa odpowiedź po odczycie pliku dostaje wyniki poleceń i wczytane Skille | gotowe |
+| Etap edycji dostaje ustalenia z rozmowy, pamięć zadania, wyniki rozpoznania i Skille | gotowe |
 | To samo w `project` | do zrobienia |
 | Skill wczytany w rozmowie jest dostępny w kolejnych pytaniach bez dodatkowego wywołania modelu | do zrobienia |
 | Skille na żądanie także w `material`, `project` i `task` | do zrobienia |
@@ -54,10 +54,10 @@ Działa i jest scalone:
 
 | Zadanie | Stan |
 |---|---|
-| Wynik wykonanej zmiany zostaje w pamięci, gdy następne żądanie do modelu się nie uda | w toku |
-| Niezależna odpowiedź nie jest usuwana tylko dlatego, że wcześniejsza tura zależała od cofniętego pliku | w toku |
-| Treść cofniętego pliku nie przetrwa w faktach kontrolera, np. w argumencie polecenia | w toku |
-| Rozmowa z wieloma zależnymi plikami daje się zapisać | w toku |
+| Wynik wykonanej zmiany zostaje w pamięci, gdy następne żądanie do modelu się nie uda | gotowe |
+| Niezależna odpowiedź nie jest usuwana tylko dlatego, że wcześniejsza tura zależała od cofniętego pliku | gotowe |
+| Treść cofniętego pliku nie przetrwa w faktach kontrolera, np. w argumencie polecenia | gotowe |
+| Rozmowa z wieloma zależnymi plikami daje się zapisać | gotowe |
 
 **Ukończone, gdy:** po błędzie usługi model nie proponuje ponownie wykonanej zmiany, a po cofnięciu dostępu w kolejnych żądaniach nie ma danych z tego pliku.
 
