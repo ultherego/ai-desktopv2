@@ -19,6 +19,7 @@ from unittest.mock import Mock, patch
 from ai_desktop import assistant_contract as plans, assistant_flow as flow, directory_context, execution, permissions
 from ai_desktop import ask_discovery, discovery_contract as dc, permissions as p
 from ai_desktop.analysis_contract import AnalysisConsent, AnalysisDenied, Approval
+from ai_desktop.question_consent import ConversationConsent
 
 QUESTION = "Jakie panele ma skonfigurowane Gizmo?"
 ANSWER = "Odpowiedź wyłącznie z odczytanych danych."
@@ -104,7 +105,7 @@ class Base(unittest.TestCase):
         os.symlink("../gizmo/settings.conf", self.home / ".config/gizmo-suite/settings-link")
 
     def run_flow(self, responses, *, question=QUESTION, provider="claude", before=None, instructions="",
-                 access="read-only", skills=None):
+                 access="read-only", skills=None, consent=None):
         observed, attempts = [], []
         self.wire, self.attempts = observed, attempts
         self.reads.clear()
@@ -138,7 +139,7 @@ class Base(unittest.TestCase):
         profile = {"provider": provider, "model": "default", "effort": "default", "instructions": instructions,
                    "profile": "diagnostic", "access": access}
         with execution.using(profile):
-            return flow.run(question, options(), self.reader, request, skills=skills)
+            return flow.run(question, options(), self.reader, request, skills=skills, conversation_consent=consent)
 
     def refused(self, responses, **kwargs):
         with self.assertRaises(flow.file_context.FileReadDenied):
@@ -159,6 +160,54 @@ class SkillsOnDemandTests(Base):
 
     def load(self, name):
         return {"przyklad": self.BODY, "inny": "NIE-WYSYLAC"}.get(name)
+
+    def test_skill_body_obeys_the_owners_budget_and_the_final_transfer_rechecks_it(self):
+        self.write_policy('discovery_bytes = "2KiB"\n')
+        from ai_desktop import skills
+        body = skills.inspect_skill(skills.ROOT, "arch-btrfs", secure=True)[1]
+        with self.assertRaises(flow.file_context.FileReadDenied):
+            self.run_flow([json.dumps({"action": "skill", "names": ["arch-btrfs"]})], skills=lambda name: body)
+        self.assertEqual(len(self.wire), 1)
+        self.assertNotIn(body, json.dumps(self.wire))
+        policy = p.load_policy()
+        document = {"steps": [{"op": "skill", "name": "arch-btrfs", "status": "ok", "text": body}],
+                    "remaining": {"rounds": 1, "corrections": 0, "commands": 0}}
+        with self.assertRaisesRegex(ValueError, "discovery_bytes"):
+            directory_context.recheck_discovery(directory_context.DiscoverySnapshot(policy, document, ()))
+
+    def test_assigned_procedure_works_without_file_or_command_permissions(self):
+        self.config.unlink()
+        self.run_flow([json.dumps({"action": "skill", "names": ["example"]}), ANSWER_PLAN], skills=lambda n: self.BODY)
+        self.assertEqual(self.steps(1)[0]["text"], self.BODY)
+        self.assertEqual(self.wire[0]["access"]["files"], [])
+        self.assertEqual(self.wire[1]["discovery"]["remaining"], {"rounds": 0, "corrections": 0, "commands": 0})
+        doc = self.wire[1]["discovery"]
+        other_step = {"op": "run", "argv": ["uname"], "status": "ok", "exit": 0, "output": "x", "truncated": False}
+        with self.assertRaises(ValueError):
+            directory_context.recheck_discovery(directory_context.DiscoverySnapshot(None, {**doc, "steps": [other_step]}, ()))
+
+    def test_followup_starts_with_unchanged_procedure_and_no_extra_round(self):
+        consent = ConversationConsent()
+        bodies = {"one": "body one", "two": "body two", "three": "body three"}
+        self.run_flow([json.dumps({"action": "skill", "names": list(bodies)}), ANSWER_PLAN],
+                      skills=bodies.get, consent=consent)
+        bodies["two"] = "changed"
+        del bodies["three"]
+        self.run_flow([ANSWER_PLAN], skills=bodies.get, consent=consent, question="Continue.")
+        self.assertEqual(len(self.wire), 1)
+        self.assertEqual([step["text"] for step in self.steps(0)], ["body one"])
+        self.assertEqual(self.confirm.call_count, 1)
+        self.run_flow([ANSWER_PLAN], skills=bodies.get, consent=consent, provider="codex")
+        self.assertNotIn("discovery", self.wire[0])
+        self.assertEqual(self.confirm.call_count, 2)
+
+    def test_reassignment_between_the_followup_plan_and_authorization_blocks_transfer(self):
+        consent = ConversationConsent()
+        bodies = {"one": "only while assigned"}
+        self.run_flow([json.dumps({"action": "skill", "names": ["one"]}), ANSWER_PLAN], skills=bodies.get, consent=consent)
+        with self.assertRaises(AnalysisDenied):
+            self.run_flow([ANSWER_PLAN], skills=bodies.get, consent=consent, before=lambda *unused: bodies.clear())
+        self.assertEqual(self.wire, [])
 
     def test_the_body_leaves_only_after_the_model_asks_and_only_that_skill(self):
         result = self.run_flow([json.dumps({"action": "skill", "names": ["przyklad"]}), ANSWER_PLAN],

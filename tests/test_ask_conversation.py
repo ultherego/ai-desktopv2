@@ -172,7 +172,7 @@ class ConversationLoopTests(unittest.TestCase):
                 raise ask.AnalysisDenied("network")
             seen.append(execution.current_memory())
             return "Odpowiedź"
-        with patch.object(ask.assistant_flow, "run", side_effect=flow):
+        with patch.object(ask.assistant_flow, "_run_once", side_effect=flow):
             self.run_ui([], ["Zmień", "Co zrobiłeś?", ""])
         self.assertTrue(any("systemctl restart foo.service" in entry["text"] for entry in seen[0]["entries"]))
 
@@ -184,7 +184,7 @@ class ConversationLoopTests(unittest.TestCase):
                 raise ask.AnalysisDenied("network")
             seen.append(execution.current_history())
             return "Odpowiedź"
-        with patch.object(ask.assistant_flow, "run", side_effect=flow):
+        with patch.object(ask.assistant_flow, "_run_once", side_effect=flow):
             self.run_ui([], ["Pierwsze", "Drugie", ""])
         self.assertEqual(seen[0], [])
 

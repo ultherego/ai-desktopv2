@@ -16,7 +16,7 @@ class PreparedSkillWholeAnalysisTests(unittest.TestCase):
             home = Path(temporary)
             installed = home / "installed-skills"
             installed.mkdir(mode=0o755)
-            for name in profiles.PRESET_SKILLS.values():
+            for name in {name for group in profiles.PRESET_SKILLS.values() for name in group}:
                 directory = installed / name
                 directory.mkdir(mode=0o755)
                 path = directory / "SKILL.md"

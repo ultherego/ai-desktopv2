@@ -43,12 +43,23 @@ class Scan:
 
 def recheck_discovery(snapshot):
     """Check the exact policy and the immutable alias identities of every step before a transfer."""
-    if (type(snapshot) is not DiscoverySnapshot or type(snapshot.policy) is not permissions.Policy
-            or type(snapshot.guards) is not tuple
+    if (type(snapshot) is not DiscoverySnapshot or type(snapshot.guards) is not tuple
             or any(type(guard) is not permissions._AliasGuard for guard in snapshot.guards)):
         raise ValueError("files-selection")
-    validate_discovery(snapshot.document)
+    document = validate_discovery(snapshot.document)
     policy = snapshot.policy
+    if policy is None:
+        if snapshot.guards or any(step["op"] != "skill" for step in document["steps"]):
+            raise ValueError("files-selection")
+        limit = permissions.Limits().discovery_bytes
+    elif type(policy) is permissions.Policy:
+        limit = policy.limits().discovery_bytes
+    else:
+        raise ValueError("files-selection")
+    if _byte_size(document) > limit:
+        raise ValueError("discovery_bytes")
+    if policy is None:
+        return
     policy.recheck()
     for guard in snapshot.guards:
         if (not permissions._enumerable(policy, guard.alias)

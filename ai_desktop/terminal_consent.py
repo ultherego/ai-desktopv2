@@ -15,6 +15,7 @@ from .terminal_style import paint
 
 PROMPTS = {
     "ask-question": "Send this request to Claude? [y/n]: ",
+    "switch-provider": "Use this recipient for the conversation and send this context with future requests? [y/n/view]: ",
     "files-read": "Read these files for the question? [y/n]: ",
     "save-thread": "Save this conversation locally so you can come back to it? [y/n]: ",
     "run-change": "This CHANGE can alter the system. Type yes to run it (or n): ",
@@ -27,6 +28,7 @@ PROMPTS = {
     "material-whole": "Send the whole file to Claude in these requests? [y/n]: ",
     "material-task": "Send to Claude? [y/n]: ",
     "project-task": "Send to Claude? [y/n]: ",
+    "project-test": "Run the project tests on this isolated copy? [y/n]: ",
     "project-delete": "Delete these files (they go to the task trash and can be restored)? [y/n]: ",
     "restore": "Restore the deleted files? [y/n]: ",
     "project-continue": "Continue the analysis with Claude (next stage)? [y/n]: ",
@@ -73,7 +75,7 @@ def fresh_input(prompt, *, max_bytes=MAX_ANSWER_BYTES):
 STRICT = frozenset({"run-change", "run-undo"})        # only the whole word "yes" counts, never "y"
 
 
-def confirm(action, *, reader=input, config=UNSET):
+def confirm(action, *, reader=input, config=UNSET, preview=None):
     """Require an explicit yes/no; retries do not renew authorization."""
     if type(action) is not str or action not in PROMPTS:
         raise ValueError("consent action")
@@ -90,6 +92,9 @@ def confirm(action, *, reader=input, config=UNSET):
         if type(answer) is not str:
             raise ValueError("terminal answer type")
         answer = answer.strip().casefold()
+        if action == "switch-provider" and preview is not None and answer in ("v", "view"):
+            preview()
+            continue
         if answer == "yes" or (answer == "y" and action not in STRICT):
             return True
         if answer in ("n", "no"):

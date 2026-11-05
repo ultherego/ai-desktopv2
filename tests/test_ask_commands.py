@@ -108,6 +108,12 @@ class ControlsTests(unittest.TestCase):
         self.assertIsNone(self.controls.load_skill("b"))                   # exists on disk, not assigned to this agent
         self.assertIsNone(self.controls.load_skill("../sekret"))
 
+    def test_catalog_failure_stops_the_question_before_a_full_prompt_can_be_sent(self):
+        full = dict(BASE, instructions="private skill body")
+        with execution.using(full), patch.object(profiles, "catalog_for", side_effect=profiles.ProfileError("size")):
+            with self.assertRaises(profiles.ProfileError):
+                self.controls.activate()
+
     def test_a_menu_starts_on_the_current_value_and_choosing_it_changes_nothing(self):
         before = execution.current()
         offered = []

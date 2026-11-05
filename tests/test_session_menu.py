@@ -88,7 +88,8 @@ class SessionMenuTests(unittest.TestCase):
         dispatch = Mock(return_value=7)
         result, _, _ = self.run_menu([0, 1], dispatch=dispatch)
         self.assertEqual(result, 7)
-        dispatch.assert_called_once_with(["ask", "--session", ident])
+        dispatch.assert_called_once_with(["ask", "--session", ident, "--provider", "claude", "--agent", "default",
+                                          "--model", "default", "--effort", "default"])
         self.assertTrue(self.path(ident).is_file())
 
     def test_saved_service_labels_ignore_current_service_in_list_menu_and_preview(self):
@@ -126,7 +127,7 @@ class SessionMenuTests(unittest.TestCase):
         self.assertIn("Claude", item)
         self.assertNotIn("Codex", item)
 
-    def test_service_switch_keeps_existing_resume_binding_guard(self):
+    def test_resume_selects_the_saved_provider_even_if_the_global_default_changed(self):
         profiles = agent_profiles.Store(home=self.home)
         profiles.mutate(lambda config: config.with_provider("codex"))
         selected = agent_profiles.resolve(store=profiles)
@@ -135,13 +136,12 @@ class SessionMenuTests(unittest.TestCase):
         profiles.mutate(lambda config: config.with_provider("claude"))
         def dispatch(arguments):
             self.assertEqual(arguments, ["ask", "--session", ident, "--agent", "default",
-                                         "--model", "default", "--effort", "default"])
-            fresh = agent_profiles.resolve(store=profiles)
-            with self.assertRaisesRegex(sessions.SessionError, "session-binding"):
-                self.store.open(ident, "ask", execution_config=fresh)
-            return 2
+                                         "--model", "default", "--effort", "default", "--provider", "codex"])
+            requested = arguments[arguments.index("--provider") + 1]
+            with self.store.open(ident, "ask", execution_config=agent_profiles.resolve(store=profiles, provider=requested)):
+                return 0
         with contextlib.redirect_stdout(io.StringIO()):
-            self.assertEqual(session_cli.main(["resume", ident], store=self.store, dispatch=dispatch), 2)
+            self.assertEqual(session_cli.main(["resume", ident], store=self.store, dispatch=dispatch), 0)
         self.assertEqual(self.path(ident).read_bytes(), original)
 
     def test_active_record_refuses_menu_resume_before_dispatch(self):

@@ -31,7 +31,7 @@ class SkillTests(unittest.TestCase):
         self.assertIn("read-only", text)
 
     def test_packaged_preset_skills_validate_and_fit_full_instruction_budget(self):
-        names = tuple(agent_profiles.PRESET_SKILLS.values())
+        names = tuple(dict.fromkeys(name for group in agent_profiles.PRESET_SKILLS.values() for name in group))
         for name in names:
             with self.subTest(name=name):
                 description, text = inspect_skill(ROOT, name)
@@ -45,9 +45,8 @@ class SkillTests(unittest.TestCase):
                 path = directory / "SKILL.md"
                 path.write_bytes((ROOT / name / "SKILL.md").read_bytes())
                 path.chmod(0o644)
-            from itertools import combinations
             with patch.object(skills, "ROOT", root):
-                for selection in combinations(names, 4):
+                for selection in agent_profiles.PRESET_SKILLS.values():
                     selected = agent_profiles.Profile(instructions="a" * agent_profiles.MAX_INSTRUCTIONS,
                                                       skills=selection)
                     instructions = agent_profiles.instructions_for(selected)

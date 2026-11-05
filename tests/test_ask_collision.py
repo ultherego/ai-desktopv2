@@ -9,7 +9,7 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from ai_desktop import ask_cli, ask_edit, ask_followup, assistant_flow, permissions, task_cli, task_workspace
+from ai_desktop import ask_cli, ask_edit, ask_followup, assistant_flow, conversation_state, permissions, task_cli, task_workspace
 from ai_desktop.analysis_contract import AnalysisDenied, MAX_MESSAGE_BYTES
 from ai_desktop.question_input import FOLLOWUP_PROMPT, QuestionInputError
 from ai_desktop.terminal_consent import PROMPTS
@@ -96,14 +96,15 @@ class FollowupTextTests(unittest.TestCase):
 
     def test_noncollision_error_is_not_retried_or_turned_into_a_prompt(self):
         for error in (ask_edit.EditDenied('input'), AnalysisDenied('cleanup'), AnalysisDenied('client')):
-            with patch.object(assistant_flow, '_run_once', side_effect=error) as run, \
+            with patch.object(assistant_flow, 'capture_access'), patch.object(assistant_flow, '_run_once', side_effect=error) as run, \
                     patch.object(ask_followup, 'clarify') as follow:
                 with self.assertRaises(AnalysisDenied):
                     assistant_flow.run(QUESTION, None, Mock(), Mock())
             run.assert_called_once(); follow.assert_not_called()
 
     def test_repeated_collisions_have_finite_explicit_turns(self):
-        with patch.object(assistant_flow, '_run_once', side_effect=ask_edit.CreateCollision('hello.py', workspace='/home/tester')) as run, \
+        with patch.object(assistant_flow, 'capture_access'), \
+                patch.object(assistant_flow, '_run_once', side_effect=ask_edit.CreateCollision('hello.py', workspace='/home/tester')) as run, \
                 patch.object(ask_followup, 'clarify', return_value='nowa instrukcja') as follow, \
                 redirect_stdout(io.StringIO()):
             with self.assertRaises(assistant_flow.Declined):
@@ -408,13 +409,40 @@ class CollisionFilesystemTests(unittest.TestCase):
         self.assertEqual(self.target.read_text(), OLD)
         self.assertFalse((self.home/task_workspace.STATE).exists())
 
+    def resume_with_file_context(self):
+        talk = conversation_state.Conversation()
+        talk.finish("Read the existing file", OLD, None, (str(self.target),), actions=("Read: " + OLD,))
+        saved = Mock()
+        saved.state.return_value = conversation_state.export(talk)
+        self.enterContext(patch("ai_desktop.conversation_sessions.load_session", return_value=saved))
+
+    def test_policy_replaced_after_building_history_cannot_authorize_the_old_data(self):
+        self.resume_with_file_context()
+        build_history = conversation_state.Conversation.history
+
+        def change_policy(talk):
+            history = build_history(talk)
+            self.assertIn(OLD, history[0]["answer"])
+            self.config.write_text(self.config.read_text().replace('deny=[]', 'deny=["~/hello.py"]'))
+            return history
+
+        with patch.object(conversation_state.Conversation, "history", change_policy), \
+                patch.object(ask_cli, "send_once", return_value=json.dumps(DONE)) as transport:
+            code = ask_cli.main(["--question", "Continue the saved conversation"], reader=lambda _: "yes")
+        self.assertEqual(code, 2)
+        transport.assert_not_called()
+
     def test_fresh_followup_policy_deny_prevents_second_file_read_and_write(self):
+        self.resume_with_file_context()
         def revoke():
             self.config.write_text(self.config.read_text().replace('deny=[]', 'deny=["~/hello.py"]'))
         with patch.object(permissions, 'read_selected', wraps=permissions.read_selected) as read:
             code, sent = self.run_flow(mutation=revoke, refused=True)
         self.assertEqual(code, 2); self.assertEqual(sent.call_count, 2)
         read.assert_not_called(); self.assertEqual(self.target.read_text(), OLD)
+        self.assertEqual(self.payloads[0]["conversation"][0]["answer"], OLD)
+        self.assertEqual(self.payloads[1]["conversation"][0]["answer"], conversation_state.REDACTED)
+        self.assertNotIn("old value", json.dumps(self.payloads[1]))
 
     def test_write_grant_does_not_create_read_permission(self):
         code, sent = self.run_flow(deny_read=True)

@@ -47,7 +47,7 @@ def _split(selection):
 class DiscoveryLedger:
     def __init__(self, policy, question, hints=""):
         self.policy = policy
-        self.limits = policy.limits()
+        self.limits = policy.limits() if policy is not None else permissions.Limits(discovery_rounds=0, plan_corrections=0, command_rounds=0)
         self.question = question
         # The agent's own instructions (role text and Skills) are the owner's data, never the model's: a path they name
         # counts like one typed in the question. It never widens what the policy allows and never beats deny.
@@ -132,7 +132,12 @@ class DiscoveryLedger:
     def add_skill(self, name, text):
         """A Skill the model asked for, as the owner's data in the next round. A path it names counts like a typed one."""
         status = "missing" if text is None else "ok"
-        self.steps.append({"op": "skill", "name": name, "status": status, "text": text or ""})
+        document = self.document()
+        step = {"op": "skill", "name": name, "status": status, "text": text or ""}
+        document["steps"].append(step)
+        if document_bytes(document) > self.limits.discovery_bytes:
+            raise BudgetExhausted("discovery_bytes")
+        self.steps.append(step)
         if text:
             self.hints += "\n" + text
 

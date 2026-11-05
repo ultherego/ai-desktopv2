@@ -8,7 +8,8 @@ import sys
 
 from .run_controls import recipient, failure_hint, wait_message
 from .execution import UNSET
-from . import ask_commands, conversation_memory, conversation_state, permissions
+from . import ask_commands, conversation_memory, conversation_state
+from .conversation_sessions import SessionError
 from .assistant_contract import PlanError, PLAN_CHECKS
 from .analysis_cli import HINTS
 from .terminal_style import paint, rule
@@ -21,6 +22,7 @@ from .analysis_session import installation_ready, managed_session
 from .analysis_terminal import render_answer
 from .analysis_diagnostics import web_diagnostic
 from .terminal_progress import WaitingIndicator
+from .session_presence import Presence
 from .terminal_consent import confirm
 from .question_input import (PROMPT as QUESTION_PROMPT, PromptSession, QuestionInputError, paste_token,
                              read_question)
@@ -236,23 +238,24 @@ def _read_message(session, followup):
         followup = True
 
 
-def _revoke_stale(talk):
-    """Before a turn: remove what depended on a source the CURRENT policy no longer allows (and say so)."""
-    if not any(turn.taint for turn in talk.turns) and not talk.taints:
-        return
-    try:
-        policy = permissions.load_policy(optional=True)
-    except (OSError, ValueError):
-        return          # an unreadable policy is reported when the question is sent; nothing is forgotten meanwhile
+@contextmanager
+def _turn_context(talk, snapshot):
+    """Filter history and memory with the policy that authorizes this exact attempt."""
+    from .execution import using_history, using_memory
+    policy = snapshot.policy
     removed = talk.revalidate((lambda path: False) if policy is None else policy.allows)
     if removed:
         print("Access to a source used earlier in this conversation was revoked: the answers and model notes "
               "that depended on it were removed from the conversation memory (%d)." % removed)
+    with using_history(talk.history()), using_memory(talk.task_memory()):
+        yield
 
 
 def _remember(talk, conversation, question, answer, ops, sources, phase, args):
     """Record a finished, approved turn; the task memory is updated from the FULL answer before any shortening."""
     notes = talk.finish(question, answer or "[empty answer]", ops, sources, actions=getattr(sources, "actions", ()))
+    if getattr(args, "presence", None) is not None:
+        args.presence.update(talk.number, conversation.session_id if conversation is not None else None)
     if "trimmed" in notes:
         print("The task memory reached its limit: the oldest, less important entries were left out (the memory keeps count).")
     if args.details and "no-update" in notes:
@@ -274,6 +277,7 @@ def main(argv=None, *, reader=input):
     def phase(value):
         state["phase"] = value if type(value) is str and value in PREPARATION_PHASES else "internal"
     conversation = None
+    args.presence = None
     try:
         if os.geteuid() == 0 or os.getuid() != os.geteuid():
             raise AnalysisDenied("identity")
@@ -281,12 +285,14 @@ def main(argv=None, *, reader=input):
             raise ValueError("conflicting context selection")
         if (not args.preview or args.question is None) and not (sys.stdin.isatty() and sys.stdout.isatty()):
             raise AnalysisDenied("consent")
+        if args.question is None and not args.preview and reader is input:
+            args.presence = Presence()
+            args.presence.start()
         question = args.question
         prompt_session = PromptSession()
         prompt_session.commands = ask_commands.COMMANDS
         prompt_session.paste_bytes = MAX_MESSAGE_BYTES
         controls = ask_commands.Controls()
-        controls.activate()
         if args.preview and args.session:
             print("Preview does not save or resume a conversation. Remove --session or --preview.")
             return 2
@@ -299,13 +305,25 @@ def main(argv=None, *, reader=input):
                 return 0
             if chosen[0] == "resume":
                 args.session = chosen[1]
+        from .conversation_sessions import load_session
+        from .execution import current
+        consent = ConversationConsent()
+        talk = conversation_state.Conversation()
+        if args.session not in (None, "new"):
+            conversation = load_session(args, "ask", execution_config=current())
+            talk = conversation_state.load(conversation.state())
+        def control(line):
+            result = controls.handle(line, conversation, talk=talk, consent=consent, reader=reader)
+            if result is True and args.presence is not None:
+                args.presence.update(talk.number, conversation.session_id if conversation is not None else None)
+            return result
         if question is None:
             greeted = False                    # the greeting is shown once, not again after each local command
             while True:
                 question = (_read_message(prompt_session, greeted) if reader is input else reader(QUESTION_PROMPT))
                 greeted = True
                 validate_question(question, MAX_MESSAGE_BYTES)
-                local = controls.handle(question)
+                local = control(question)
                 if local == ask_commands.EXIT:
                     return 0
                 if local:
@@ -321,19 +339,16 @@ def main(argv=None, *, reader=input):
             print(question)
         if not args.preview:
             print()
-        from .conversation_sessions import load_session
-        from .execution import current, using_history, using_memory
-        if args.preview and args.session:
-            print("Preview does not save or resume a conversation. Remove --session or --preview.")
-            return 2
-        conversation = load_session(args, "ask", execution_config=current())
+        if conversation is None:
+            conversation = load_session(args, "ask", execution_config=current())
+            if conversation is not None:
+                talk = conversation_state.load(conversation.state())
         if conversation is not None:
             print("Conversation: %s · saved locally" % conversation.session_id)
         # Interactive loop only without --question/--preview. Every turn below is a fresh question under one yes for the
         # conversation; the conversation state is local data, never authority, and is re-validated against the CURRENT
         # policy before each turn (a revoked source takes what depended on it out of the next request).
         interactive = args.question is None and not args.preview
-        consent = ConversationConsent()
 
         def leave(result):
             """End of a conversation: offer (once, with consent) to keep it as a thread to return to."""
@@ -341,8 +356,8 @@ def main(argv=None, *, reader=input):
             if conversation is None and interactive and reader is input and talk.turns:
                 conversation = _offer_save(talk, phase)
             return result
-        talk = (conversation_state.load(conversation.state()) if conversation is not None
-                else conversation_state.Conversation())
+        if args.presence is not None:
+            args.presence.update(talk.number, conversation.session_id if conversation is not None else None)
         idle, code, steps = 0, 0, 0
         sources = None
 
@@ -353,14 +368,13 @@ def main(argv=None, *, reader=input):
                 _remember(talk, conversation, question, "[The model's answer did not arrive. The actions taken are recorded.]",
                           None, sources, phase, args)
         while True:
-            _revoke_stale(talk)
             finished = False
             try:
-                with conversation_state.recording() as sources, using_history(talk.history()), \
-                        using_memory(talk.task_memory()), _lenient(interactive):
+                with conversation_state.recording() as sources, _lenient(interactive):
                     answer = assistant_flow.run(question, args, reader,
                         lambda *values, **kwargs: request(*values, **kwargs, state=state), phase=phase,
-                        conversation_consent=consent, skills=controls.load_skill)
+                        conversation_consent=consent, skills=controls.load_skill,
+                        turn_context=lambda snapshot: _turn_context(talk, snapshot))
                 finished = True
             except assistant_flow.Declined:
                 if not interactive:
@@ -445,7 +459,7 @@ def main(argv=None, *, reader=input):
                     return leave(code)
                 idle = 0
                 validate_question(question, MAX_MESSAGE_BYTES)
-                local = controls.handle(question, conversation)
+                local = control(question)
                 if local == ask_commands.EXIT:
                     return leave(code)
                 if local:
@@ -466,9 +480,10 @@ def main(argv=None, *, reader=input):
                 print(paint("Problem:", "bold", "red"))
                 for line in exc.problem:
                     print("  " + paint(terminal_text(line), "yellow"))
-        elif getattr(exc, "reason", None) in ("network-claude-disabled", "network-codex-disabled"):
-            provider = "codex" if exc.reason == "network-codex-disabled" else "claude"
-            name = "Codex" if provider == "codex" else "Claude"
+        elif getattr(exc, "reason", None) in ("network-claude-disabled", "network-codex-disabled", "network-local-disabled"):
+            from .execution import provider_name
+            provider = exc.reason.split("-")[1]
+            name = provider_name(provider)
             print(name + " is blocked (network." + provider + "=false).")
             print("To allow sending, set " + provider + " = true in [network] of ~/.config/ai-desktop/permissions.toml.")
         else:
@@ -488,6 +503,13 @@ def main(argv=None, *, reader=input):
     except QuestionInputError:
         print(f"Could not read the question. Use one line of plain text, up to {MAX_MESSAGE_BYTES} bytes.")
         return 2
+    except SessionError as exc:
+        if str(exc) == "session-binding":
+            print("The saved recipient or role does not match. Check ai-desktop sessions show ID, "
+                  "select the saved account or local endpoint, then run ai-desktop sessions resume ID.")
+        else:
+            print("Could not open the saved conversation. Check ai-desktop sessions list.")
+        return 2
     except (OSError, ValueError, TypeError, KeyError) as exc:
         if args.details:
             kind = "os" if isinstance(exc, OSError) else "type" if isinstance(exc, TypeError) else "key" if isinstance(exc, KeyError) else "value"
@@ -495,5 +517,7 @@ def main(argv=None, *, reader=input):
         print("Could not finish the question (prepare-" + state["phase"] + ").")
         return 2
     finally:
+        if args.presence is not None:
+            args.presence.close()
         if conversation is not None:
             conversation.close()

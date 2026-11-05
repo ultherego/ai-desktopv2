@@ -15,7 +15,8 @@ COMMANDS = (
     ("/model", "change the model"),
     ("/effort", "change the reasoning level"),
     ("/skills", "turn Skills on or off in this conversation"),
-    ("/agent", "change the agent"),
+    ("/agent", "change the role (or select a provider by name)"),
+    ("/provider", "switch the recipient of this conversation"),
     ("/settings", "show the current settings"),
     ("/permissions", "show what the program can access"),
     ("/exit", "end the conversation"),
@@ -68,7 +69,7 @@ class Controls:
         return name, profile, (profile.skills if self.skills is None else self.skills)
 
     def activate(self):
-        """Send only the catalog of Skills with each question. Without an agent to read, the snapshot stays as it was."""
+        """Replace the full mode-independent prompt with the assigned catalog before asking anything."""
         selected = execution.current()
         if selected is None:
             return
@@ -76,7 +77,7 @@ class Controls:
             _, profile, chosen = self._assigned()
             execution.select(dict(selected, instructions=profiles.catalog_for(replace(profile, skills=tuple(chosen)))))
         except (profiles.ProfileError, OSError, ValueError, KeyError):
-            print("Could not load the Skill descriptions. Check ai-desktop skills validate.")
+            raise profiles.ProfileError("skill-catalog") from None
 
     def load_skill(self, name):
         """The body of one Skill the model asked for. None for anything outside this conversation's selection."""
@@ -86,7 +87,7 @@ class Controls:
         except (profiles.ProfileError, OSError, ValueError, KeyError):
             return None
 
-    def handle(self, line, conversation=None):
+    def handle(self, line, conversation=None, *, talk=None, consent=None, reader=input):
         """False: `line` is an ordinary question. True: handled here. EXIT: the owner ends the conversation."""
         if line[:1].isspace():
             return False                     # a leading space is the documented way to send such a word as a question
@@ -114,6 +115,8 @@ class Controls:
             self._choice("/model", "model", value, execution.MODELS if self._provider() == "claude" else (), conversation)
         elif name == "/effort":
             self._choice("/effort", "effort", value, execution.efforts_for(self._provider()), conversation)
+        elif name == "/provider" or (name == "/agent" and self._provider_alias(value)):
+            self._switch_provider(value, conversation, talk, consent, reader)
         elif name == "/agent":
             self._agent(value, conversation)
         elif name == "/skills":
@@ -136,7 +139,46 @@ class Controls:
     @staticmethod
     def _config():
         config = profiles.Store().load().config
-        return config.with_provider(config.selected_provider)
+        return config.with_provider(Controls._provider())
+
+    def _provider_alias(self, value):
+        if value not in execution.PROVIDERS:
+            return False
+        # Preserve an existing role named after a provider. /provider is always unambiguous.
+        try:
+            return value not in self._config().profiles
+        except (OSError, ValueError):
+            return False
+
+    def _destination(self, provider):
+        from .conversation_sessions import role_key
+        profile, _ = role_key(execution.current())
+        selected = profiles.resolve(profile=profile, provider=provider)
+        with execution.using(selected):
+            self.activate()
+            return execution.current()
+
+    def _switch_provider(self, value, conversation, talk, consent, reader):
+        from . import assistant_flow, conversation_transfer
+        if not value:
+            index = _pick("Provider for this conversation", execution.PROVIDERS,
+                          default=execution.PROVIDERS.index(self._provider()))
+            if index is None:
+                return
+            value = execution.PROVIDERS[index]
+        if value not in execution.PROVIDERS:
+            print("Choose a provider: " + ", ".join(execution.PROVIDERS))
+            return
+        if talk is None or consent is None:
+            print("Choose a provider at the interactive conversation prompt.")
+            return
+        try:
+            conversation_transfer.switch(value, prepare=self._destination, talk=talk, saved=conversation,
+                                         consent=consent, reader=reader)
+        except assistant_flow.AccessDenied:
+            print("Provider switch refused by the current permissions. Check permissions.toml.")
+        except (OSError, ValueError, KeyError):
+            print("Could not switch. Check the selected account, agent settings and saved conversation.")
 
     def _profile(self):
         selected = execution.current()

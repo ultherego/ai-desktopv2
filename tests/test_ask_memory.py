@@ -59,8 +59,8 @@ class Harness(unittest.TestCase):
 
         policy = Mock()
         policy.limits.return_value = Limits()
+        policy.allows.side_effect = lambda path: path not in self.revoked
         snapshot = assistant_flow.AccessSnapshot(policy, {"claude": True, "systemd": [], "weather": False}, dict(EMPTY))
-        stand_in = SimpleNamespace(allows=lambda path: path not in self.revoked)
         with ExitStack() as stack:
             stack.enter_context(patch("ai_desktop.agent_profiles.resolve", return_value=PROFILE))
             stack.enter_context(patch.object(ask.os, "geteuid", return_value=REAL_UID))
@@ -68,7 +68,6 @@ class Harness(unittest.TestCase):
             stack.enter_context(patch.object(ask.sys.stdin, "isatty", return_value=True))
             stack.enter_context(patch.object(ask, "installation_ready"))
             stack.enter_context(patch.object(assistant_flow, "capture_access", return_value=snapshot))
-            stack.enter_context(patch.object(ask.permissions, "load_policy", return_value=stand_in))
             stack.enter_context(patch.object(ask, "managed_session", side_effect=lambda **_: nullcontext()))
             sent = stack.enter_context(patch.object(ask, "send_once", side_effect=send))
             if conversation is not None:

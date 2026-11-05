@@ -4,8 +4,7 @@ import sys
 import time
 import unicodedata
 
-from .conversation_sessions import SessionError, Store
-from .run_controls import recipient
+from .conversation_sessions import SessionError, Store, recipient_label
 from .terminal_menu import MenuInputError, choose
 
 PAGE_SIZE = 8
@@ -43,7 +42,7 @@ def _safe(value, limit=1600):
 def _entry(value, active=False):
     profile = value["execution"]["profile"] if value["execution"] is not None else "default"
     return "%s · %s · %s · %s · questions: %d%s" % (
-        value["id"], value["kind"], recipient(config=value["execution"]), profile,
+        value["id"], value["kind"], recipient_label(value["execution"]), profile,
         len(value["history"]), " [active]" if active else "")
 
 
@@ -140,7 +139,7 @@ def _pick(title, options):
 
 
 def _show(value, *, preview=False):
-    print("Conversation %s · %s · %s" % (value["id"], value["kind"], recipient(config=value["execution"])))
+    print("Conversation %s · %s · %s" % (value["id"], value["kind"], recipient_label(value["execution"])))
     if value["path"]:
         print("Context:", _safe(value["path"], 400 if preview else 4096))
     if value["execution"] is not None:
@@ -231,7 +230,7 @@ def main(argv=None, *, store=None, dispatch=None):
                 active = store.active(value["id"])
                 profile = value["execution"]["profile"] if value["execution"] is not None else "default"
                 print("%s  %s  %s  %s  questions: %d%s" % (
-                    value["id"], value["kind"], recipient(config=value["execution"]), profile,
+                    value["id"], value["kind"], recipient_label(value["execution"]), profile,
                     len(value["history"]), "  [active]" if active else ""))
             for ident in store.damaged():
                 print("%s  damaged record; delete it with: ai-desktop sessions remove %s" % (ident, ident))
