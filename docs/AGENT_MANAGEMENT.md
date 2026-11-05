@@ -70,7 +70,7 @@ ai-desktop skills menu            # przypisania aktywnego agenta
 ai-desktop skills new NAZWA       # ~/.config/ai-desktop/skills/NAZWA/SKILL.md
 ```
 
-Skill to instrukcja do 96 KiB, bez narzędzi, skryptów i dodatkowych plików. Pakiet zawiera ogólne Skille dla CachyOS (`cachyos-*`), programowania i analizy oraz `desktop-documentation`, który kieruje do dokumentacji pulpitu; Skille CachyOS celowo nie opisują pulpitów i kompozytorów. Własny Skill leży poza repozytorium i pakietem, a o tej samej nazwie ma pierwszeństwo przed ogólnym.
+Skill to instrukcja do 96 KiB, bez narzędzi, skryptów i dodatkowych plików. Pakiet zawiera ogólne Skille dla CachyOS (`cachyos-*`) i Arch Linux (`arch-*`), programowania i analizy oraz `desktop-documentation`, który kieruje do dokumentacji pulpitu; Skille CachyOS celowo nie opisują pulpitów i kompozytorów. Własny Skill leży poza repozytorium i pakietem, a o tej samej nazwie ma pierwszeństwo przed ogólnym.
 Nazwa to małe litery, cyfry i myślniki. Nie wpisuj sekretów: treść przypisanego Skilla trafia do modelu. Ścieżka wpisana w Skillu lub instrukcji agenta liczy się jak podana przez Ciebie, więc model może ją przeczytać bez rozpoznania; polityka i `deny` nadal decydują.
 
 Zmiana przypisanych Skilli może wymagać nowej rozmowy, bo zapisana rozmowa jest związana z konfiguracją agenta.

@@ -1,11 +1,18 @@
 ---
 name: cachyos-kernel
-description: Jądra CachyOS: warianty, wybór, Kernel Manager, moduły NVIDIA i ZFS.
+description: Pomaga wybrać i zmienić jądro CachyOS oraz naprawić jego moduły. Użyj przy pytaniach o warianty jądra, Kernel Manager, moduły NVIDIA lub ZFS albo przy błędach po zmianie jądra.
 ---
 
 # Jądra CachyOS
 
 Najpierw ustal stan: `uname -r` i `pacman -Qs linux-cachyos`. Jądro działające może być inne niż zainstalowane po aktualizacji bez restartu.
+
+## Procedura
+
+1. Ustal, czego użytkownik potrzebuje i dlaczego. Bez konkretnej potrzeby zostań przy `linux-cachyos`.
+2. Odczytaj działające i zainstalowane jądra oraz moduły.
+3. Sprawdź ograniczenia wybranego wariantu, np. brak sched-ext.
+4. Zaproponuj zmianę jako plan i zostaw drugie, działające jądro.
 
 ## Warianty
 

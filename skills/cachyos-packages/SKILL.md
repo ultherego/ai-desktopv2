@@ -1,9 +1,16 @@
 ---
 name: cachyos-packages
-description: Pacman i repozytoria CachyOS: błędy aktualizacji, klucze, serwery lustrzane, repozytoria v3, v4 i znver4.
+description: Rozwiązuje błędy pacmana i repozytoriów CachyOS. Użyj przy błędach aktualizacji, podpisów, kluczy, serwerów lustrzanych albo przy pytaniach o repozytoria v3, v4 i znver4.
 ---
 
 # Pakiety i repozytoria CachyOS
+
+## Procedura
+
+1. Przeczytaj dokładny komunikat błędu. Nie zgaduj go z opisu.
+2. Odczytaj stan: `/etc/pacman.conf` i ostatnie wpisy `/var/log/pacman.log`.
+3. Znajdź komunikat w tabeli poniżej i zaproponuj najmniej inwazyjny krok. Kolejny tylko wtedy, gdy poprzedni nie pomógł.
+4. Każde polecenie zmieniające system opisz jako plan, z tym, co zrobi. Sprawdź, czy nie ma ogłoszenia o ręcznej interwencji.
 
 ## Repozytoria
 

@@ -23,7 +23,8 @@ from ai_desktop.terminal_consent import PROMPTS
 from ai_desktop.skills import inspect_skill
 import host_e2_activated_worker as offline
 
-PACKAGED_SKILLS = ("cachyos-boot-snapshots", "cachyos-diagnostics", "cachyos-gaming", "cachyos-hardware", "cachyos-kernel",
+PACKAGED_SKILLS = ("arch-amdgpu", "arch-audio", "arch-bluetooth", "arch-btrfs", "arch-docker", "arch-network", "arch-pacman", "arch-systemd", "arch-zram",
+                   "cachyos-boot-snapshots", "cachyos-diagnostics", "cachyos-gaming", "cachyos-hardware", "cachyos-kernel",
                    "cachyos-packages", "cachyos-scheduler", "code-development", "code-review", "concise-assistant",
                    "desktop-documentation", "project-analysis")
 

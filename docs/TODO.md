@@ -48,6 +48,8 @@ Stan: pakiet `0.1.0-70`. Ograniczenia obecnej wersji opisuje [KNOWN_LIMITATIONS.
 - [ ] Ukryć lub usunąć wewnętrzne podkomendy widoczne w `--help-all`.
 
 ## Możliwe usprawnienia
+- [ ] Skille na żądanie także w `material`, `project` i `task`.
+- [ ] Skill wczytany w rozmowie dostępny od razu w kolejnych pytaniach, bez dodatkowego wywołania modelu.
 - [ ] Wyniki poleceń rozpoznania w żądaniu edycji.
 - [ ] Strumieniowanie odpowiedzi.
 - [ ] Jedna sesja i jeden proces klienta na całą rozmowę, z limitem czasu życia.

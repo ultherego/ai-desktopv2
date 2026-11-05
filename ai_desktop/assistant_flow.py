@@ -378,7 +378,10 @@ def _budget_stop(policy, name):
     raise file_context.FileReadDenied("input")
 
 
-def _run_once(question, args, reader, request, *, phase=None, conversation_consent=None):
+MAX_SKILL_ROUNDS = 3
+
+
+def _run_once(question, args, reader, request, *, phase=None, conversation_consent=None, skills=None):
     """One plan and answer, optionally preceded by bounded discovery. Without a conversation grant it asks every time."""
     def progress(value):
         if phase is not None:
@@ -428,7 +431,7 @@ def _run_once(question, args, reader, request, *, phase=None, conversation_conse
             progress("plan")
             plan = _plan(response, snapshot.access)
             ledger = None
-            if plan["action"] in ("list", "find", "run") or (plan["action"] == "read" and plan["files"]):
+            if plan["action"] in ("list", "find", "run", "skill") or (plan["action"] == "read" and plan["files"]):
                 if snapshot.policy is None:
                     raise AccessDenied()
                 ledger = ask_discovery.DiscoveryLedger(snapshot.policy, question,
@@ -447,12 +450,31 @@ def _run_once(question, args, reader, request, *, phase=None, conversation_conse
                 permit.check()
                 progress("plan")
                 following = _plan(reply, snapshot.access)
-                if following["action"] not in ("list", "find", "run", "read", "answer", "edit", "delete"):
+                if following["action"] not in ("list", "find", "run", "skill", "read", "answer", "edit", "delete"):
                     raise PlanError("action")
                 return following
 
             context = None
+            skill_rounds, loaded = 0, set()
             while ledger is not None:
+                if plan["action"] == "skill":
+                    # On demand: until the model asks, only the name and description of a Skill leave this computer.
+                    skill_rounds += 1
+                    if skills is None or skill_rounds > MAX_SKILL_ROUNDS:
+                        raise PlanError("action")
+                    wanted = [name for name in plan["names"] if name not in loaded]
+                    if not wanted:
+                        raise PlanError("action")      # nothing new: another round would only repeat the same request
+                    progress("collect")
+                    for name in wanted:
+                        loaded.add(name)
+                        text = skills(name)
+                        ledger.add_skill(name, text)
+                        print(paint("  %s Skill %s %s %s" % (
+                            symbol("skip" if text is None else "ok"), name, symbol("dot"),
+                            "nie ma takiego" if text is None else size_label(len(text.encode("utf-8")))), "muted"))
+                    plan = next_plan()
+                    continue
                 if plan["action"] == "run":
                     # An operation the owner listed in permissions.toml; its bounded result goes back to the model as
                     # data in the next planner round.
@@ -543,7 +565,7 @@ def _run_once(question, args, reader, request, *, phase=None, conversation_conse
         permit.close()
 
 
-def run(question, args, reader, request, *, phase=None, conversation_consent=None):
+def run(question, args, reader, request, *, phase=None, conversation_consent=None, skills=None):
     """One ordinary turn, or at most two collision follow-ups.
 
     Each turn closes the previous QuestionConsent and opens a new one; the prompt
@@ -553,7 +575,7 @@ def run(question, args, reader, request, *, phase=None, conversation_consent=Non
     """
     for turn in range(ask_followup.MAX_FOLLOWUPS + 1):
         try:
-            return _run_once(question, args, reader, request, conversation_consent=conversation_consent,
+            return _run_once(question, args, reader, request, conversation_consent=conversation_consent, skills=skills,
                              **({"phase": phase} if phase is not None else {}))
         except ask_edit.CreateCollision as conflict:
             if turn == ask_followup.MAX_FOLLOWUPS:

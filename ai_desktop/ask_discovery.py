@@ -129,6 +129,13 @@ class DiscoveryLedger:
         """True when `steps` more commands each still get a usable slice of output and a command round."""
         return self.commands_left >= steps and (self._budget() - 600) // 2 >= 256 * steps
 
+    def add_skill(self, name, text):
+        """A Skill the model asked for, as the owner's data in the next round. A path it names counts like a typed one."""
+        status = "missing" if text is None else "ok"
+        self.steps.append({"op": "skill", "name": name, "status": status, "text": text or ""})
+        if text:
+            self.hints += "\n" + text
+
     def add_run(self, step):
         self.steps.append(step)
 

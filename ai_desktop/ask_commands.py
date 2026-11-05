@@ -62,6 +62,29 @@ class Controls:
     def __init__(self):
         self.skills = None                   # this conversation's choice; None means what the agent has assigned
 
+    def _assigned(self):
+        name, profile = self._profile()
+        return name, profile, (profile.skills if self.skills is None else self.skills)
+
+    def activate(self):
+        """Send only the catalog of Skills with each question. Without an agent to read, the snapshot stays as it was."""
+        selected = execution.current()
+        if selected is None:
+            return
+        try:
+            _, profile, chosen = self._assigned()
+            execution.select(dict(selected, instructions=profiles.catalog_for(replace(profile, skills=tuple(chosen)))))
+        except (profiles.ProfileError, OSError, ValueError, KeyError):
+            print("Nie można wczytać opisów Skilli. Sprawdź ai-desktop skills validate.")
+
+    def load_skill(self, name):
+        """The body of one Skill the model asked for. None for anything outside this conversation's selection."""
+        try:
+            _, _, chosen = self._assigned()
+            return profiles._skill(name) if name in chosen else None
+        except (profiles.ProfileError, OSError, ValueError, KeyError):
+            return None
+
     def handle(self, line, conversation=None):
         """False: `line` is an ordinary question. True: handled here. EXIT: the owner ends the conversation."""
         text = line.strip()
@@ -204,6 +227,7 @@ class Controls:
         run_controls.conversation_command("/agent " + value)
         if execution.current() != before:
             self.skills = None
+            self.activate()
             self._rebind(None)
 
     def _skills(self, value, conversation):
@@ -229,7 +253,7 @@ class Controls:
             chosen = result
         selected = dict(execution.current() or profiles.resolve(profile=name))
         try:
-            selected["instructions"] = profiles.instructions_for(replace(profile, skills=tuple(chosen)))
+            selected["instructions"] = profiles.catalog_for(replace(profile, skills=tuple(chosen)))
             execution.select(selected)
         except (profiles.ProfileError, OSError, ValueError):
             print("Nie zmieniono Skilli: nie można ich wczytać albo razem przekraczają %d KiB."
