@@ -472,6 +472,18 @@ class PolicyTests(unittest.TestCase):
         self.config.chmod(0o644)
         self.assert_code(policy.recheck)
 
+    def test_a_bom_and_windows_line_ends_do_not_stop_a_read(self):
+        policy = self.policy()
+        a = self.file(content="x")
+        for data, seen in ((b"\xef\xbb\xbfa,b\r\n1,2\r\n", "a,b\n1,2\n"), (b"a\r\nb\n", "a\nb\n")):
+            with self.subTest(data=data):
+                a.write_bytes(data)
+                self.assertEqual(p.read_selected(policy, (str(a),))["files"][0]["content"], seen)
+        for data in (b"a\rb\n", b"a\xef\xbb\xbfb\n", b"a\x1b[2Jb\n", b"\xff"):
+            with self.subTest(data=data), self.assertRaises(ValueError):
+                a.write_bytes(data)
+                p.read_selected(policy, (str(a),))
+
     def test_regular_utf8_files_and_whole_request_limits(self):
         policy = self.policy()
         a = self.file(content="zażółć\n\ttekst")

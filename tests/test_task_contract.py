@@ -18,6 +18,14 @@ def proposed(contents):
 
 
 class TaskBudgetTests(unittest.TestCase):
+    def test_a_change_may_be_asked_for_in_a_message_as_long_as_ask_accepts(self):
+        from ai_desktop.analysis_contract import MAX_MESSAGE_BYTES
+        self.assertEqual(contract.MAX_INSTRUCTION, MAX_MESSAGE_BYTES)
+        files = [{"path": "a.txt", "content": "x\n", "writable": True}]
+        self.assertEqual(len(contract.request({"instruction": "y" * MAX_MESSAGE_BYTES, "files": files})["instruction"]), MAX_MESSAGE_BYTES)
+        with self.assertRaises(ValueError):
+            contract.request({"instruction": "y" * (MAX_MESSAGE_BYTES + 1), "files": files})
+
     def test_request_64k_file_limit_including_utf8(self):
         for content in ("a" * 65536, "ą" * 32768):
             with self.subTest(multibyte=content.startswith("ą")):

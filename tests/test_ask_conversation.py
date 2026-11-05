@@ -163,6 +163,31 @@ class ConversationLoopTests(unittest.TestCase):
         self.assertEqual(r.sent.call_count, 35)
         self.assertEqual([t["question"] for t in r.histories[34]], ["Pytanie %d" % i for i in range(2, 34)])
 
+    def test_a_change_made_before_a_service_failure_stays_in_the_conversation(self):
+        seen = []
+
+        def flow(question, *args, **kwargs):
+            if question == "Zmień":
+                ask.conversation_state.note_action("Zmiana systemctl restart foo.service: ok, kod 0")
+                raise ask.AnalysisDenied("network")
+            seen.append(execution.current_memory())
+            return "Odpowiedź"
+        with patch.object(ask.assistant_flow, "run", side_effect=flow):
+            self.run_ui([], ["Zmień", "Co zrobiłeś?", ""])
+        self.assertTrue(any("systemctl restart foo.service" in entry["text"] for entry in seen[0]["entries"]))
+
+    def test_a_failure_of_a_turn_that_did_nothing_records_nothing(self):
+        seen = []
+
+        def flow(question, *args, **kwargs):
+            if question == "Pierwsze":
+                raise ask.AnalysisDenied("network")
+            seen.append(execution.current_history())
+            return "Odpowiedź"
+        with patch.object(ask.assistant_flow, "run", side_effect=flow):
+            self.run_ui([], ["Pierwsze", "Drugie", ""])
+        self.assertEqual(seen[0], [])
+
     def test_exit_by_empty_line_or_double_eof_or_interrupt_is_clean(self):
         for ending in (["", ], [EOFError, EOFError], [KeyboardInterrupt],
                        [EOFError, "Dalej", EOFError, EOFError]):

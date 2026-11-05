@@ -512,8 +512,8 @@ class ProjectSession(Session):
         expanded = text
         for number, body in getattr(self, "_pastes", ()):
             expanded = expanded.replace(paste_token(number, body), body)
-        if len(expanded.encode("utf-8")) > MAX_QUESTION_BYTES:
-            raise EditRefused("Polecenie zmiany pliku razem z wklejką przekracza %d B; skróć wklejkę albo podziel zmianę." % MAX_QUESTION_BYTES)
+        if len(expanded.encode("utf-8")) > task_contract.MAX_INSTRUCTION:
+            raise EditRefused("Polecenie zmiany pliku razem z wklejką przekracza %d B; skróć wklejkę albo podziel zmianę." % task_contract.MAX_INSTRUCTION)
         return expanded
 
     def _edit_blocker(self, snapshot, plan):
@@ -550,7 +550,9 @@ class ProjectSession(Session):
             scope, workspace, names = build_delete_plan(self.project, snapshot, decision)
             prepared = workspace_trash.prepare(workspace, names)
         except (EditRefused, assistant_flow.AccessDenied, AnalysisDenied, ExecutionDenied, ValueError, OSError) as exc:
-            print(field("Odmowa", str(exc) if isinstance(exc, EditRefused) else "Polityka plików uniemożliwia usunięcie."))
+            print(field("Odmowa", str(exc) if isinstance(exc, EditRefused)
+                        else workspace_trash.FULL_MESSAGE if isinstance(exc, workspace_trash.TrashFull)
+                        else "Polityka plików uniemożliwia usunięcie."))
             print(SEPARATOR)
             print()
             return self._remember_edit(text, "propozycja usunięcia odrzucona przez aplikację")

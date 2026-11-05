@@ -137,6 +137,10 @@ def prepare(plan, snapshot, args, reader, *, question_consent, expected_versions
             # Only a typed, pre-read collision may lead to a user clarification.
             # All other refusals still fail closed without a model retry.
             raise CreateCollision(exc.path, workspace=workspace) from None
+        except ValueError as exc:
+            if str(exc) == "text":
+                print("Tego pliku nie da się edytować bez zmiany jego bajtów: ma pomieszane końce linii albo znaki sterujące.")
+            raise
         files, targets = [], []
         for name in names:
             path = workspace + "/" + name
@@ -146,7 +150,7 @@ def prepare(plan, snapshot, args, reader, *, question_consent, expected_versions
                     raise ValueError()
                 content, writable = None, True
             else:
-                if old is None or old["content"] != contents[path]:
+                if old is None or task_contract.plain_text(old["content"]) != contents[path]:
                     raise ValueError()
                 if expected_versions is not None and old["sha256"] != expected_versions[name]:
                     raise ValueError("changed since project approval")
@@ -181,6 +185,9 @@ def delete_files(plan, snapshot, reader):
         policy.require_write(tuple(workspace + "/" + name for name in names), index=index)
         prepared = workspace_trash.prepare(workspace, names)
         sizes = [entry["size"] for entry in prepared.data()["entries"]]
+    except workspace_trash.TrashFull:
+        print(workspace_trash.FULL_MESSAGE)
+        raise EditDenied("input") from None
     except (OSError, ValueError, TypeError, KeyError, AttributeError, ExecutionDenied):
         raise EditDenied("input") from None
     print()

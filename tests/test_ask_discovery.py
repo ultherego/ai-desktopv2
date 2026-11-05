@@ -113,6 +113,8 @@ class Base(unittest.TestCase):
         def request(text, args, reader, **kwargs):
             attempts.append(kwargs)
             permit = kwargs["question_consent"]
+            if "task" in kwargs:
+                return next(replies)
             if before is not None:
                 before(len(attempts), kwargs)
             fields = {name: kwargs[name] for name in ("access", "context", "discovery", "web") if name in kwargs}
@@ -162,6 +164,48 @@ class SkillsOnDemandTests(Base):
         self.assertEqual(self.steps(1), [{"op": "skill", "name": "przyklad", "status": "ok", "text": self.BODY}])
         self.assertNotIn("NIE-WYSYLAC", json.dumps(self.wire, ensure_ascii=False))
         self.assertIn("Skill przyklad", self.output.getvalue())
+
+    def test_a_loaded_skill_and_command_results_reach_the_final_answer_with_the_files(self):
+        self.run_flow([json.dumps({"action": "skill", "names": ["przyklad"]}), plan("list", sel("gizmo")),
+                       read(sel("gizmo/settings.conf")), ANSWER], skills=self.load, access="changes")
+        last = self.wire[-1]
+        self.assertEqual(last["mode"], "question")
+        self.assertTrue(any(item["kind"] == "files" for item in last["context"]))
+        self.assertEqual(last["discovery"]["steps"][0]["text"], self.BODY)
+        self.assertEqual([step["op"] for step in last["discovery"]["steps"]], ["skill", "list"])
+
+    def test_without_earlier_steps_the_final_request_is_what_it_was(self):
+        self.run_flow([read(sel("gizmo/settings.conf")), ANSWER], question="Co jest w ~/.config/gizmo/settings.conf?")
+        self.assertEqual(self.wire[-1]["mode"], "question")
+        self.assertNotIn("discovery", self.wire[-1])
+
+    def test_an_edit_gets_what_the_task_collected(self):
+        source = {"instruction": QUESTION, "files": [{"path": "a.txt", "content": "x\n", "writable": True}]}
+        prepared = SimpleNamespace(source=source, write_grant=None)
+        steps = iter([{"action": "skill", "names": ["przyklad"]}, {"action": "edit"}])
+        with patch.object(flow, "_plan", side_effect=lambda *_: next(steps)), \
+                patch.object(flow.ask_edit, "prepare", return_value=prepared), \
+                patch.object(flow.ask_edit, "finish", return_value="ZAPISANO"):
+            self.assertEqual(self.run_flow(["plan", "plan", "propozycja"], skills=self.load, access="changes"), "ZAPISANO")
+        self.assertEqual(self.attempts[-1]["task"], source)
+        self.assertEqual(self.attempts[-1]["discovery"]["steps"][0]["text"], self.BODY)
+
+    def test_results_too_large_for_the_last_request_are_dropped_with_a_visible_note(self):
+        with patch.object(flow, "application_input", side_effect=flow.InputBudgetExceeded()):
+            self.run_flow([json.dumps({"action": "skill", "names": ["przyklad"]}), plan("list", sel("gizmo")),
+                           read(sel("gizmo/settings.conf")), ANSWER], skills=self.load)
+        self.assertNotIn("discovery", self.wire[-1])
+        self.assertIn("nie mieszczą się", self.output.getvalue())
+
+    def test_consent_accepts_only_the_exact_bound_document_on_the_last_request(self):
+        ledger_step = {"op": "skill", "name": "a", "status": "ok", "text": "t"}
+        remaining = {"rounds": 1, "corrections": 1, "commands": 1}
+        document = {"steps": [ledger_step], "remaining": remaining}
+        snapshot = SimpleNamespace(policy=None, access={"files": [], "systemd": [], "weather": False},
+                                   sources={"claude": True}, require_claude=lambda: None)
+        permit = flow.QuestionConsent(QUESTION, snapshot)
+        with self.assertRaises(AnalysisDenied):                               # nothing was bound in this question
+            permit._payload(QUESTION, [], None, discovery=document)
 
     def test_a_name_outside_the_selection_is_reported_as_missing_without_stopping(self):
         self.run_flow([json.dumps({"action": "skill", "names": ["brak"]}), ANSWER_PLAN], skills=self.load)
@@ -314,7 +358,8 @@ class LargeDirectoryTests(Base):
 
     def test_an_exhausted_scan_budget_is_reported_as_incomplete_never_as_empty(self):
         policy = permissions.load_policy()
-        found, _ = directory_context.find_step(policy, "f0", ["zz-data-209"], "file", policy.limits(),
+        # A name nothing carries: which entries fit in the budget depends on the order the filesystem returns them.
+        found, _ = directory_context.find_step(policy, "f0", ["zz-absent-name"], "file", policy.limits(),
                                                directory_context.Scan(30), 60000, self.permit)
         self.assertTrue(found["incomplete"] and found["truncated"])
         self.assertEqual(found["matches"], [])

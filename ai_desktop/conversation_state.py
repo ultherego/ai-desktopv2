@@ -13,8 +13,10 @@ from . import conversation_memory as memory
 from .execution import HISTORY_ANSWER_BYTES, HISTORY_QUESTION_BYTES, HISTORY_TOTAL_BYTES, MAX_HISTORY
 
 MAX_TURNS = 64                 # finished turns kept for revalidation; only the last MAX_HISTORY are sent verbatim
+MAX_SOURCE_PATHS = 256         # one saved conversation's table of sources (conversation_sessions.MAX_PATHS)
 MAX_SOURCES = 8                # files remembered per turn (more are summarised as "too many": the turn is then tainted by all)
 REDACTED = "[odpowiedź usunięta: źródło, z którego korzystała, nie jest już dozwolone]"
+FACT_REDACTED = "Wykonana akcja: szczegóły usunięte, bo dostęp do użytego źródła został cofnięty."
 _log = ContextVar("ai_desktop_turn_sources", default=None)
 
 
@@ -98,7 +100,8 @@ class Conversation:
         """Sources that anything the next request will contain may depend on."""
         found = set()
         for turn in self.turns[-MAX_HISTORY:]:
-            found.update(turn.taint)
+            if not turn.redacted:             # a redacted answer no longer carries what it read
+                found.update(turn.taint)
         for entry in self.memory["entries"]:
             found.update(self.taints.get(entry["id"], ()))
         return tuple(sorted(found))
@@ -113,7 +116,13 @@ class Conversation:
         keep = []
         for entry in self.memory["entries"]:
             paths = self.taints.get(entry["id"], ())
-            if self.origins.get(entry["id"]) == "model" and paths and not all(allows(path) for path in paths):
+            if self.origins.get(entry["id"]) == "fact" and paths and not all(allows(path) for path in paths):
+                # The program did this, so that stays known; its words may quote the revoked file, so they go.
+                entry["text"] = FACT_REDACTED
+                self.origins[entry["id"]] = "user"
+                self.taints.pop(entry["id"], None)
+                removed += 1
+            elif self.origins.get(entry["id"]) == "model" and paths and not all(allows(path) for path in paths):
                 removed += 1
                 self.origins.pop(entry["id"], None)
                 self.taints.pop(entry["id"], None)
@@ -148,8 +157,8 @@ class Conversation:
             if entry["id"] not in existing:
                 user = note is not None and entry["id"] == "m%d.1" % n
                 fact = entry["status"] == "done" and entry["kind"] == "observation" and entry["text"] in facts_text
-                self.origins[entry["id"]] = "user" if user or fact else "model"      # controller facts are never revoked
-                if not (user or fact):
+                self.origins[entry["id"]] = "user" if user or (fact and not taint) else "fact" if fact else "model"
+                if not user and taint:
                     self.taints[entry["id"]] = tuple(sorted(taint))
         alive = {entry["id"] for entry in updated["entries"]}
         for table in (self.origins, self.taints):
@@ -177,21 +186,31 @@ def export(conversation):
             paths.append(path)
         return paths.index(path)
 
-    # A turn that depended on more sources than the table keeps cannot be revoked precisely later, so it is stored
-    # redacted (conservative) rather than with a silently shortened dependency list.
-    over = [len(t.taint) > MAX_SOURCES * 4 for t in turns]
+    # The source table is bounded. A turn whose sources no longer fit cannot be revoked precisely later, so it is stored
+    # redacted (conservative) rather than with a shortened dependency list. A later turn inherits what earlier ones read.
+    known, fits = set(), {}
+    for turn in reversed(turns):
+        if not turn.redacted and len(known | set(turn.taint)) <= MAX_SOURCE_PATHS:
+            known.update(turn.taint)
+            fits[id(turn)] = True
+    over = [not t.redacted and id(t) not in fits for t in turns]
     history = [{"question": _bounded(t.question, HISTORY_QUESTION_BYTES),
                 "answer": _bounded(REDACTED if t.redacted or cut else t.answer, HISTORY_ANSWER_BYTES - 64)}
                for t, cut in zip(turns, over)]
     meta_turns = [{"n": t.n, "taint": [] if cut else [index(p) for p in t.taint], "redacted": t.redacted or cut}
                   for t, cut in zip(turns, over)]
-    user = [e["id"] for e in conversation.memory["entries"] if conversation.origins.get(e["id"]) == "user"]
-    taints = {ident: [index(p) for p in paths_]
-              for ident, paths_ in conversation.taints.items()
-              if any(e["id"] == ident for e in conversation.memory["entries"]) and paths_}
-    # The table is bounded: when more sources are involved than fit, the least recent ones are folded away by
-    # redacting what depended on them (conservative) instead of keeping an unbounded file list.
-    exported = {"history": history, "memory": conversation.task_memory(), "paths": paths, "turns": meta_turns,
+    # A note that depends on sources which no longer fit is left out, for the same reason.
+    kept = []
+    for entry in conversation.memory["entries"]:
+        wanted = conversation.taints.get(entry["id"], ())
+        if len(set(paths) | set(wanted)) <= MAX_SOURCE_PATHS:
+            for path in wanted:
+                index(path)
+            kept.append(entry)
+    user = [e["id"] for e in kept if conversation.origins.get(e["id"]) == "user"]
+    taints = {e["id"]: [index(p) for p in conversation.taints[e["id"]]] for e in kept if conversation.taints.get(e["id"])}
+    saved = memory.validate({**conversation.memory, "entries": kept})
+    exported = {"history": history, "memory": saved, "paths": paths, "turns": meta_turns,
                 "meta": {"user": user, "taints": taints}}
     if conversation.turns:
         # The title is the user's own first message, shortened; it names the thread in the list and nothing else.
@@ -206,8 +225,12 @@ def load(state):
     if "memory" in state:
         paths = state["paths"]
         conversation.memory = memory.validate(state["memory"])
-        conversation.origins = {e["id"]: "user" if e["id"] in state["meta"]["user"] else "model"
-                                for e in conversation.memory["entries"]}
+        def origin(entry):
+            if entry["id"] in state["meta"]["user"]:
+                return "user"
+            fact = entry["status"] == "done" and entry["kind"] == "observation" and entry["id"] in state["meta"]["taints"]
+            return "fact" if fact else "model"
+        conversation.origins = {e["id"]: origin(e) for e in conversation.memory["entries"]}
         conversation.taints = {ident: tuple(paths[i] for i in items) for ident, items in state["meta"]["taints"].items()}
         for pair, meta in zip(history, state["turns"]):
             conversation.turns.append(Turn(meta["n"], pair["question"], pair["answer"],

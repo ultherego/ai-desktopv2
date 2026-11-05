@@ -208,7 +208,7 @@ ai-desktop task run "Popraw dodawanie w calc.py" --workspace /sciezka/do/projekt
     --file calc.py --context test_calc.py --test python-unittest
 ```
 
-`--file` może być zmieniony, `--context` jest tylko do odczytu. Katalog musi być podany ścieżką bezwzględną i nie może być całym katalogiem domowym. Limity: 64 pliki wejściowe, 32 proponowane, 64 KiB na plik, 128 KiB łącznie, instrukcja do 2 KiB. Testy biegną na kopii, bez sieci i katalogu domowego. Testy Python nie mogą tworzyć procesów, wątków ani gniazd, więc nie każdy zestaw testów tu zadziała. `--preview` pokazuje dane bez modelu i testu. Są dwie zgody: na wysłanie i na zapis.
+`--file` może być zmieniony, `--context` jest tylko do odczytu. Katalog musi być podany ścieżką bezwzględną i nie może być całym katalogiem domowym. Limity: 64 pliki wejściowe, 32 proponowane, 64 KiB na plik, 128 KiB łącznie, instrukcja do 128 KiB. Testy biegną na kopii, bez sieci i katalogu domowego. Testy Python nie mogą tworzyć procesów, wątków ani gniazd, więc nie każdy zestaw testów tu zadziała. `--preview` pokazuje dane bez modelu i testu. Są dwie zgody: na wysłanie i na zapis.
 
 ### Cofanie i przywracanie
 

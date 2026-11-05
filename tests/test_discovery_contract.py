@@ -158,9 +158,15 @@ class DiscoveryWireTests(unittest.TestCase):
                 gate.authorize(None, question=QUESTION, access=ACCESS, sha256=gate.sha256, nonce=gate.nonce, **kwargs)
 
     def test_other_modes_unknown_scopes_and_extra_wire_fields_are_refused(self):
-        for mode in ({"context": []}, {"web": True}, {"material": {}}, {"project": {}}, {"task": {}}):
+        for mode in ({"web": True}, {"material": {}}, {"project": {}}, {"task": {}}, {}):
             with self.subTest(mode=mode), self.assertRaises(ValueError):
                 contract.application_input(None, QUESTION, discovery=document(), **mode)
+        task = {"instruction": "synthetic", "files": [{"path": "file.txt", "content": "x", "writable": True}]}
+        for source in (dict(question=QUESTION, context=[]), dict(task=task)):           # the task's last request carries it
+            payload = contract.application_input(None, discovery=document(), **source)
+            self.assertIn("discovery", json.loads(payload))
+            parsed, _ = contract.parse_request(payload.encode())
+            self.assertIn("discovery", json.loads(parsed))
         value = document()
         value["steps"][1]["id"] = "f1"
         with self.assertRaises(ValueError):

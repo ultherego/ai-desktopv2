@@ -177,7 +177,11 @@ def main():
     elif data["mode"] == "web":
         validate_web_payload(data)
     elif data["mode"] == "question":
-        assert set(data) == {"mode", "question", "context"}
+        # What the task collected earlier travels with its last request, and the model must really receive it.
+        assert set(data) - {"discovery"} == {"mode", "question", "context"}
+        if "discovery" in data:
+            from ai_desktop.discovery_contract import validate_discovery
+            assert validate_discovery(data["discovery"]) == data["discovery"] and data["discovery"]["steps"]
         if data["question"] == "SYNTHETIC: general question":
             assert data["context"] == []
         elif data["question"] == "SYNTHETIC: systemd question":

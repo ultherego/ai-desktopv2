@@ -113,7 +113,7 @@ def read_file(parent, name):
         if (len(raw) != info.st_size or info.st_mtime_ns != after.st_mtime_ns
                 or info.st_ctime_ns != after.st_ctime_ns):
             raise ValueError("changed file")
-        content = contract.text(raw.decode("utf-8"))
+        content = contract.file_text(raw.decode("utf-8"))
         return {"inode": identity(info), "mode": stat.S_IMODE(info.st_mode),
                 "sha256": sha(raw), "content": content}
     finally:
@@ -230,7 +230,7 @@ def _record_size(record):
             or record["mode"] & 0o022):
         raise ValueError("record")
     _valid_identity(record["inode"])
-    raw = contract.text(record["content"]).encode("utf-8")
+    raw = contract.file_text(record["content"]).encode("utf-8")
     if sha(raw) != record["sha256"]:
         raise ValueError("record")
     return len(raw)
@@ -514,6 +514,8 @@ def apply(session, authorization, *, write_guard=None):
                         "undo_temp": _stage_name(stage_names)})
     if not 1 <= len(entries) <= contract.MAX_CHANGED_FILES:
         raise ValueError("entries")
+    replacements = [dict(item, content=contract.file_text(contract.in_file_format(
+        item["content"], before["files"][item["path"]]["file"]))) for item in replacements]
     root = _root(before["workspace"])
     try:
         if identity(os.fstat(root)) != before["root"]:
@@ -671,7 +673,14 @@ def rollback(workspace, plan, *, expected_journal=None):
                         pass
                     elif entry["after"] is not None and _same_content(current, entry["after"]):
                         if original is None:
-                            os.unlink(leaf, dir_fd=parent)
+                            # Move away first and look at what actually moved: a file an editor saved after the
+                            # comparison above goes back to its name instead of being deleted.
+                            rename_noreplace(parent, leaf, parent, entry["temp"])
+                            moved = read_file(parent, entry["temp"])
+                            if not _same_content(moved, entry["after"]):
+                                rename_noreplace(parent, entry["temp"], parent, leaf)
+                                raise ValueError("changed undo target")
+                            os.unlink(entry["temp"], dir_fd=parent)
                         else:
                             # The name is durable before creation; the exact
                             # identity is durable before publication. Unknown
@@ -690,19 +699,28 @@ def rollback(workspace, plan, *, expected_journal=None):
                                 raise ValueError("changed undo stage")
                             if read_file(parent, leaf) != current:
                                 raise ValueError("changed undo target")
-                            os.replace(undo_temp, leaf, src_dir_fd=parent, dst_dir_fd=parent)
+                            # Swap, as a write does: what was displaced is compared, and a newer save is put back.
+                            rename_exchange(parent, undo_temp, parent, leaf)
+                            try:
+                                displaced = read_file(parent, undo_temp)
+                                if not _same_content(displaced, entry["after"]):
+                                    raise ValueError("changed undo target")
+                            except BaseException:
+                                rename_exchange(parent, undo_temp, parent, leaf)
+                                raise
+                            os.unlink(undo_temp, dir_fd=parent)
                         os.fsync(parent)
                     else:
                         conflicts += 1
                         continue
                     # Both apply and undo stages have durable names. Never
                     # claim success while either is present but unrecognized.
-                    # After a crash between the swap and the unlink the apply stage holds the displaced original.
+                    # After a crash between a swap and its unlink a stage holds the version that was displaced.
                     for stage_name, known in ((entry["temp"], (entry["after"], original)),
-                                              (entry["undo_temp"], (entry["undo"],))):
+                                              (entry["undo_temp"], (entry["undo"], entry["after"]))):
                         staged = read_file(parent, stage_name)
                         if staged is not None:
-                            if staged not in [fingerprint for fingerprint in known if fingerprint is not None]:
+                            if not any(fingerprint is not None and _same_content(staged, fingerprint) for fingerprint in known):
                                 raise ValueError("unknown stage")
                             os.unlink(stage_name, dir_fd=parent)
                             os.fsync(parent)

@@ -23,7 +23,7 @@ from ai_desktop import task_workspace as w
 root, plan, phase = sys.argv[1:]
 value = json.loads((Path(root) / w.STATE / (plan + '.json')).read_text())
 stage = value['entries'][0]['undo_temp']
-real_write, real_save, real_replace, real_oswrite = w._write, w._save, w.os.replace, w.os.write
+real_write, real_save, real_exchange, real_oswrite = w._write, w._save, w.rename_exchange, w.os.write
 def write(parent, name, data, mode=0o600):
     if name == stage and phase == 'before-write': os._exit(77)
     result = real_write(parent, name, data, mode)
@@ -32,15 +32,15 @@ def write(parent, name, data, mode=0o600):
 def save(fd, name, value, **kwargs):
     real_save(fd, name, value, **kwargs)
     if phase == 'after-identity' and value['entries'][0]['undo'] is not None: os._exit(77)
-def replace(src, dst, **kwargs):
-    real_replace(src, dst, **kwargs)
+def exchange(src_dir, src, dst_dir, dst):
+    real_exchange(src_dir, src, dst_dir, dst)
     if dst == 'one.txt' and phase == 'after-rename': os._exit(77)
 def oswrite(fd, data):
     if phase == 'partial-write' and data == b'ORIGINAL\n':
         real_oswrite(fd, data[:2])
         os._exit(77)
     return real_oswrite(fd, data)
-w._write, w._save, w.os.replace, w.os.write = write, save, replace, oswrite
+w._write, w._save, w.rename_exchange, w.os.write = write, save, exchange, oswrite
 w.rollback(root, plan)
 '''
 

@@ -94,6 +94,19 @@ class AskEditTests(unittest.TestCase):
                                              must_be_absent=["result.txt"])
         self.capacity.assert_called_once_with(WORKSPACE)
 
+    def test_a_file_with_a_bom_and_windows_line_ends_goes_to_the_model_as_plain_text(self):
+        record = self.before["files"]["main.py"]["file"]
+        record["content"] = "\ufeff" + ORIGINAL.replace("\n", "\r\n")
+        prepared = self.prepare()
+        self.assertEqual(prepared.source["files"][0]["content"], ORIGINAL)
+        self.assertEqual(prepared.before["files"]["main.py"]["file"]["content"], record["content"])
+
+    def test_a_file_whose_bytes_cannot_be_kept_is_explained_and_refused(self):
+        self.capture.side_effect = ValueError("text")
+        with self.assertRaises(ask_edit.EditDenied):
+            self.prepare()
+        self.assertIn("pomieszane końce linii", self.output.getvalue())
+
     def test_outside_workspace_read_scope_is_refused_before_content_read(self):
         self.policy.expand.return_value = ("/home/synthetic/other/info.txt",)
         with self.assertRaises(ask_edit.EditDenied):

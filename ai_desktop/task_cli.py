@@ -54,7 +54,7 @@ def selection(args):
         raise ValueError("select project")
     before = workspace.snapshot(args.workspace, args.file + args.context)
     source = contract.request({"instruction": args.instruction, "files": [
-        {"path": name, "content": entry["file"]["content"] if entry["file"] else None,
+        {"path": name, "content": contract.plain_text(entry["file"]["content"]) if entry["file"] else None,
          "writable": name in args.file} for name, entry in before["files"].items()]})
     return before, source
 
@@ -190,7 +190,7 @@ def show_diff(plan, *, details=False):
         return [part + "\n" for part in parts[:-1]] + ([parts[-1]] if parts[-1] else [])
     for item in data["proposal"]["files"]:
         old = data["before"]["files"][item["path"]]["file"]
-        old_content = old["content"] if old else ""
+        old_content = contract.plain_text(old["content"]) if old else ""
         difference = difflib.unified_diff(lines(old_content), lines(item["content"]),
             fromfile="a/" + item["path"] if old else "/dev/null",
             tofile="b/" + item["path"])
@@ -198,6 +198,8 @@ def show_diff(plan, *, details=False):
             rendered.append(line if line.endswith("\n") else line + "\n")
             if not line.endswith("\n"):
                 rendered.append("\\ Brak znaku nowej linii na końcu pliku\n")
+        if old and old["content"] != old_content:
+            rendered.append("Plik zachowa swoje końce linii Windows i znak BOM, jeśli je ma.\n")
         if old is None and not item["content"]:
             rendered.append("--- /dev/null\n+++ b/" + item["path"] + "\nNowy pusty plik (0 B).\n")
     print(fenced_code("".join(rendered), language="diff"))

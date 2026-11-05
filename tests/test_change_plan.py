@@ -558,8 +558,8 @@ class ReviewFindingsTests(ChangeBase):
 
     def test_more_sources_than_the_table_keeps_are_stored_redacted_not_silently_shortened(self):
         conversation = cs.Conversation()
-        sources = ["/home/u/f%d" % index for index in range(33)]
-        conversation.finish("pytanie", "odpowiedź zależna od 33 plików", None, sources)
+        sources = ["/home/u/f%d" % index for index in range(cs.MAX_SOURCE_PATHS + 1)]
+        conversation.finish("pytanie", "odpowiedź zależna od wielu plików", None, sources)
         record = cs.export(conversation)
         self.assertTrue(record["turns"][0]["redacted"])
         self.assertEqual(record["turns"][0]["taint"], [])

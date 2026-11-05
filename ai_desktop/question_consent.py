@@ -248,8 +248,12 @@ class QuestionConsent:
     def _payload(self, question, context, access, task=None, write_grant=None, *, web=False, discovery=None):
         if question != self._question or type(web) is not bool:
             raise AnalysisDenied("consent")
-        if discovery is not None and (access is None or web or task is not None or write_grant is not None):
-            raise AnalysisDenied("consent")
+        if discovery is not None:
+            # What this task already collected may accompany its next payload, but only the exact bound bytes.
+            from .discovery_contract import validate_discovery
+            if (web or (access is None and context is None and task is None) or self._discovery_bytes is None
+                    or canonical(validate_discovery(discovery)) != self._discovery_bytes):
+                raise AnalysisDenied("consent")
         if web:
             if any(value is not None for value in (context, access, task, write_grant)):
                 raise AnalysisDenied("consent")

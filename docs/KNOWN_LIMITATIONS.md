@@ -8,6 +8,7 @@ AI Desktop jest wersją rozwojową, nie wydaniem 1.0. Testy automatyczne nie dow
 - Klient Claude Code ma dostęp do własnego profilu logowania w osobnym koncie `ai-desktop`. Nie ma ogólnego filtra wywołań systemowych dla klienta.
 - Suma SHA-256 klienta Claude jest sprawdzana przy budowie pakietu. Potem, przy każdym użyciu, program sprawdza już tylko zgłaszaną wersję pliku należącego do roota. Klient Codex ma sprawdzaną sumę archiwum przy pobieraniu przez `scripts/fetch_codex_client.py`, a `PKGBUILD` sprawdza u niego tylko nagłówek pliku.
 - Nie ma ochrony przed wrogim procesem tego samego użytkownika ani gwarancji przy utracie zasilania.
+- Model nie widzi znaku BOM ani końców linii Windows, więc nie odpowie, czy plik je ma. Plik z pomieszanymi końcami linii można przeczytać, ale nie edytować, bo zapis nie odtworzyłby jego bajtów. Plik z samym znakiem CR w środku tekstu jest odrzucany także przy odczycie. Sprawdzenie na kopii działa na zwykłym tekście, a nie na bajtach z BOM i CRLF.
 
 ## Zachowanie
 - Zapis istniejącego pliku wymienia go atomowo i odrzuca zapis, gdy edytor zmienił plik po ostatnim sprawdzeniu. Zapis do pliku, który edytor już trzymał otwarty, może jeszcze trafić do starej wersji tuż po porównaniu, zanim zostanie usunięta. Wymaga systemu plików z `RENAME_EXCHANGE` (Btrfs, ext4, xfs, tmpfs); na innych zapis jest odrzucany.

@@ -60,6 +60,13 @@ class DeletePlan:
         return self.data()
 
 
+FULL_MESSAGE = "Kosz zadania jest pełny (limit 128 usunięć w tym katalogu). Nic nie usunięto; przywrócone lub zbędne wpisy trzeba uporządkować ręcznie."
+
+
+class TrashFull(ExecutionDenied):
+    """No room for another recoverable deletion; nothing was moved."""
+
+
 class TrashRecoveryRequired(ExecutionDenied):
     """Some effects may remain; retain the exact journal ID even if undo or journaling failed."""
     def __init__(self, plan):
@@ -159,9 +166,20 @@ def _inspect(root, names):
     return entries
 
 
+def _require_room(workspace):
+    """Refuse BEFORE anything moves: a journal over the limit would make the whole recovery list unreadable."""
+    try:
+        full = len(recovery_records(workspace)) >= tw.MAX_JOURNALS
+    except ValueError:
+        full = True
+    if full:
+        raise TrashFull("TRASH: REFUSED limit")
+
+
 def prepare(workspace, names, *, clock=time.monotonic):
     """Capture versions BEFORE the deletion question. No journal or filesystem mutation."""
     names = _selection(names)
+    _require_room(workspace)
     root = tw._root(workspace)
     try:
         return DeletePlan({"workspace": workspace, "root": tw.identity(os.fstat(root)),
@@ -184,6 +202,7 @@ def execute(prepared, authorization):
         raise ExecutionDenied("TRASH: REFUSED plan")
     before = prepared.consume(authorization)
     workspace, plan = before["workspace"], before["plan"]
+    _require_room(workspace)
     root = tw._root(workspace)
     moved = []
     try:

@@ -47,6 +47,7 @@ class ControlsTests(unittest.TestCase):
     def test_a_path_or_a_sentence_is_a_question_and_a_lone_unknown_word_is_explained(self):
         for line in ("/etc/fstab co to jest?", "co robi /etc/fstab", "/usr/bin/ls", " zwykle pytanie", "  "):
             self.assertIs(self.run_line(line)[0], False, line)
+        self.assertIs(self.run_line(" /hello")[0], False)                 # what the message below promises
         result, output = self.run_line("/etc")
         self.assertIs(result, True)
         self.assertIn("Nieznane polecenie", output)

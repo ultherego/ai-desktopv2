@@ -87,6 +87,8 @@ class Controls:
 
     def handle(self, line, conversation=None):
         """False: `line` is an ordinary question. True: handled here. EXIT: the owner ends the conversation."""
+        if line[:1].isspace():
+            return False                     # a leading space is the documented way to send such a word as a question
         text = line.strip()
         word, _, value = text.partition(" ")
         if not _SHAPE.fullmatch(word) or "\n" in word:
