@@ -272,6 +272,75 @@ w.apply(plan,plan.authorize('ZAPISZ '+plan.sha256))
         self.assertEqual((self.root / "calc.py").read_text(), "old\n")
         self.assertEqual(list(self.root.glob(".ai-task-*")), [])
 
+    def editor(self, target, how):
+        if how == "in place":
+            target.write_text("editor version\n")
+        else:
+            other = self.root / "editor.tmp"
+            other.write_text("editor version\n")
+            other.chmod(target.stat().st_mode & 0o777 if target.exists() else 0o600)
+            os.replace(other, target)
+
+    def test_undoing_an_edit_keeps_a_save_made_after_the_last_comparison(self):
+        for how in ("in place", "by rename"):
+            with self.subTest(how):
+                target = self.root / "calc.py"
+                target.write_text("old\n")
+                target.chmod(0o640)
+                plan = self.plan(names=["calc.py"]); self.apply(plan)
+                real = workspace.rename_exchange
+
+                def editor_then_swap(src_dir, src, dst_dir, dst, how=how):
+                    if dst == "calc.py":
+                        self.editor(target, how)
+                    return real(src_dir, src, dst_dir, dst)
+                with patch.object(workspace, "rename_exchange", side_effect=editor_then_swap):
+                    self.assertFalse(workspace.rollback(str(self.root), plan.sha256))
+                self.assertEqual(target.read_text(), "editor version\n")
+                self.assertEqual(workspace.status(str(self.root))[0][1], "conflict")
+                for journal in (self.root / workspace.STATE).glob("*.json"):
+                    journal.unlink()
+                for stage in self.root.glob(".ai-task-*"):
+                    stage.unlink()
+
+    def test_undoing_a_new_file_keeps_a_save_made_after_the_last_comparison(self):
+        for how in ("in place", "by rename"):
+            with self.subTest(how):
+                target = self.root / "new.txt"
+                target.unlink(missing_ok=True)
+                plan = self.plan(names=["new.txt"]); self.apply(plan)
+                real = workspace.rename_noreplace
+
+                def editor_then_move(src_dir, src, dst_dir, dst, how=how):
+                    if src == "new.txt":
+                        self.editor(target, how)
+                    return real(src_dir, src, dst_dir, dst)
+                with patch.object(workspace, "rename_noreplace", side_effect=editor_then_move):
+                    self.assertFalse(workspace.rollback(str(self.root), plan.sha256))
+                self.assertEqual(target.read_text(), "editor version\n")
+                self.assertEqual(workspace.status(str(self.root))[0][1], "conflict")
+                for journal in (self.root / workspace.STATE).glob("*.json"):
+                    journal.unlink()
+                for stage in self.root.glob(".ai-task-*"):
+                    stage.unlink()
+
+    def test_a_crash_inside_an_undo_is_finished_by_the_next_attempt(self):
+        for name, content in (("calc.py", "old\n"), ("new.txt", None)):
+            with self.subTest(name):
+                target = self.root / name
+                if content is not None:
+                    target.write_text(content)
+                else:
+                    target.unlink(missing_ok=True)
+                plan = self.plan(names=[name]); self.apply(plan)
+                with patch.object(workspace.os, "unlink", side_effect=OSError("killed")):
+                    self.assertFalse(workspace.rollback(str(self.root), plan.sha256))
+                self.assertTrue(workspace.rollback(str(self.root), plan.sha256))
+                self.assertEqual(target.read_text() if content is not None else target.exists(), content if content is not None else False)
+                self.assertEqual(list(self.root.glob(".ai-task-*")), [])
+                for journal in (self.root / workspace.STATE).glob("*.json"):
+                    journal.unlink()
+
     def test_write_failure_keeps_original_and_unknown_partial_file_is_not_deleted(self):
         plan = self.plan()
         write = workspace.os.write
