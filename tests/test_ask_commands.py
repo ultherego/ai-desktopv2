@@ -6,6 +6,7 @@ import io
 import unittest
 from unittest.mock import patch
 
+from ai_desktop.terminal_menu import MAX_OPTIONS
 from ai_desktop import analysis_contract, ask_commands as commands, agent_profiles as profiles, conversation_state, execution, question_input
 
 BASE = {"provider": "claude", "model": "default", "effort": "default", "instructions": "", "profile": "default", "access": "changes"}
@@ -91,6 +92,57 @@ class ControlsTests(unittest.TestCase):
         with patch.object(profiles, "instructions_for", side_effect=profiles.ProfileError("x")):
             self.assertIn("Nie zmieniono", self.run_line("/skills b")[1])
         self.assertEqual(execution.current(), before)
+
+    def test_a_menu_starts_on_the_current_value_and_choosing_it_changes_nothing(self):
+        before = execution.current()
+        offered = []
+
+        def stay(title, options, default=0, **_):
+            offered.append((title, options[default]))
+            return default
+        with patch.object(commands, "choose", side_effect=stay):
+            for line in ("/model", "/sila", "/agent", "/model default"):
+                output = self.run_line(line)[1]
+        self.assertEqual([row[1] for row in offered], ["default", "default", "default"])
+        self.assertIn("teraz: default", offered[0][0])
+        self.assertIn("Bez zmian", output)
+        self.assertEqual(execution.current(), before)
+
+    def test_a_long_skill_list_is_paged_and_ticks_survive_changing_the_page(self):
+        names = tuple("s%02d" % index for index in range(20))
+        script = iter(["space:0", "Następna strona", "space:1", "Poprzednia strona", "Zastosuj"])
+        pages = []
+
+        def menu(title, options, default=0, marks=None, markable=0):
+            self.assertLessEqual(len(options), MAX_OPTIONS)
+            pages.append(tuple(options))
+            while True:
+                step = next(script)
+                if step.startswith("space:"):
+                    marks.symmetric_difference_update({int(step[6:])})
+                    continue
+                return options.index(step)
+        with patch.object(commands, "choose", side_effect=menu):
+            self.assertEqual(commands.Controls._skill_menu(names, ["s19"]), ["s00", "s09", "s19"])
+        self.assertEqual(len(pages), 3)
+
+    def test_a_list_longer_than_one_frame_reaches_the_last_entry_and_opens_on_the_current_page(self):
+        options = tuple("a%02d" % index for index in range(20))
+        answers = iter(["Następna strona", "Następna strona", "a19"])
+
+        def menu(title, shown, default=0):
+            self.assertLessEqual(len(shown), MAX_OPTIONS)
+            return shown.index(next(answers))
+        with patch.object(commands, "choose", side_effect=menu):
+            self.assertEqual(commands._pick("t", options), 19)
+        seen = []
+
+        def from_current(title, shown, default=0):
+            seen.append(shown[default])
+            return default
+        with patch.object(commands, "choose", side_effect=from_current):
+            self.assertEqual(commands._pick("t", options, default=18), 18)
+        self.assertEqual(seen, ["a18"])
 
     def test_a_saved_conversation_keeps_its_agent(self):
         before = execution.current()

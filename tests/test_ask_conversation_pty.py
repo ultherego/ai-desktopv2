@@ -220,6 +220,10 @@ class ConversationPtyTests(unittest.TestCase):
         self.addCleanup(driver.close)
         mark = driver.wait_for("W czym mogę pomóc?")
         mark = driver.wait_for("> ", mark)
+        driver.send("/pomoc\r")
+        mark = driver.wait_for("Zapis na stałe", mark)
+        mark = driver.wait_for("> ", mark)
+        self.assertEqual(driver.text().count("W czym mogę pomóc?"), 1)         # the greeting is not repeated after a control
         driver.send("/mo")
         mark = driver.wait_for("zmień model", mark)
         driver.send(b"\t")

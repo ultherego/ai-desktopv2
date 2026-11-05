@@ -24,15 +24,38 @@ _ALIASES = {"/help": "/pomoc", "/?": "/pomoc", "/effort": "/sila", "/settings": 
             "/exit": "/koniec", "/quit": "/koniec", "/q": "/koniec"}
 _SHAPE = re.compile(r"/[^/\s]*\Z")           # `/etc/fstab to co?` is a question, `/model` is a command
 EXIT = "exit"
+PAGE = 8
+_NEXT, _PREVIOUS, _APPLY = "Następna strona", "Poprzednia strona", "Zastosuj"
 _AGAIN = "Następne pytanie poprosi o zgodę jeszcze raz, bo zmieniły się ustawienia. Rozmowa trwa dalej."
 
 
 def _pick(title, options, default=0):
-    """None when cancelled or when there is no terminal for a menu."""
-    try:
-        return choose(title, options, default=default)
-    except MenuInputError:
-        return None
+    """An index into `options`, or None when cancelled or when there is no terminal for a menu. Long lists are paged,
+    because one menu frame holds a limited number of rows."""
+    options = tuple(options)
+    page = default // PAGE
+    while True:
+        start = page * PAGE
+        shown = list(options[start:start + PAGE])
+        count = len(shown)
+        following = len(shown) if start + count < len(options) else None
+        if following is not None:
+            shown.append(_NEXT)
+        previous = len(shown) if page else None
+        if previous is not None:
+            shown.append(_PREVIOUS)
+        try:
+            answer = choose(title, shown, default=default - start if start <= default < start + count else 0)
+        except MenuInputError:
+            return None
+        if answer is None:
+            return None
+        if answer == following:
+            page += 1
+        elif answer == previous:
+            page -= 1
+        else:
+            return start + answer
 
 
 class Controls:
@@ -62,9 +85,9 @@ class Controls:
         elif name == "/uprawnienia":
             self._permissions()
         elif name == "/model":
-            self._choice("/model", value, execution.MODELS if self._provider() == "claude" else (), conversation)
+            self._choice("/model", "model", value, execution.MODELS if self._provider() == "claude" else (), conversation)
         elif name == "/sila":
-            self._choice("/sila", value, execution.efforts_for(self._provider()), conversation)
+            self._choice("/sila", "effort", value, execution.efforts_for(self._provider()), conversation)
         elif name == "/agent":
             self._agent(value, conversation)
         elif name == "/skills":
@@ -126,13 +149,27 @@ class Controls:
         except (SessionError, OSError, ValueError):
             print("Zmiana działa w tej rozmowie, ale nie udało się jej zapisać przy zapisanej rozmowie.")
 
-    def _choice(self, command, value, options, conversation):
+    @staticmethod
+    def _active():
+        """What the next question would use: a role is resolved even while the plain default leaves no snapshot."""
+        return execution.current() or profiles.resolve()
+
+    def _choice(self, command, field, value, options, conversation):
+        try:
+            present = self._active()[field]
+        except (OSError, ValueError, KeyError):
+            present = None
         if not value and options:
-            chosen = _pick(command, tuple(options))
+            options = tuple(options)
+            chosen = _pick("%s · teraz: %s" % (command, present), options,
+                           default=options.index(present) if present in options else 0)
             if chosen is None:
                 run_controls.conversation_command(command)
                 return
             value = options[chosen]
+        if value == present:
+            print("Bez zmian: %s to już %s." % (command, value))
+            return
         before = execution.current()
         run_controls.conversation_command((command + " " + value).strip())
         if value and execution.current() != before:
@@ -147,11 +184,22 @@ class Controls:
                 names = tuple(sorted(self._config().profiles))
             except (OSError, ValueError):
                 names = ()
-            chosen = _pick("/agent", names) if names else None
+            try:
+                present = self._profile()[0]
+            except (OSError, ValueError, KeyError):
+                present = None
+            chosen = _pick("/agent · teraz: %s" % present, names,
+                           default=names.index(present) if present in names else 0) if names else None
             if chosen is None:
                 run_controls.conversation_command("/agent")
                 return
             value = names[chosen]
+        try:
+            if value == self._profile()[0]:
+                print("Bez zmian: /agent to już %s." % value)
+                return
+        except (OSError, ValueError, KeyError):
+            pass
         before = execution.current()
         run_controls.conversation_command("/agent " + value)
         if execution.current() != before:
@@ -193,18 +241,36 @@ class Controls:
 
     @staticmethod
     def _skill_menu(available, chosen):
-        """Enter ticks the highlighted Skill, as does Space; the last row applies. None: cancelled or no terminal."""
+        """Enter ticks the highlighted Skill, as does Space; ticks survive changing the page. None: cancelled or no terminal."""
         marks = {index for index, name in enumerate(available) if name in chosen}
-        options = tuple(available) + ("Zastosuj",)
-        position = len(available)
+        page, position = 0, None
         while True:
+            start = page * PAGE
+            names = list(available[start:start + PAGE])
+            rows = list(names)
+            following = len(rows) if start + len(names) < len(available) else None
+            if following is not None:
+                rows.append(_NEXT)
+            previous = len(rows) if page else None
+            if previous is not None:
+                rows.append(_PREVIOUS)
+            apply = len(rows)
+            rows.append(_APPLY)
+            local = {index - start for index in marks if start <= index < start + len(names)}
             try:
-                answer = choose("Skills · spacja zaznacza", options, default=position, marks=marks, markable=len(available))
+                answer = choose("Skills · spacja zaznacza · wybrane: %d" % len(marks), rows,
+                                default=apply if position is None else position, marks=local, markable=len(names))
             except MenuInputError:
                 return None
             if answer is None:
                 return None
-            if answer == len(available):
+            marks = {index for index in marks if not start <= index < start + len(names)} | {index + start for index in local}
+            if answer == apply:
                 return [name for index, name in enumerate(available) if index in marks]
-            marks.symmetric_difference_update({answer})
-            position = answer
+            if answer == following:
+                page, position = page + 1, None
+            elif answer == previous:
+                page, position = page - 1, None
+            else:
+                marks.symmetric_difference_update({answer + start})
+                position = answer

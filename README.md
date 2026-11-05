@@ -252,7 +252,7 @@ Własny Skill o nazwie ogólnego ma pierwszeństwo. **Nie wpisuj do niego sekret
 
 ## Agenci i modele
 
-Agent to zapisany zestaw: usługa, model, poziom rozumowania, dostęp (`changes` lub `read-only`), instrukcje i do czterech Skilli. Agent nie dodaje uprawnień. Agent `read-only` nie zapisuje, nie usuwa i nie dostaje poleceń `change`.
+Agent to zapisany zestaw: usługa, model, poziom rozumowania, dostęp (`changes` lub `read-only`), instrukcje i Skille. Agent nie dodaje uprawnień. Agent `read-only` nie zapisuje, nie usuwa i nie dostaje poleceń `change`.
 
 ```fish
 ai-desktop settings                                 # menu ustawień

@@ -299,8 +299,10 @@ def main(argv=None, *, reader=input):
             if chosen[0] == "resume":
                 args.session = chosen[1]
         if question is None:
+            greeted = False                    # the greeting is shown once, not again after each local command
             while True:
-                question = (_read_message(prompt_session, False) if reader is input else reader(QUESTION_PROMPT))
+                question = (_read_message(prompt_session, greeted) if reader is input else reader(QUESTION_PROMPT))
+                greeted = True
                 validate_question(question, MAX_MESSAGE_BYTES)
                 local = controls.handle(question)
                 if local == ask_commands.EXIT:
