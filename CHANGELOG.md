@@ -2,6 +2,7 @@
 
 ## Niewydane
 
+- `ai-desktop ask`: wynik wykonanej zmiany zostaje w pamięci, gdy następna odpowiedź modelu nie dotrze, więc model nie zaproponuje jej ponownie. Po cofnięciu dostępu nowe, niezależne odpowiedzi zostają, a szczegóły akcji zależnych od tego pliku znikają. Rozmowa z wieloma plikami zawsze się zapisuje.
 - `ai-desktop ask`: końcowa odpowiedź dostaje wyniki poleceń i wczytane Skille, a nie tylko odczytane pliki. „Ustaliliśmy zmianę, zrób to” działa: etap edycji dostaje rozmowę, pamięć zadania, wyniki poleceń i Skille.
 - `task rollback` nie nadpisuje ani nie usuwa nowszego zapisu edytora: zostawia go i zgłasza konflikt. Wcześniej mógł zgłosić sukces po utracie tej wersji.
 - Polecenie zmiany może być długie jak wiadomość w `ask` (128 KiB; było 2 KiB), także w `task run` i `project`.

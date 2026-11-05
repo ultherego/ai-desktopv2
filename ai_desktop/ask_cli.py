@@ -344,6 +344,14 @@ def main(argv=None, *, reader=input):
         talk = (conversation_state.load(conversation.state()) if conversation is not None
                 else conversation_state.Conversation())
         idle, code, steps = 0, 0, 0
+        sources = None
+
+        def keep_actions():
+            """A turn that fails after the program acted: what it really did must not be forgotten, or the model may
+            propose the same change again. Nothing is recorded for a turn that did nothing."""
+            if interactive and getattr(sources, "actions", None):
+                _remember(talk, conversation, question, "[Odpowiedź modelu nie dotarła. Wykonane akcje są zapisane.]",
+                          None, sources, phase, args)
         while True:
             _revoke_stale(talk)
             finished = False
@@ -362,17 +370,20 @@ def main(argv=None, *, reader=input):
                 if not interactive:
                     raise
                 _report_plan_error(exc, args)      # a model's bad plan loses that turn, not the whole conversation
+                keep_actions()
                 answer, code = None, 2
             except LOCAL_REFUSALS as refusal:
                 if not interactive:
                     raise
                 _explain_refusal(refusal)          # a local refusal loses that turn too; the session already closed
+                keep_actions()
                 answer, code = None, 2
             except AnalysisDenied as denied:
                 if not interactive or denied.reason not in SERVICE_FAILURES:
                     raise
                 _explain_denied(denied, args, state)
                 print("Rozmowa trwa; pytanie nie zostało ponowione. Możesz je zadać jeszcze raz.")
+                keep_actions()
                 answer, code = None, 2
             except KeyboardInterrupt:
                 if not interactive:
@@ -381,6 +392,7 @@ def main(argv=None, *, reader=input):
                 # a failure there would have raised instead of landing here.
                 print("\nAnulowano. Ta tura została przerwana." + (" Wysłanych danych nie można wycofać; pytanie nie zostanie ponowione."
                                                 if state["submitted"] else ""))
+                keep_actions()
                 answer, code = None, 2
             if finished:
                 code = 0

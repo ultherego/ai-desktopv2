@@ -53,10 +53,10 @@ Działa i jest scalone:
 
 | Zadanie | Stan |
 |---|---|
-| Wynik wykonanej zmiany zostaje w pamięci, gdy następne żądanie do modelu się nie uda | do zrobienia |
-| Niezależna odpowiedź nie jest usuwana tylko dlatego, że wcześniejsza tura zależała od cofniętego pliku | do zrobienia |
-| Treść cofniętego pliku nie przetrwa w faktach kontrolera, np. w argumencie polecenia | do zrobienia |
-| Rozmowa z wieloma zależnymi plikami daje się zapisać | do zrobienia |
+| Wynik wykonanej zmiany zostaje w pamięci, gdy następne żądanie do modelu się nie uda | w toku |
+| Niezależna odpowiedź nie jest usuwana tylko dlatego, że wcześniejsza tura zależała od cofniętego pliku | w toku |
+| Treść cofniętego pliku nie przetrwa w faktach kontrolera, np. w argumencie polecenia | w toku |
+| Rozmowa z wieloma zależnymi plikami daje się zapisać | w toku |
 
 **Ukończone, gdy:** po błędzie usługi model nie proponuje ponownie wykonanej zmiany, a po cofnięciu dostępu w kolejnych żądaniach nie ma danych z tego pliku.
 

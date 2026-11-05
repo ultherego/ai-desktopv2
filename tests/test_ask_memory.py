@@ -17,6 +17,7 @@ from unittest.mock import Mock, patch
 
 from ai_desktop import ask_cli as ask, assistant_flow, conversation_memory as cm, conversation_sessions as sessions
 from ai_desktop import conversation_state, execution
+from ai_desktop import conversation_state as cs
 from ai_desktop.analysis_contract import MAX_PACKET
 from ai_desktop.permissions import Limits
 from ai_desktop.terminal_consent import PROMPTS
@@ -390,6 +391,59 @@ class MemoryUnitTests(unittest.TestCase):
             mutate(bad)
             with self.assertRaises(ValueError):
                 cm.validate(bad)
+
+
+class RevocationDependencyTests(unittest.TestCase):
+    def conversation(self):
+        talk = cs.Conversation()
+        talk.finish("Przeczytaj plik", "Treść pliku", None, ("/x/plik",))
+        return talk
+
+    def test_an_independent_answer_after_a_revocation_is_not_removed_with_it(self):
+        talk = self.conversation()
+        self.assertEqual(talk.revalidate(lambda path: False), 1)
+        talk.finish("Czym jest inode?", "Inode to struktura.", None, ())
+        self.assertEqual(talk.turns[-1].taint, ())
+        talk.revalidate(lambda path: False)
+        self.assertEqual(talk.history()[-1]["answer"], "Inode to struktura.")
+
+    def test_a_later_answer_still_depends_on_what_it_could_see_while_access_lasts(self):
+        talk = self.conversation()
+        talk.finish("Co dalej?", "Dalej.", None, ())
+        self.assertEqual(talk.turns[-1].taint, ("/x/plik",))
+
+    def test_a_controller_fact_keeps_that_it_happened_and_loses_what_may_quote_the_file(self):
+        talk = cs.Conversation()
+        secret = "SYNTETYCZNY-ZNACZNIK"
+        talk.finish("Uruchom", "Gotowe.", None, ("/x/plik",), actions=("Odczyt uname " + secret + ": ok",))
+        self.assertIn(secret, json.dumps(talk.task_memory(), ensure_ascii=False))
+        talk.revalidate(lambda path: False)
+        text = json.dumps(talk.task_memory(), ensure_ascii=False)
+        self.assertNotIn(secret, text)
+        self.assertIn(cs.FACT_REDACTED, text)
+
+    def test_a_fact_with_no_source_survives_a_revocation_word_for_word(self):
+        talk = cs.Conversation()
+        talk.finish("Zmień", "Gotowe.", None, (), actions=("Zmiana systemctl restart foo.service: ok",))
+        talk.revalidate(lambda path: False)
+        self.assertIn("systemctl restart foo.service", json.dumps(talk.task_memory(), ensure_ascii=False))
+
+    def test_many_sources_across_turns_still_save_and_no_kept_turn_has_a_shortened_dependency_list(self):
+        talk = cs.Conversation()
+        for turn in range(5):
+            sources = tuple("/x/%d/%d" % (turn, index) for index in range(100))
+            talk.finish("Pytanie %d" % turn, "Odpowiedź %d" % turn, None, sources)
+        state = cs.export(talk)
+        self.assertLessEqual(len(state["paths"]), sessions.MAX_PATHS)
+        reloaded = cs.load(json.loads(json.dumps(state)))
+        for saved, original in zip(reloaded.turns, talk.turns):
+            if saved.answer == cs.REDACTED:
+                self.assertEqual(saved.taint, ())
+            else:
+                self.assertEqual(saved.taint, original.taint)            # complete, or the answer is not kept at all
+        self.assertTrue(any(turn.answer == cs.REDACTED for turn in reloaded.turns))
+        self.assertTrue(any(turn.answer != cs.REDACTED for turn in reloaded.turns))
+        self.assertEqual(cs.MAX_SOURCE_PATHS, sessions.MAX_PATHS)
 
 
 if __name__ == "__main__":

@@ -11,18 +11,20 @@ from test_ask_discovery import ANSWER, ANSWER_PLAN
 
 
 class MemoryFactTests(unittest.TestCase):
-    def test_controller_facts_become_done_observations_that_survive_revocation_and_a_round_trip(self):
+    def test_controller_facts_become_done_observations_and_keep_only_that_they_happened_after_revocation(self):
         talk = cs.Conversation()
         talk.finish("Zrób test", "Wykonano", None, ["/etc/secret.conf"], actions=["Polecenie uname -s: ok, kod 0"])
         facts = [e for e in talk.memory["entries"] if e["status"] == "done"]
         self.assertEqual([e["text"] for e in facts], ["Polecenie uname -s: ok, kod 0"])
         self.assertEqual(facts[0]["kind"], "observation")
+        saved = cs.load(cs.export(talk))                                     # also when it was saved before the revocation
         talk.revalidate(lambda path: False)                                  # the file the turn read is revoked
-        self.assertEqual([e["text"] for e in talk.memory["entries"] if e["status"] == "done"],
-                         ["Polecenie uname -s: ok, kod 0"])                  # a command fact depends on no file
+        # An argument the model chose may quote that file, so the words go; the fact that something ran stays.
+        self.assertEqual([e["text"] for e in talk.memory["entries"] if e["status"] == "done"], [cs.FACT_REDACTED])
         loaded = cs.load(cs.export(talk))
-        self.assertEqual([e["text"] for e in loaded.memory["entries"] if e["status"] == "done"],
-                         ["Polecenie uname -s: ok, kod 0"])
+        self.assertEqual([e["text"] for e in loaded.memory["entries"] if e["status"] == "done"], [cs.FACT_REDACTED])
+        saved.revalidate(lambda path: False)
+        self.assertEqual([e["text"] for e in saved.memory["entries"] if e["status"] == "done"], [cs.FACT_REDACTED])
 
     def test_note_action_is_bounded_and_ignores_empty_text_and_calls_outside_a_turn(self):
         cs.note_action("poza turą")                                          # no recorder: silently nothing

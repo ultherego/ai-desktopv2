@@ -8,8 +8,8 @@ Etapy i warunki ich ukończenia opisuje [ROADMAP.md](ROADMAP.md).
 - [x] Długie polecenie zmiany: etap edycji odrzuca instrukcję powyżej 2 KiB, choć `ask` przyjmuje 128 KiB.
 - [x] Spacja przed `/` jest usuwana, więc słowa z `/` nie da się wysłać jako pytania.
 - [x] Końcowa odpowiedź po odczycie pliku dostaje wyniki poleceń i wczytane Skille.
-- [ ] Wynik wykonanej zmiany zostaje w pamięci mimo błędu usługi.
-- [ ] Zależność od cofniętego pliku nie przechodzi na niezależne odpowiedzi.
+- [x] Wynik wykonanej zmiany zostaje w pamięci mimo błędu usługi.
+- [x] Zależność od cofniętego pliku nie przechodzi na niezależne odpowiedzi.
 - [ ] Zgodne limity szablonów `change` (polityka 128, kontrakt 24).
 - [ ] Skill przy pytaniu ogólnym bez `permissions.toml`.
 - [x] Dłuższy limit oczekiwania przy najwyższym rozumowaniu i komunikat mówiący, że chodzi o czas.
@@ -25,7 +25,7 @@ Etapy i warunki ich ukończenia opisuje [ROADMAP.md](ROADMAP.md).
 - [x] `commands.change`: gdy zgoda wygaśnie lub polityka się zmieni w trakcie polecenia, wynik jest pokazany i odnotowany, a program podaje test i wycofanie do uruchomienia ręcznie.
 - [x] Błędna suma klienta: README nie uruchamia pliku, a `PKGBUILD` odmawia budowy.
 - [x] `ConversationConsent`: zgoda na rozmowę obejmuje cały `permissions.toml`.
-- [ ] Pamięć rozmowy po cofnięciu dostępu: zredagowana odpowiedź i argumenty poleceń mogą przenosić treść cofniętego pliku.
+- [x] Pamięć rozmowy po cofnięciu dostępu: fakty kontrolera tracą szczegóły, gdy tura zależała od cofniętego pliku.
 - [ ] Odciąć w piaskownicy poleceń odczytu gniazda Unix hosta (D-Bus, Docker), bez dawania poleceniom sieci.
 - [ ] Sprawdzić ogólny filtr wywołań systemowych dla klienta.
 - [x] Przypiąć klienta Claude sumą kontrolną przy budowie pakietu.
@@ -36,7 +36,7 @@ Etapy i warunki ich ukończenia opisuje [ROADMAP.md](ROADMAP.md).
 ## Błędy funkcjonalne
 - [x] Etap edycji w `ask` dostaje wcześniejsze ustalenia rozmowy, pamięć, wyniki poleceń i Skille.
 - [ ] To samo w `project`.
-- [ ] Zapis rozmowy odmawia przy 33 zależnych plikach (limit 32), a odczyt dopuszcza 64.
+- [x] Zapis rozmowy z wieloma zależnymi plikami: tury, które nie mieszczą się w tabeli źródeł, są redagowane zamiast odmowy zapisu.
 - [x] Kosz: 129. usunięcie jest odrzucane przed wykonaniem.
 - [x] Skill o największym dopuszczalnym rozmiarze można przypisać do agenta.
 - [ ] Codex: poprawne zakończenie logowania/wylogowania bywa zgłaszane jako błąd (`not-found` z kodem 1).
