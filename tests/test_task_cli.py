@@ -317,8 +317,10 @@ class TaskPresentationTests(unittest.TestCase):
         self.assertTrue(previews[1].endswith("\n```\n\n"))
         self.assertIn("Changes saved.", output)
         self.assertIn("ai-desktop task rollback --workspace /tmp/project", output)
+        self.assertIn("Test on a copy: passed (python-syntax); 3 selected file(s).", previews[1])
+        self.assertIn("This checks syntax only; project tests were not run.", previews[1])
         for technical in ("TASK:", "TASK TEST:", "SESSION:", "New content as JSON", "SYNTHETIC TEST LOG",
-                          "Checking the changes on an isolated copy", "Test on a copy:",
+                          "Checking the changes on an isolated copy",
                           "The test covers only the selected files", "Only the changes shown will be saved"):
             self.assertNotIn(technical, output)
         self.assertNotRegex(output, r"[a-f0-9]{64}")
