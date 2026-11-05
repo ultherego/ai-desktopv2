@@ -65,7 +65,9 @@ def _summary(data):
               (terminal_text(row["id"]), terminal_text(row["provider"]), row["exchanges"], json.dumps(row["directory"], ensure_ascii=True)))
     for row in data["accounts"]:
         current = " (selected)" if row["selected"] else ""
-        print("Account: %s / %s%s · %s" % (row["provider"], row["account"], current, row["usage"]))
+        print("Account: %s / %s%s · %s · plan %s · %s" %
+              (row["provider"], row["account"], current, row.get("status", "unchecked"),
+               row.get("plan") or "unknown", row["usage"]))
     for error in data["errors"]:
         print(error)
 
@@ -79,7 +81,7 @@ def status(as_json=False):
     if data["selected"] == "local":
         print("Local endpoint health: unchecked offline. No subscription login is required.")
         return 2 if data["errors"] else 0
-    result = analysis_session.status()
+    result = analysis_session.status(data["selected"])
     return result or (2 if data["errors"] else 0)
 
 
@@ -117,7 +119,7 @@ def panel(dispatch):
                 return dispatch(command)
             if command == ["account", "use"]:
                 from .ask_commands import _pick
-                accounts = data["accounts"]
+                accounts = [r for r in data["accounts"] if r.get("status") != "retired"]
                 if accounts:
                     labels = [r["provider"] + " / " + r["account"] + (" (selected)" if r["selected"] else "")
                               for r in accounts]

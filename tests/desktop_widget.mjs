@@ -23,6 +23,7 @@ assert.equal(widget.accountWindows(sample, now + 600)[0].current, false);
 assert.equal(widget.alerts(status(), false, 90, now).length, 0);
 assert.equal(widget.alerts(status(sample, "local"), true, 90, now).length, 0);
 assert.equal(widget.alerts(status({...sample, selected: false}), true, 90, now).length, 0);
+assert.equal(widget.alerts(status({...sample, status: "retired"}), true, 90, now).length, 0);
 assert.equal(widget.alerts(status(), true, 96, now).length, 0);
 assert.deepEqual(Array.from(widget.alerts(status(), true, 95, now)), ["codex / personal · 5 h · 95% used"]);
 assert.equal(widget.alerts(status(), true, 95, now + 60).length, 0);

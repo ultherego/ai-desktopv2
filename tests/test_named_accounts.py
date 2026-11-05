@@ -8,7 +8,7 @@ import unittest
 from unittest.mock import patch
 
 from ai_desktop import account_cli as cli, account_runtime as runtime, agent_profiles, analysis_sandbox, execution
-from ai_desktop.account_store import AccountStore, Accounts, codex_windows
+from ai_desktop.account_store import AccountStore, Accounts, codex_windows, decode
 from ai_desktop.analysis_contract import AnalysisDenied, read_result, result_packet
 from tests.test_codex_rate_limits import rate_message, record, turn_ready
 
@@ -40,6 +40,13 @@ class NamedAccounts(unittest.TestCase):
             self.assertEqual(cli.main(["add", "codex", "other", "--login"]), 2)
             self.assertEqual(self.store.load().config.active("codex"), "default")
             login.assert_called_once_with("codex", "other")
+
+    def test_earlier_nonsecret_registry_remains_readable(self):
+        earlier = b'{"schema":1,"rows":[["codex","work",true,0,null]]}'
+        self.assertEqual(decode(earlier).active("codex"), "work")
+        self.assertEqual(decode(earlier).plans, ())
+        with self.assertRaises(ValueError):
+            decode(b'{"schema":1,"rows":[],"oauth":"private"}')
 
     def test_alias_isolated_by_peer_and_provider_refuses_missing_and_symlink(self):
         claude, codex = self.home / "claude", self.home / "codex"

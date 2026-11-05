@@ -114,15 +114,16 @@ class Accounts:
 
 def decode(raw):
     value = json.loads(raw, object_pairs_hook=_pairs)
-    if (type(value) is not dict or set(value) != {"schema", "rows", "retired", "logins", "plans"} or type(value["schema"]) is not int
+    if (type(value) is not dict or not {"schema", "rows"} <= set(value)
+            or set(value) - {"schema", "rows", "retired", "logins", "plans"} or type(value["schema"]) is not int
             or value["schema"] != 1 or type(value["rows"]) is not list
             or any(type(row) is not list or len(row) != 5 for row in value["rows"])
-            or any(type(value[k]) is not list or len(value[k]) > 32
-                   or any(type(row) is not list or len(row) != size for row in value[k])
+            or any(type(value.get(k, [])) is not list or len(value.get(k, [])) > 32
+                   or any(type(row) is not list or len(row) != size for row in value.get(k, []))
                    for k, size in (("retired", 2), ("logins", 3), ("plans", 4)))):
         raise ProfileError("accounts")
     try:
-        return Accounts(*(tuple(tuple(row) for row in value[key]) for key in ("rows", "retired", "logins", "plans")))
+        return Accounts(*(tuple(tuple(row) for row in value.get(key, [])) for key in ("rows", "retired", "logins", "plans")))
     except (TypeError, ValueError):
         raise ProfileError("accounts") from None
 

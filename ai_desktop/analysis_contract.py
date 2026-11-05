@@ -562,11 +562,22 @@ class Approval:
     sha256: str
     # Desktop-only file identity and policy bytes. Neither is serialized in the model request.
     local_policy: object = field(default=None, repr=False, compare=False)
+    source_check: object = field(default=None, repr=False, compare=False)
+
+    def recheck_sources(self):
+        if self.source_check is not None:
+            try:
+                self.source_check()
+            except (ValueError, OSError):
+                raise AnalysisDenied("consent") from None
 
 
 class AnalysisConsent:
     def __init__(self, report, *, question="", task=None, context=None, access=None, web=False, material=None, project=None,
-                 execution=UNSET, clock=time.monotonic, discovery=None):
+                 execution=UNSET, clock=time.monotonic, discovery=None, source_check=None):
+        if source_check is not None and not callable(source_check):
+            raise ValueError("source check")
+        self._source_check = source_check
         self.payload = application_input(report, question, task, context, access, web=web, material=material,
                                          project=project, execution=execution,
                                          **({"discovery": discovery} if discovery is not None else {}))
@@ -600,7 +611,7 @@ class AnalysisConsent:
                        **({"discovery": discovery} if discovery is not None else {}))
         finally:
             self._used = True
-        return Approval(self.payload, self.sha256, self._local_policy)
+        return Approval(self.payload, self.sha256, self._local_policy, self._source_check)
 
 
 MODEL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._\-\[\]]{0,63}\Z")

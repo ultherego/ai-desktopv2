@@ -91,7 +91,7 @@ def send_once(approval):
         provider = selected["provider"] if selected is not None else "claude"
         if provider == "local":
             from .local_provider import complete
-            return complete(parsed, approval.sha256, approval.local_policy)
+            return complete(parsed, approval)
         if not e2_account.account_ready():
             raise AnalysisDenied("consent")
         before = endpoint(uid)
@@ -108,6 +108,7 @@ def send_once(approval):
                     if reason in REASONS:
                         raise AnalysisDenied(reason)
                 raise AnalysisDenied("endpoint")
+            approval.recheck_sources()
             send_message(conn, body, kind="request")
             result = read_result(receive_message(conn, kind="response", timeout=request_seconds(
                                          selected["effort"] if selected else None) + SERVICE_MARGIN), approval.sha256,

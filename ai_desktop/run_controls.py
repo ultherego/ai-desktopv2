@@ -54,6 +54,12 @@ def provider_allowed(policy):
 
 def failure_hint(reason, fallback, *, config=execution.UNSET, diagnostic=None):
     selected = recipient_config(config)
+    if selected is not None and selected.get("account") and reason in ("auth-required", "auth-method"):
+        provider, name = selected["provider"], selected["account"]
+        return ("Check the account with ai-desktop account list. For its first login, run "
+                "ai-desktop account login %s %s. If its connected login has expired, use a new name with "
+                "ai-desktop account add %s NEW-NAME --login, then ai-desktop account use %s NEW-NAME."
+                % (provider, name, provider, provider))
     if selected is not None and selected["provider"] == "local":
         if reason == "authorization":
             return "Local inference needs network.local=true and the approved port in permissions.toml."

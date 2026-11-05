@@ -55,7 +55,7 @@ def build_parser():
                           help="Reply: terminal formatting, no colors, or raw Markdown")
     from .run_controls import add_arguments
     add_arguments(analysis)
-    login = commands.add_parser("login", help="Log in and choose the active service: Claude or Codex")
+    login = commands.add_parser("login", help="Log in to a provider's default account; named accounts use account login")
     target = login.add_mutually_exclusive_group()
     target.add_argument("--provider", choices=("claude", "codex"), help="Skip the menu; log in and choose the service")
     target.add_argument("--claude", "--allow-claude-login", dest="provider", action="store_const", const="claude",
@@ -133,7 +133,7 @@ Run ai-desktop in a terminal to start a conversation.
   usage      Show subscription limits and reset times when available
   sessions   Saved conversations: preview, resume and delete
   skills     List and preview the available Skills
-  login      Log in and choose Claude or ChatGPT / Codex
+  login      Log in to the default Claude or Codex account
   doctor     Check requirements without starting AI
 
 Full command list, including internal and developer tools: ai-desktop --help-all

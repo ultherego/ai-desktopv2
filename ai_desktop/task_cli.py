@@ -69,7 +69,7 @@ def run_task(args, reader, *, display_state=None):
         detached = workspace._can_apply(args.workspace)
         if type(detached) is int and detached:
             print(workspace.DETACHED_HISTORY_HINT)
-    gate = AnalysisConsent(None, task=source)
+    gate = AnalysisConsent(None, task=source, source_check=lambda: workspace.unchanged(before))
     selected = json.loads(gate.payload).get("execution")
     # Presentation only: authorization still checks the live execution binding.
     if display_state is not None:

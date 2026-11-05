@@ -39,7 +39,7 @@ function alerts(snapshot, enabled, threshold, now) {
         return []
     var messages = []
     for (var account of snapshot.accounts) {
-        if (!account || account.provider !== snapshot.selected || account.selected !== true)
+        if (!account || account.provider !== snapshot.selected || account.selected !== true || account.status === "retired")
             continue
         for (var item of accountWindows(account, now)) {
             var key = JSON.stringify([account.provider, account.account, item.name, item.reset])

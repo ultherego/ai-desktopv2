@@ -1,5 +1,5 @@
 """Full desktop entrance and policy revocation at the approved local transport boundary."""
-from contextlib import redirect_stdout
+from contextlib import nullcontext, redirect_stdout
 import io
 import json
 import os
@@ -11,7 +11,8 @@ import unittest
 from unittest.mock import patch
 
 from ai_desktop import agent_profiles, analysis_contract, analysis_service, analysis_session, ask_cli, cli
-from ai_desktop import conversation_sessions, execution, permissions, terminal_consent
+from ai_desktop import conversation_sessions, execution, permissions, run_controls, terminal_consent
+from types import SimpleNamespace
 from test_local_provider import reply, response, server
 
 
@@ -43,7 +44,7 @@ class LocalHandoffTests(unittest.TestCase):
     def policy(self, *, revoke=False):
         deny = '["~/example"]' if revoke else "[]"
         self.config.write_text(f'version=2\n[files]\nread=["~/example"]\ndeny={deny}\n'
-                               f'[network]\nlocal=true\n[local]\nport={self.port}\n')
+                               f'[network]\nlocal=true\nclaude=true\n[local]\nport={self.port}\n')
         self.config.chmod(0o600)
 
     def test_bare_terminal_command_goes_through_conversation_consent_to_the_configured_server(self):
@@ -71,3 +72,31 @@ class LocalHandoffTests(unittest.TestCase):
             with self.assertRaises(analysis_contract.AnalysisDenied):
                 analysis_service.send_once(approval)
         self.assertEqual(self.requests, [])
+
+    def test_cloud_relay_ready_after_revocation_does_not_receive_any_application_frame(self):
+        original = permissions.load_policy()
+        def relay_ready(_):
+            self.policy(revoke=True)
+            return analysis_service.READY
+        self.enterContext(patch.object(ask_cli, "installation_ready"))
+        self.enterContext(patch.object(ask_cli, "managed_session", return_value=nullcontext()))
+        self.enterContext(patch.object(analysis_service.e2_account, "account_ready", return_value=True))
+        self.enterContext(patch.object(analysis_service, "endpoint", return_value=(1, 2)))
+        self.enterContext(patch.object(analysis_service, "manager_peer"))
+        self.enterContext(patch.object(analysis_service, "packet", side_effect=relay_ready))
+        self.enterContext(patch.object(analysis_service.socket, "socket"))
+        outgoing = self.enterContext(patch.object(analysis_service, "send_message"))
+        with execution.using(None), execution.using_history([{"question": "File", "answer": "Synthetic excerpt"}]):
+            with self.assertRaises(analysis_contract.AnalysisDenied) as refusal:
+                ask_cli.request("Continue", SimpleNamespace(details=False, format="plain"), lambda _: "yes",
+                                context=[], check=original.recheck)
+        self.assertEqual(refusal.exception.reason, "consent")
+        outgoing.assert_not_called()
+
+    def test_named_account_auth_failure_only_suggests_commands_for_that_account(self):
+        for provider in ("claude", "codex"):
+            config = {**agent_profiles.resolve(provider=provider), "account": "work"}
+            hint = run_controls.failure_hint("auth-required", "Run ai-desktop login", config=config)
+            self.assertIn("ai-desktop account login %s work" % provider, hint)
+            self.assertIn("ai-desktop account use %s NEW-NAME" % provider, hint)
+            self.assertNotIn("ai-desktop login", hint)

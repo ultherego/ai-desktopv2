@@ -46,7 +46,7 @@ def authorized_policy(port=None, *, captured=UNSET):
         raise AnalysisDenied("authorization") from None
 
 
-def _http(body, port, policy, seconds):
+def _http(body, port, policy, seconds, *, before_send=None):
     # Only these two operations exist. The model cannot supply a method, URL or arbitrary HTTP headers.
     method, path, maximum = ("GET", "/v1/models", 64 * 1024) if body is None else ("POST", PATH, MAX_RESPONSE)
     # A socket timeout alone can be kept alive forever by a peer dripping headers or chunk bytes.
@@ -71,6 +71,8 @@ def _http(body, port, policy, seconds):
                 policy.recheck()
             except (ValueError, OSError):
                 raise AnalysisDenied("authorization") from None
+            if before_send is not None:
+                before_send()
             connection.request(method, path, body=body, headers={"Content-Type": "application/json",
                                "Accept": "application/json", "Connection": "close"})
             with connection.getresponse() as response:
@@ -95,14 +97,14 @@ def _http(body, port, policy, seconds):
                 raise AnalysisDenied("timeout")
 
 
-def complete(parsed, sha256, approved_policy):
+def complete(parsed, approval):
     """Accept only data already decoded by the canonical approval-envelope validator."""
     selected = parsed["execution"]
     port = selected.get("local_port", DEFAULT_LOCAL_PORT)
     mode = parsed["mode"]
     if selected["provider"] != "local" or mode == "web":
         raise AnalysisDenied("authorization")
-    policy = authorized_policy(port, captured=approved_policy)
+    policy = authorized_policy(port, captured=approval.local_policy)
     prompt = SYSTEM_PROMPT
     if selected["instructions"]:
         prompt += "\n\nUser profile instructions:\n" + selected["instructions"]
@@ -112,7 +114,8 @@ def complete(parsed, sha256, approved_policy):
     if selected["model"] != "default":
         body["model"] = selected["model"]
     try:
-        raw = _http(canonical(body).encode("utf-8"), port, policy, request_seconds(selected["effort"]))
+        raw = _http(canonical(body).encode("utf-8"), port, policy, request_seconds(selected["effort"]),
+                    before_send=approval.recheck_sources)
         document = json.loads(raw.decode("utf-8"), object_pairs_hook=_unique_pairs)
         choices = document["choices"]
         if type(choices) is not list or len(choices) != 1:
@@ -123,8 +126,8 @@ def complete(parsed, sha256, approved_policy):
                 or message.get("tool_calls") or message.get("function_call") or message.get("refusal")
                 or type(message["content"]) is not str or not message["content"].strip()):
             raise ValueError()
-        packet = result_packet(sha256, text=message["content"], mode=mode, provider="local")
-        return str(read_result(packet, sha256, mode=mode, provider="local"))
+        packet = result_packet(approval.sha256, text=message["content"], mode=mode, provider="local")
+        return str(read_result(packet, approval.sha256, mode=mode, provider="local"))
     except TimeoutError:
         raise AnalysisDenied("timeout") from None
     except (OSError, http.client.HTTPException):

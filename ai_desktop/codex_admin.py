@@ -94,7 +94,7 @@ def main(action, *, allow=False, details=False, named=None):
             or not os.isatty(0) or not os.isatty(1)):
         print("Codex: this needs explicit consent, an administrator and a terminal.")
         return 2
-    from .analysis_admin import login_command
+    from .analysis_admin import login_command, login_unit_stopped
     from .codex_runtime import runtime_ready
     unit, code = None, 2
     try:
@@ -135,9 +135,7 @@ def main(action, *, allow=False, details=False, named=None):
                                         "--property=LoadState,ActiveState,MainPID"], check=False, timeout=5,
                                        capture_output=True, text=True,
                                        env={"PATH": "/usr/bin", "LANG": "C.UTF-8"})
-                values = dict(line.split("=", 1) for line in state.stdout.splitlines() if "=" in line)
-                if state.returncode != 0 or (values.get("LoadState") != "not-found" and
-                        (values.get("ActiveState") not in ("inactive", "failed") or values.get("MainPID") != "0")):
+                if not login_unit_stopped(state):
                     code = 2
                     print("Could not confirm that the Codex login process stopped.")
             except (OSError, subprocess.SubprocessError):

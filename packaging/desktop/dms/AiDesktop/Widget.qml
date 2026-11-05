@@ -96,6 +96,12 @@ PluginComponent {
                         text: accountDelegate.modelData.provider + " / " + accountDelegate.modelData.account + (accountDelegate.modelData.selected ? " · selected" : "")
                         color: Theme.surfaceText
                     }
+                    StyledText {
+                        visible: Boolean(accountDelegate.modelData.plan || accountDelegate.modelData.status)
+                        textFormat: Text.PlainText
+                        text: [accountDelegate.modelData.plan, accountDelegate.modelData.status].filter(Boolean).join(" · ")
+                        color: Theme.surfaceVariantText
+                    }
                     Repeater {
                         model: parent.readings
                         StyledText {

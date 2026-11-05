@@ -933,7 +933,7 @@ class Session:
             if not self._access_unchanged(session, packet):
                 return None
             kwargs = self._gate_kwargs(packet)
-            gate = AnalysisConsent(None, **kwargs)
+            gate = AnalysisConsent(None, source_check=self.policy.recheck, **kwargs)
             selected = json.loads(gate.payload).get("execution")
             if gate.payload != packet.payload:
                 session.cancel(packet)

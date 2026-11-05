@@ -70,7 +70,7 @@ def request(question, args, reader, *, context=None, access=None, task=None, wri
     observed = {"discovery": discovery} if discovery is not None else {}
     check()
     gate = AnalysisConsent(None, question="" if task is not None else question, task=task,
-                           context=context, access=access, web=web, **observed)
+                           context=context, access=access, web=web, source_check=check, **observed)
     selected = json.loads(gate.payload).get("execution")
     if state is not None:
         state["execution"] = selected
