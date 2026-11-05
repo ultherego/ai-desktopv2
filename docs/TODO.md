@@ -1,6 +1,6 @@
 # To do
 
-Status: package `0.1.0-77`. Limitations of the current version are described in [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
+Status: package `0.1.0-78`. Limitations of the current version are described in [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
 
 ## Next up
 Stages and the conditions for completing them are described in [ROADMAP.md](ROADMAP.md).

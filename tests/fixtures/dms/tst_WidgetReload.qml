@@ -30,7 +30,7 @@ Item {
         }
 
         function visibleButton(item, label) {
-            if (!item.visible)
+            if (!item || !item.visible)
                 return null;
             if (item.text === label && typeof item.clicked === "function")
                 return item;
@@ -62,6 +62,19 @@ Item {
             verify(refresh && refresh.visible);
             const corner = refresh.mapToItem(popout, refresh.width, 0);
             verify(corner.x >= popout.width - 1 && corner.y < 40, "Refresh belongs in the top right corner");
+            if (provider.id === "claude") {
+                for (const state of ["unknown", "signed_out"]) {
+                    account.auth_state = state;
+                    Proc.statusReply = JSON.stringify(snapshot);
+                    widget.refresh();
+                    clickButton(popout, "Manage accounts…");
+                    compare(SessionService.lastLaunched, "ai-desktop-login-claude.desktop");
+                    compare(Proc.changes.length, 0, "Managing another provider must preserve the active service");
+                }
+                account.auth_state = "unknown";
+                Proc.statusReply = JSON.stringify(snapshot);
+                widget.refresh();
+            }
             clickButton(popout, "Sign in…");
             compare(SessionService.lastLaunched, "ai-desktop-login-" + provider.id + ".desktop");
             clickButton(popout, "Check sign-in…");
@@ -142,8 +155,8 @@ Item {
             Proc.statusReply = JSON.stringify(snapshot);
             Proc.finishLimits("unused output", 0);
             tryVerify(() => widget.codexAccount.quota_source === "codex_native" && refresh.enabled);
-            const label = findChild(popout, "nativeQuotaSource_" + account.account);
-            verify(label && label.visible);
+            verify(!findChild(popout, "nativeQuotaSource_" + account.account),
+                   "A native reading should render directly in its account card");
             const track = findChild(popout, "quotaTrack_five_hour");
             const gauge = findChild(popout, "quotaFill_five_hour");
             verify(track && gauge && Math.abs(gauge.width - track.width * 0.41) < 1);
@@ -215,6 +228,117 @@ Item {
             clickButton(popout, "Usage");
         }
 
+        function verifyButtonInside(card, label) {
+            const button = visibleButton(card, label);
+            verify(button, label + " should be inside the painted Codex card");
+            const top = button.mapToItem(card, 0, 0);
+            const bottom = button.mapToItem(card, button.width, button.height);
+            verify(top.x > 0 && top.y > 0 && bottom.x < card.width && bottom.y < card.height,
+                   label + " should fit inside the card border");
+        }
+
+        function exerciseUsageLayout(widget, popout) {
+            const now = Math.floor(Date.now() / 1000);
+            const alias = "long-synthetic-codex-account-123";
+            const codex = {provider: "codex", account: alias, selected: true, auth_state: "signed_in",
+                           plan: "pro", observed_at: now, windows: {}};
+            const accounts = [codex, {provider: "codex", account: "other", selected: false,
+                                      auth_state: "signed_out", windows: {}}];
+            for (let index = 0; index < 10; index++)
+                accounts.push({provider: "claude", account: "another-" + index, selected: index === 0,
+                               auth_state: "signed_in", windows: {}});
+            const snapshot = {schema: 1, selected: "claude", role: "diagnostic", model: "default",
+                              sessions: [], providers: [{id: "codex", allowed: true, client_present: true}],
+                              accounts};
+            widget.parentScreen = {height: 1080, width: 1920};
+            popout.width = 300;
+            Proc.statusReply = JSON.stringify(snapshot);
+            widget.refresh();
+            const list = findChild(popout, "usageList");
+            verify(list);
+            tryCompare(list, "count", accounts.length);
+            list.positionViewAtBeginning();
+            tryVerify(() => list.height > 370,
+                      5000, "The usable list viewport should grow beyond the old 340px cap");
+            const cardName = "usageCard_codex_" + alias;
+            tryVerify(() => findChild(popout, cardName) !== null);
+            const card = findChild(popout, cardName);
+            verify(card.border && card.border.width > 0 && card.color.a > 0, "Expected the visible card surface");
+            verifyButtonInside(card, "View usage in ChatGPT");
+            verifyButtonInside(card, "Connect live limits…");
+
+            function surface() { return findChild(popout, "selectUsage_codex_" + alias); }
+            tryVerify(() => surface() && surface().enabled);
+            Proc.changes = [];
+            compare(Qt.platform.pluginName, "offscreen");
+            // The offscreen platform acknowledges the URL but cannot launch a browser.
+            ignoreWarning("This plugin does not support QPlatformServices::openUrl() for 'https://chatgpt.com/settings/usage'.");
+            clickButton(card, "View usage in ChatGPT");
+            compare(Proc.changes.length, 0, "The browser link must not activate Codex");
+            clickButton(card, "Connect live limits…");
+            compare(JSON.stringify(SessionService.lastArgs), JSON.stringify([alias]));
+            const connect = visibleButton(card, "Connect live limits…");
+            connect.enabled = false;
+            mouseClick(connect);
+            compare(Proc.changes.length, 0, "The nested button, including when disabled, must consume its own area");
+            mouseClick(surface(), 15, 14);
+            compare(JSON.stringify(Proc.changes), JSON.stringify([["/usr/bin/ai-desktop", "agent", "use", "codex"]]));
+            surface().forceActiveFocus();
+            keyClick(Qt.Key_Return);
+            compare(Proc.changes.length, 2, "The usage card must also support keyboard selection");
+            const other = findChild(popout, "selectUsage_codex_other");
+            verify(other);
+            mouseClick(other, 15, 14);
+            compare(JSON.stringify(Proc.changes[2]), JSON.stringify(["/usr/bin/ai-desktop", "agent", "use", "codex"]));
+            compare(Proc.changes.length, 3, "Selecting the service must preserve its selected account");
+            snapshot.selected = "codex";
+            Proc.statusReply = JSON.stringify(snapshot);
+            widget.refresh();
+            tryVerify(() => surface() && !surface().enabled);
+            mouseClick(surface(), 15, 14);
+            compare(Proc.changes.length, 3, "Clicking the active service is a no-op");
+            snapshot.selected = "claude";
+            snapshot.providers[0].allowed = false;
+            Proc.statusReply = JSON.stringify(snapshot);
+            widget.refresh();
+            tryVerify(() => surface() && !surface().enabled);
+            mouseClick(surface(), 15, 14);
+            compare(Proc.changes.length, 3, "A blocked Codex account must not activate from Usage");
+            snapshot.providers[0].allowed = true;
+
+            // Existing readings also allow connecting while the browser action is hidden.
+            codex.windows = {five_hour: {percent: 19, reset: now + 600}};
+            codex.native_limits_cleanup_pending = true;
+            Proc.statusReply = JSON.stringify(snapshot);
+            widget.refresh();
+            tryVerify(() => visibleButton(findChild(popout, cardName), "Reconnect live limits…") !== null);
+            const measured = findChild(popout, cardName);
+            verifyButtonInside(measured, "Reconnect live limits…");
+            verify(!visibleButton(measured, "View usage in ChatGPT"));
+
+            const desktopViewport = list.height;
+            widget.parentScreen = {height: 480, width: 854};
+            tryVerify(() => list.height < desktopViewport && list.contentHeight > list.height);
+            const footer = visibleButton(popout, "Open panel");
+            verify(footer);
+            tryVerify(() => footer.mapToItem(popout, 0, footer.height).y <= 480, 1000,
+                      "Footer must fit on a short screen (content " + popout.implicitHeight +
+                      ", list " + list.height + ", footer " + footer.mapToItem(popout, 0, footer.height).y + ")");
+            const footerBefore = footer.mapToItem(popout, 0, footer.height);
+            list.positionViewAtEnd();
+            const lastCard = "usageCard_claude_another-9";
+            tryVerify(() => findChild(popout, lastCard) !== null);
+            const last = findChild(popout, lastCard);
+            tryVerify(() => {
+                const lastBottom = last.mapToItem(list, 0, last.height).y;
+                return lastBottom > 0 && lastBottom <= list.height + 1;
+            });
+            compare(footer.mapToItem(popout, 0, footer.height).y, footerBefore.y);
+            // The attached panel can give DMS less room than the full monitor.
+            popout.parentPopout.maxBodyHeight = 330;
+            tryVerify(() => footer.mapToItem(popout, 0, footer.height).y + 2 * PopoutMetrics.contentPadding <= 331);
+        }
+
         function test_recoverWithoutRestart(data) {
             plugin = data.state + "/plugins/AiDesktop/";
             const old = loadWidget(0);
@@ -254,7 +378,7 @@ Item {
             verify(widget);
             const popout = createTemporaryObject(widget.popoutContent, stage, {width: 420});
             verify(popout);
-            const host = Qt.createQmlObject("import QtQuick; QtObject { property bool shouldBeVisible: false }", popout);
+            const host = Qt.createQmlObject("import QtQuick; QtObject { property bool shouldBeVisible: false; property real maxBodyHeight: 0 }", popout);
             popout.parentPopout = host;
             const openedAfter = Proc.statusCalls;
             host.shouldBeVisible = true;
@@ -292,6 +416,8 @@ Item {
             compare(SessionService.lastLaunched, "ai-desktop.desktop");
             clickButton(popout, "Open panel");
             compare(SessionService.lastLaunched, "ai-desktop-panel.desktop");
+            if (data.provider === "codex")
+                exerciseUsageLayout(widget, popout);
         }
     }
 }

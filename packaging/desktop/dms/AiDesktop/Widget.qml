@@ -11,7 +11,7 @@ PluginComponent {
 
     layerNamespacePlugin: "ai-desktop"
     popoutWidth: 420
-    popoutHeight: 440
+    popoutHeight: Math.min(540, (parentScreen?.height || 800) * 0.8)
 
     property var snapshot: null
     property real sampledAt: 0
@@ -35,6 +35,36 @@ PluginComponent {
         property bool highlightedChoice: false
         backgroundColor: highlightedChoice ? Theme.primaryContainer : Theme.surfaceContainerHigh
         textColor: highlightedChoice ? Theme.onPrimaryContainer : Theme.surfaceText
+    }
+
+    component ServiceHitArea: MouseArea {
+        required property string provider
+        property list<Item> buttonRows
+        signal choose()
+        anchors.fill: parent
+        activeFocusOnTab: true
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        Accessible.role: Accessible.Button
+        Accessible.name: "Use " + Status.providerName(provider)
+        Accessible.onPressAction: if (enabled) choose()
+
+        onClicked: mouse => {
+            // Disabled buttons keep their hit area too. Only the card itself switches services.
+            for (let index = 0; index < buttonRows.length; ++index) {
+                const row = buttonRows[index];
+                const point = mapToItem(row, mouse.x, mouse.y);
+                if (row.visible && row.childAt(point.x, point.y) !== null)
+                    return;
+            }
+            choose();
+        }
+        Keys.onPressed: event => {
+            if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                choose();
+                event.accepted = true;
+            }
+        }
     }
 
     function refresh(liveTarget) {
@@ -210,7 +240,12 @@ PluginComponent {
             id: popout
 
             property bool showAccounts: false
-            readonly property int listLimit: Math.min(340, (root.parentScreen?.height || 800) * 0.50)
+            readonly property real availableHeight: parentPopout?.maxBodyHeight > 0
+                ? parentPopout.maxBodyHeight : (root.parentScreen?.height || 800) * 0.8
+            readonly property real controlsHeight: headerHeight + detailsHeight + 2 * PopoutMetrics.contentPadding
+                + tabs.height + footer.height + 2 * content.spacing
+                + (liveError.visible ? liveError.height + content.spacing : 0)
+            readonly property real listLimit: Math.max(0, Math.min(432, availableHeight - controlsHeight))
 
             readonly property bool opened: parentPopout?.shouldBeVisible === true
             onOpenedChanged: if (opened) root.refresh()
@@ -234,10 +269,12 @@ PluginComponent {
                                        : "Local status unavailable"
 
             Column {
+                id: content
                 width: parent.width
                 spacing: Theme.spacingM
 
                 Row {
+                    id: tabs
                     spacing: Theme.spacingS
                     ChoiceButton {
                         text: "Usage"
@@ -252,6 +289,7 @@ PluginComponent {
                 }
 
                 StyledText {
+                    id: liveError
                     objectName: "liveLimitsError"
                     width: parent.width
                     visible: !!root.liveErrorAccount && root.liveErrorAccount === root.codexAccount?.account
@@ -263,6 +301,7 @@ PluginComponent {
 
                 ListView {
                     id: usageList
+                    objectName: "usageList"
                     visible: !popout.showAccounts && count > 0
                     width: parent.width
                     height: Math.min(popout.listLimit, Math.max(0, contentHeight))
@@ -270,49 +309,67 @@ PluginComponent {
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
                     model: root.snapshot?.accounts || []
-                    delegate: Column {
-                        id: usageRow
+                    delegate: Quota.QuotaCard {
+                        id: usageCard
                         required property var modelData
+                        readonly property bool showUsageLink: account.provider === "codex" && !hasUsage && account.status !== "retired"
+                        readonly property bool showConnect: account.provider === "codex" && account.selected === true &&
+                            account.auth_state === "signed_in" && !account.live_limits_connected &&
+                            account.status !== "retired" && root.codexAvailable
+                        objectName: "usageCard_" + account.provider + "_" + account.account
                         width: ListView.view.width
-                        spacing: Theme.spacingXS
+                        height: implicitHeight + (actions.visible ? actions.implicitHeight + Theme.spacingS : 0)
+                        account: modelData
+                        sampledAt: root.sampledAt
+                        active: account.provider === root.service && account.selected === true && account.status !== "retired"
+                        fontFamily: Theme.fontFamily
+                        accentColor: Theme.primary
+                        surfaceColor: Theme.surfaceContainer
+                        textColor: Theme.surfaceText
+                        mutedColor: Theme.surfaceVariantText
+                        trackColor: Theme.outlineVariant
+                        successColor: Theme.success
+                        warningColor: Theme.warning
+                        dangerColor: Theme.error
+                        border.color: chooseUsage.activeFocus || chooseUsage.containsMouse ? accentColor
+                                      : active ? Qt.alpha(accentColor, 0.52) : Qt.alpha(mutedColor, 0.24)
 
-                        StyledText {
-                            objectName: "nativeQuotaSource_" + usageRow.modelData.account
-                            visible: usageRow.modelData.provider === "codex" && usageRow.modelData.quota_source === "codex_native"
-                            text: "Native Codex limits"
-                            color: Theme.surfaceVariantText
+                        ServiceHitArea {
+                            id: chooseUsage
+                            objectName: "selectUsage_" + provider + "_" + usageCard.account.account
+                            provider: usageCard.account.provider
+                            enabled: usageCard.account.status !== "retired" && !root.switching &&
+                                     Status.canSelectService(root.snapshot, provider)
+                            buttonRows: [actions]
+                            onChoose: root.selectService(provider)
                         }
-                        Quota.QuotaCard {
-                            width: parent.width
-                            account: usageRow.modelData
-                            sampledAt: root.sampledAt
-                            active: account.provider === root.service && account.selected === true && account.status !== "retired"
-                            fontFamily: Theme.fontFamily
-                            accentColor: Theme.primary
-                            surfaceColor: Theme.surfaceContainer
-                            textColor: Theme.surfaceText
-                            mutedColor: Theme.surfaceVariantText
-                            trackColor: Theme.outlineVariant
-                            successColor: Theme.success
-                            warningColor: Theme.warning
-                            dangerColor: Theme.error
-                            emptyUsageAction: Component {
-                                ChoiceButton {
-                                    objectName: "chatgptUsageLink"
-                                    text: "View usage in ChatGPT"
-                                    iconName: "open_in_new"
-                                    tooltipText: "Opens the account signed in to your browser"
-                                    onClicked: Qt.openUrlExternally("https://chatgpt.com/settings/usage")
-                                }
+                        Flow {
+                            id: actions
+                            x: usageCard.inset
+                            anchors.bottom: parent.bottom
+                            anchors.bottomMargin: usageCard.inset
+                            width: parent.width - 2 * usageCard.inset
+                            visible: usageCard.showUsageLink || usageCard.showConnect
+                            spacing: Theme.spacingS
+
+                            ChoiceButton {
+                                id: usageLink
+                                objectName: "chatgptUsageLink"
+                                visible: usageCard.showUsageLink
+                                maximumWidth: parent.width
+                                text: "View usage in ChatGPT"
+                                iconName: "open_in_new"
+                                tooltipText: "Opens the account signed in to your browser"
+                                onClicked: Qt.openUrlExternally("https://chatgpt.com/settings/usage")
                             }
-                        }
-                        ChoiceButton {
-                            visible: usageRow.modelData.provider === "codex" && usageRow.modelData.selected === true &&
-                                     usageRow.modelData.auth_state === "signed_in" && !usageRow.modelData.live_limits_connected &&
-                                     usageRow.modelData.status !== "retired" && root.codexAvailable
-                            enabled: !root.switching && !root.fetchingLimitsFor
-                            text: usageRow.modelData.native_limits_cleanup_pending === true ? "Reconnect live limits…" : "Connect live limits…"
-                            onClicked: root.manageLiveLimits(usageRow.modelData.account, false)
+                            ChoiceButton {
+                                id: connectLimits
+                                visible: usageCard.showConnect
+                                enabled: !root.switching && !root.fetchingLimitsFor
+                                maximumWidth: parent.width
+                                text: usageCard.account.native_limits_cleanup_pending === true ? "Reconnect live limits…" : "Connect live limits…"
+                                onClicked: root.manageLiveLimits(usageCard.account.account, false)
+                            }
                         }
                     }
                 }
@@ -342,9 +399,6 @@ PluginComponent {
                         readonly property bool signedIn: selectedAccount?.auth_state === "signed_in"
                         readonly property bool linked: selectedAccount?.live_limits_connected === true
                         readonly property bool cleanupPending: selectedAccount?.native_limits_cleanup_pending === true
-                        readonly property bool otherLimitsSlots: provider === "codex" && (root.snapshot?.accounts || []).some(
-                            a => a.provider === "codex" && a.account !== selectedAccount?.account &&
-                                 (a.live_limits_connected === true || a.native_limits_cleanup_pending === true))
                         readonly property var accounts: (root.snapshot?.accounts || []).filter(a => a.provider === provider && a.status !== "retired")
                         width: ListView.view.width
                         height: serviceBody.implicitHeight + 24
@@ -352,33 +406,13 @@ PluginComponent {
                         color: Theme.surfaceContainer
                         border.color: chooseService.activeFocus || chooseService.containsMouse ? Theme.primary : provider === root.service ? Qt.alpha(Theme.primary, 0.52) : Qt.alpha(Theme.surfaceVariantText, 0.24)
 
-                        MouseArea {
+                        ServiceHitArea {
                             id: chooseService
-                            objectName: "chooseService_" + serviceCard.provider
-                            anchors.fill: parent
-                            enabled: !root.switching && Status.canSelectService(root.snapshot, serviceCard.provider)
-                            activeFocusOnTab: true
-                            hoverEnabled: true
-                            cursorShape: Qt.PointingHandCursor
-                            Accessible.role: Accessible.Button
-                            Accessible.name: "Use " + Status.providerName(serviceCard.provider)
-                            Accessible.onPressAction: root.selectService(serviceCard.provider)
-                            function overButton(row, x, y) {
-                                const point = mapToItem(row, x, y);
-                                return row.visible && row.childAt(point.x, point.y) !== null;
-                            }
-
-                            onClicked: mouse => {
-                                // Disabled account buttons also own their area on the card.
-                                if (!overButton(accountChoices, mouse.x, mouse.y) && !overButton(accountActions, mouse.x, mouse.y))
-                                    root.selectService(serviceCard.provider);
-                            }
-                            Keys.onPressed: event => {
-                                if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                                    root.selectService(serviceCard.provider);
-                                    event.accepted = true;
-                                }
-                            }
+                            objectName: "chooseService_" + provider
+                            provider: serviceCard.provider
+                            enabled: !root.switching && Status.canSelectService(root.snapshot, provider)
+                            buttonRows: [accountChoices, accountActions]
+                            onChoose: root.selectService(serviceCard.provider)
                         }
 
                         Column {
@@ -459,7 +493,7 @@ PluginComponent {
                                     onClicked: root.manageLiveLimits(serviceCard.selectedAccount.account, true)
                                 }
                                 ChoiceButton {
-                                    visible: serviceCard.signedIn || serviceCard.otherLimitsSlots
+                                    visible: serviceCard.provider === "claude" || serviceCard.provider === "codex"
                                     enabled: !root.switching
                                     text: "Manage accounts…"
                                     onClicked: root.manageAccounts(serviceCard.provider)
@@ -475,6 +509,7 @@ PluginComponent {
                     color: Theme.surfaceVariantText
                 }
                 Flow {
+                    id: footer
                     width: parent.width
                     spacing: Theme.spacingS
                     DButton {

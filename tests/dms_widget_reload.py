@@ -51,6 +51,7 @@ def write_dms_modules(root):
                 }
             }
         }"""),
+                      "PopoutMetrics": ("singleton", "QtObject { readonly property real contentPadding: 16 }"),
                       "Theme": ("singleton", """QtObject {
             property int spacingXS: 4
             property int spacingS: 8
@@ -109,10 +110,21 @@ def write_dms_modules(root):
                 property string detailsText
                 property var parentPopout: null
                 property Component headerActions
+                readonly property real headerHeight: heading.visible ? heading.height : 0
+                readonly property real detailsHeight: details.visible ? details.implicitHeight : 0
                 Item {
+                    id: heading
                     width: parent.width
                     height: 40
+                    visible: host.headerText.length > 0
                     Loader { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; sourceComponent: host.headerActions }
+                }
+                Text {
+                    id: details
+                    text: host.detailsText
+                    width: parent.width
+                    wrapMode: Text.WordWrap
+                    visible: text.length > 0
                 }
             }"""),
         },

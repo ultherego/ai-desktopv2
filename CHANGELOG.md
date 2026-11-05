@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-78: quota card layout and service selection
+
+- Give the account list more vertical space when the screen allows it. Codex usage and connection buttons wrap inside the account card. The extra heading above the Codex card was removed.
+- Click a usage card or focus it and press Enter to choose that service for new conversations. Its buttons keep their own actions. Claude and Codex both expose **Manage accounts…** in the accounts tab, including before sign-in.
+
 ## 0.1.0-77: live Codex limits in DankBar
 
 - Connect a separate native Codex account from the widget. The upper-right refresh button and `ai-desktop usage --refresh --provider codex` fetch its current quota windows and reset times without sending a model request.
