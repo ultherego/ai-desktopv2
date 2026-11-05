@@ -69,7 +69,7 @@ def client_environment(token=None):
 
 
 def namespace_command(action, directory):
-    if action not in ("version", "analyze"):
+    if action not in ("version", "analyze", "quota-connect", "quota-read"):
         raise AnalysisDenied("input")
     directory = Path(directory)
     command = base_command() + ["--disable-userns", "--assert-userns-disabled", "--hostname", "ai-desktop",
@@ -79,7 +79,11 @@ def namespace_command(action, directory):
     command += ["--ro-bind", str(directory / "passwd"), "/etc/passwd",
                 "--ro-bind", str(directory / "group"), "/etc/group",
                 "--ro-bind", str(CA.resolve(strict=True)), "/etc/ssl/certs/ca-certificates.crt"]
-    if action == "analyze":
+    if action in ("quota-connect", "quota-read"):
+        # A disposable home contains, at most, the selected native credential.
+        # Native config, hooks, shell state, logs and databases never cross runs.
+        command += ["--bind", str(directory / "native-home"), INNER_HOME]
+    if action != "version":
         command += ["--ro-bind", str(directory / "egress.sock"), "/run/egress.sock"]
     metadata = json.dumps({name: os.readlink("/proc/self/ns/" + name) for name in NAMESPACES})
     return command + ["--chdir", "/work", "/usr/bin/python3", "-I", "-B",

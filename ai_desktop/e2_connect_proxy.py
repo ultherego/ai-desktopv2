@@ -14,6 +14,8 @@ import time
 
 HOSTS = frozenset({"api.anthropic.com", "claude.ai", "platform.claude.com"})
 OPENAI_HOSTS = frozenset({"api.openai.com"})
+# Separate native account RPC namespace. Device auth/token renewal and account limits.
+CODEX_ACCOUNT_HOSTS = frozenset({"auth.openai.com", "chatgpt.com"})
 HEADER_LIMIT = 8192
 HELLO_LIMIT = 65536
 STREAM_LIMIT = 4 * 1024 * 1024
@@ -27,9 +29,9 @@ class Denied(ValueError):
 
 
 def _fixed_hosts(hosts):
-    # Only two compiled policies are possible. This parameter never comes from
+    # Only these compiled policies are possible. This parameter never comes from
     # a request, profile, environment variable or model output.
-    if type(hosts) is not frozenset or hosts not in (HOSTS, OPENAI_HOSTS):
+    if type(hosts) is not frozenset or hosts not in (HOSTS, OPENAI_HOSTS, CODEX_ACCOUNT_HOSTS):
         raise Denied()
     return hosts
 

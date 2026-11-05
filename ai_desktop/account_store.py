@@ -47,6 +47,11 @@ class Accounts:
     plans: tuple = ()
     # Locally checked credentials, independent of account selection and cached quota.
     auth: tuple = ()
+    # Native Codex limits are a separate source: alias, observation time, plan, complete windows.
+    # An entry with time 0 is an opt-in receipt awaiting its first successful observation.
+    native_limits: tuple = ()
+    # The service may still hold a separate credential after the SIWC slot changes.
+    native_stale: tuple = ()
 
     def __post_init__(self):
         if len(self.rows) > 32:
@@ -85,6 +90,36 @@ class Accounts:
                        for p, n, status in self.auth)):
             raise ProfileError("accounts")
 
+        native_names = set()
+        for name, observed, plan, windows in self.native_limits:
+            if (name in native_names or name not in self.items("codex") or ("codex", name) in self.retired
+                    or self.auth_status("codex", name) != "signed_in" or type(observed) is not int
+                    or not 0 <= observed < 2**34 or (plan is not None and plan not in PLANS)
+                    or type(windows) is not dict or (observed == 0 and (plan is not None or windows))):
+                raise ProfileError("accounts")
+            if windows:
+                quota(windows)
+            native_names.add(name)
+        if (len(set(self.native_stale)) != len(self.native_stale)
+                or any(name not in self.items("codex") or name in native_names for name in self.native_stale)):
+            raise ProfileError("accounts")
+
+    def without_native_limits(self, name):
+        return replace(self, native_limits=tuple(row for row in self.native_limits if row[0] != name),
+                       native_stale=tuple(n for n in self.native_stale if n != name))
+
+    def invalidate_native_limits(self, name):
+        if not any(row[0] == name for row in self.native_limits):
+            return self
+        return replace(self, native_limits=tuple(row for row in self.native_limits if row[0] != name),
+                       native_stale=self.native_stale + (name,))
+
+    def with_native_limits(self, name, *, observed=0, plan=None, windows=None):
+        retained = tuple(row for row in self.native_limits if row[0] != name)
+        snapshot = (name, observed, plan, {} if windows is None else windows)
+        return replace(self, native_limits=retained + (snapshot,),
+                       native_stale=tuple(n for n in self.native_stale if n != name))
+
     def auth_status(self, provider, name):
         for p, n, status in self.auth:
             if (p, n) == (provider, name):
@@ -101,7 +136,8 @@ class Accounts:
             return replace(self, auth=retained + ((provider, name, status),))
         rows = tuple((p, n, selected, 0, None) if (p, n) == key else (p, n, selected, t, samples)
                      for p, n, selected, t, samples in self.rows)
-        return replace(self, rows=rows, plans=tuple(row for row in self.plans if row[:2] != key),
+        state = self.invalidate_native_limits(name) if provider == "codex" else self
+        return replace(state, rows=rows, plans=tuple(row for row in self.plans if row[:2] != key),
                        auth=retained + ((provider, name, status),))
 
     def with_plan(self, service, name, plan, observed):
@@ -121,7 +157,8 @@ class Accounts:
         key = (provider, name)
         if not named_account(name) or name not in self.items(provider):
             raise ProfileError("account-missing")
-        return replace(self, retired=tuple(sorted(set(self.retired) | {key})))
+        state = self.invalidate_native_limits(name) if provider == "codex" else self
+        return replace(state, retired=tuple(sorted(set(self.retired) | {key})))
 
     def active(self, service):
         return next((name for provider, name, active, _, _ in self.rows if service == provider and active), "default")
@@ -163,21 +200,25 @@ class Accounts:
         return replace(self, rows=retained + ((service, name, self.active(service) == name, newest, windows),))
 
     def data(self):
-        return {"schema": 1, "rows": list(self.rows), "retired": self.retired, "logins": self.logins, "plans": self.plans, "auth": self.auth}
+        return {"schema": 1, "rows": list(self.rows), "retired": self.retired, "logins": self.logins, "plans": self.plans,
+                "auth": self.auth, "native_limits": self.native_limits, "native_stale": self.native_stale}
 
 
 def decode(raw):
     value = json.loads(raw, object_pairs_hook=_pairs)
     if (type(value) is not dict or not {"schema", "rows"} <= set(value)
-            or set(value) - {"schema", "rows", "retired", "logins", "plans", "auth"} or type(value["schema"]) is not int
+            or set(value) - {"schema", "rows", "retired", "logins", "plans", "auth", "native_limits", "native_stale"} or type(value["schema"]) is not int
             or value["schema"] != 1 or type(value["rows"]) is not list
             or any(type(row) is not list or len(row) != 5 for row in value["rows"])
+            or type(value.get("native_stale", [])) is not list or len(value.get("native_stale", [])) > 33
             or any(type(value.get(k, [])) is not list or len(value.get(k, [])) > 34
                    or any(type(row) is not list or len(row) != size for row in value.get(k, []))
-                   for k, size in (("retired", 2), ("logins", 3), ("plans", 4), ("auth", 3)))):
+                   for k, size in (("retired", 2), ("logins", 3), ("plans", 4), ("auth", 3), ("native_limits", 4)))):
         raise ProfileError("accounts")
     try:
-        return Accounts(*(tuple(tuple(row) for row in value.get(key, [])) for key in ("rows", "retired", "logins", "plans", "auth")))
+        return Accounts(*(tuple(tuple(row) for row in value.get(key, []))
+                          for key in ("rows", "retired", "logins", "plans", "auth", "native_limits")),
+                        native_stale=tuple(value.get("native_stale", [])))
     except (TypeError, ValueError):
         raise ProfileError("accounts") from None
 
@@ -199,7 +240,10 @@ class AccountStore(Store):
                          0o600, dir_fd=parent)
             try:
                 _file(os.fstat(fd), self.uid)
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                try:
+                    fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                except BlockingIOError:
+                    raise ProfileError("busy") from None
                 if not os.path.samestat(os.fstat(fd), os.stat(filename, dir_fd=parent, follow_symlinks=False)):
                     raise ProfileError("changed")
                 recheck()

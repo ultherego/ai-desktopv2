@@ -1,0 +1,57 @@
+[Unit]
+Description=AI Desktop isolated Codex quota reader for UID %i
+Requires=ai-desktop-codex-limits@%i.socket
+After=ai-desktop-codex-limits@%i.socket
+StartLimitIntervalSec=60
+StartLimitBurst=24
+
+[Service]
+Type=exec
+User=ai-desktop
+Group=ai-desktop
+ExecStart=/usr/bin/python3 -I -B /usr/lib/ai-desktop/codex-quota.py serve %i
+WorkingDirectory=/
+Environment=HOME=/var/lib/ai-desktop LANG=C.UTF-8
+UnsetEnvironment=PYTHONPATH PYTHONHOME LD_PRELOAD LD_LIBRARY_PATH
+StandardInput=null
+StandardOutput=null
+StandardError=null
+UMask=0077
+Restart=no
+RuntimeMaxSec=120
+TimeoutStopSec=3
+KillMode=control-group
+TasksMax=96
+MemoryMax=1G
+LimitCORE=0
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateDevices=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/var/lib/ai-desktop
+InaccessiblePaths=-/mnt -/media -/opt -/srv
+# Do not overmount pieces of the supervisor's /proc: Linux then refuses a
+# fresh procfs in bwrap's unprivileged PID namespace. The child remounts its
+# own entire /proc read-only after creating it and verifies that mount flag.
+ProtectKernelTunables=no
+ProtectKernelModules=yes
+ProtectKernelLogs=no
+ReadOnlyPaths=/sys
+ProtectControlGroups=yes
+RestrictNamespaces=user mnt pid net ipc uts
+RestrictRealtime=yes
+# This setting blocks openat2, required by modern Bubblewrap builds. The
+# trusted child installs the mode-bit/openat2 filter AFTER namespace setup,
+# before any native executable or bridge thread. NNP/caps restrictions apply
+# throughout; only the trusted Python/setup supervisor lacks the mode filter.
+RestrictSUIDSGID=no
+LockPersonality=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+SystemCallArchitectures=native
+# The trusted Python proxy has uplink; every native client must pass bwrap's
+# fresh net/PID/mount/user namespaces and effective confinement checks.
+# Bun/JIT needs executable mappings. Do not copy the offline worker's MDWE or
+# socket-denying seccomp profile here: bwrap also needs mount/unshare syscalls.

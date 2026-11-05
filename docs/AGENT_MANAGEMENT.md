@@ -190,4 +190,18 @@ Use **Sign out…** or `ai-desktop account logout PROVIDER ALIAS` to disconnect 
 
 The home panel shows the selected account for the active service. Choose **Subscription limits** to browse all accounts and **Back** to return. `ai-desktop usage --provider claude` prints the same structured windows. Reset and observation times in terminal views use your local time zone. Live percentages use the terminal's green, yellow (75%) and red (90%) colors. Use `NO_COLOR=1` for plain text. JSON keeps the original timestamps and UTC summary for consumers.
 
-`ai-desktop usage`, the panel and `status --json` read private local observations. After a successful approved request, the controller accepts reported 5-hour and 7-day utilization and reset times from native Claude Code rate-limit events or Codex app-server's `account/rateLimits/updated` event. A missing window is unknown. A partial reading preserves the other window and its observation time. Expired windows are labelled as historical. The command does not spend a turn. It has no live polling endpoint: the pinned Codex `account/rateLimits/read` requires native Codex-backend auth, whereas the approved integration uses a scoped Sign in with ChatGPT token on the Responses API. The isolated Claude flow only consumes quota metadata the client supplies. The panel displays the last recognized native subscription plan when supplied, its observation time and local sign-in state for both named and default accounts. For this integration the login result alone carries no 5-hour or 7-day percentages. [ChatGPT usage settings](https://chatgpt.com/settings/usage) show the plan and app usage for the browser account. Current remote authentication and quota availability still require host acceptance for the pinned native clients.
+By default the terminal and widget read local observations. An approved conversation may deliver native quota events. A partial event preserves the other window and its observation time. Expired readings are labelled as historical.
+
+For an on-demand Codex account snapshot, use the native quota connection for a signed-in local slot. These fish commands use the default slot:
+
+```fish
+ai-desktop account connect-limits codex default
+ai-desktop usage --refresh --provider codex --account default
+ai-desktop usage --provider codex
+```
+
+The first command asks for confirmation and opens the native Codex device login. Choose the intended workspace in the browser. The setup enables a dedicated socket for your desktop UID, including after reboot. Subsequent manual refreshes use that socket. The second command performs an authenticated `account/rateLimits/read` and updates the local snapshot. The third displays the cached result. A current permission policy allowing Codex is required for connecting and requesting a reading. An explicit disconnect can still remove the local credential when network access is disabled.
+
+**Native Codex limits** apply to the account and workspace chosen during device login. AI Desktop's Sign in with ChatGPT session authorizes conversations separately. The two workspaces can differ, including when the same email address is used. Passive conversation observations and native account snapshots are kept separately. Missing windows stay unknown. For app-specific usage, open [ChatGPT settings](https://chatgpt.com/settings/usage).
+
+Run `ai-desktop account disconnect-limits codex default` to remove the separate local grant. Disconnecting the last retained native slot stops and disables its per-user socket. A change to the conversation sign-in invalidates the native association. The widget or Codex account picker offers an explicit cleanup action for a retained native credential, even if the chat slot was signed out or retired.

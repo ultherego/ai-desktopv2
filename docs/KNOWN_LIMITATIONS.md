@@ -18,7 +18,7 @@ AI Desktop is a development version, not a 1.0 release. Automated tests do not p
 - Edited files are limited to 64 KiB each and 128 KiB combined. A project test requires the entire supported authorized index to fit its copy limits. Go and npm refuse when the user manager cannot enforce the required cgroup limits. Local runtime dependencies must already be available.
 - Commands run in a sandbox without network or user session, so for example `ip`, `wpctl` and `glxinfo` do not see the host's state.
 
-- The agent panel shows the last quota windows actually reported by each client, including their observation time. With no observations or after a reset the current balance is unknown. The widget refreshes local data only. A successful Codex login can therefore show a connected account before the provider reports any percentages. Use the link to ChatGPT usage settings for the account in the browser.
+- The agent panel shows the last quota windows actually reported by each client, including their observation time. With no observations or after a reset the current balance is unknown. The widget timer refreshes local data. On-demand Codex limits require a separate, explicitly linked native Codex session for the chosen workspace. The signed-in browser account used for ChatGPT app usage may differ.
 - Local mode trusts the service on the configured loopback port. Selecting this service does not install, launch or authenticate the server process.
 - New or empty diagnostic roles receive the bundled diagnostic procedures on explicit setup. Existing customized Skill selections are preserved. `material`, `project` and `task` still send the assigned Skill bodies in their requests.
 

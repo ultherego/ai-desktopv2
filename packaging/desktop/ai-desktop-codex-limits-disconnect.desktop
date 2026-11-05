@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=AI Desktop — Disconnect live Codex limits
+Exec=/usr/bin/ai-desktop account disconnect-limits codex --from-widget
+Terminal=true
+NoDisplay=true
+Icon=utilities-terminal
+Categories=System;Utility;

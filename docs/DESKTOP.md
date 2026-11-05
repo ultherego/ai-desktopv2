@@ -29,7 +29,16 @@ Click the horizontal provider indicator to open **Usage**. If a current five-hou
 
 In **Accounts & login**, click the Claude or Codex card to use that service for new conversations. Click an account name to select that slot. The controls inside the card act on the displayed provider and account. The terminal shows the outcome and the account name. For actions opened from the widget, press Enter to close the result. **Sign in…** opens the account picker. A confirmed login changes the action to **Sign out…**; the terminal names the target and asks for confirmation before disconnecting it. **Manage accounts…** opens the picker again. For an account connected on an older release, click **Check sign-in…** once to check its existing isolated profile. An administrator prompt may appear. After the check, use the refresh icon in the top right if the widget is still open.
 
-The refresh icon works on both tabs. It reads the same local status as opening the popout or waiting for its one-minute timer. Percentages update when a provider supplies a new observation. If Codex has no observations, **View usage in ChatGPT** opens the usage settings for the account signed in to the browser. [ChatGPT usage settings](https://chatgpt.com/settings/usage).
+The refresh icon works on both tabs. With the optional native limits connection, an explicit click reads the current usage windows of the selected Codex slot, including while Claude is active for chat. Opening the popout and its regular timer read local status. Claude usage continues to reflect the last reported observation.
+
+To set up live Codex limits:
+
+1. In **Accounts & login**, check the Codex slot is signed in. For an existing login that still says **Check sign-in…**, run that check first.
+2. Click **Connect live limits…**, confirm the named slot and approve the administrator prompt. The terminal opens an official device sign-in flow. Open the displayed address, enter the short code and choose the ChatGPT account and workspace whose native Codex limits you want to see. Enable device-code login in your personal security settings or ask your workspace administrator if the provider has disabled it.
+3. Return to **Usage** and click the upper-right refresh icon. **Native Codex limits** identifies that separate session. Only the windows returned by Codex receive numbers. A network failure leaves the previous measurement and its timestamp visible.
+4. To remove the native session locally, choose **Disconnect live limits…**. After chat sign-out or loss of the native connection, the account picker also lets you remove saved native limits credentials. **View usage in ChatGPT** opens the usage settings for the account signed in to the browser.
+
+[Codex device authentication](https://learn.chatgpt.com/docs/auth#login-on-headless-devices) · [ChatGPT usage settings](https://chatgpt.com/settings/usage).
 
 Notifications are disabled initially. Enable **Subscription limit notifications** in the plugin settings and choose the percentage used (default 90%). While the widget is running, a current 5-hour or 7-day window for the selected service and account can trigger one DMS toast when a sample meets the threshold. Multiple bars share notification state. Restarting DMS clears that state. To disable the widget, remove it from the bar or disable the plugin in Settings.
 

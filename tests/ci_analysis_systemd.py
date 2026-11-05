@@ -155,6 +155,31 @@ def install(temp, file_home):
     return fixture
 
 
+def account_terminal(command, expected, label):
+    # Keep the input side of the PTY open, just like an interactive owner.
+    # Feeding immediate EOF through script(1) can stall systemd-run --pty.
+    print("CI ACCOUNT: " + label, flush=True)
+    master, slave = pty.openpty()
+    try:
+        with subprocess.Popen(command, stdin=slave, stdout=slave, stderr=slave,
+                              close_fds=True, start_new_session=True,
+                              env={"PATH": "/usr/bin", "LANG": "C.UTF-8", "TERM": "dumb"}) as proc:
+            os.close(slave)
+            slave = None
+            try:
+                code = proc.wait(timeout=45)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+                raise ValueError(label + "-timeout") from None
+        if code != expected:
+            raise ValueError(f"{label}-got-{code}")
+    finally:
+        if slave is not None:
+            os.close(slave)
+        os.close(master)
+
+
 def account_lifecycle_cycle(temp):
     """Exercise the installed helper, sudo UID, transient service, and result codes on a synthetic slot."""
     alias = "ci-lifecycle"
@@ -164,31 +189,9 @@ def account_lifecycle_cycle(temp):
         prior._run(*admin, "/usr/bin/test", "!", flag, str(slot))
 
     def check(action, expected):
-        command = [*admin, "/usr/bin/python3", "-I", "-B", str(prior.DEST / "codex-auth.py"),
-                   "account-" + action, "claude", alias]
-        # Keep the input side of the PTY open, just like an interactive owner.
-        # Feeding immediate EOF through script(1) can stall systemd-run --pty.
-        label = f"account-{action}-expected-{expected}"
-        print("CI ACCOUNT: " + label, flush=True)
-        master, slave = pty.openpty()
-        try:
-            with subprocess.Popen(command, stdin=slave, stdout=slave, stderr=slave,
-                                  close_fds=True, start_new_session=True,
-                                  env={"PATH": "/usr/bin", "LANG": "C.UTF-8", "TERM": "dumb"}) as proc:
-                os.close(slave)
-                slave = None
-                try:
-                    code = proc.wait(timeout=45)
-                except subprocess.TimeoutExpired:
-                    proc.kill()
-                    proc.wait()
-                    raise ValueError(label + "-timeout") from None
-            if code != expected:
-                raise ValueError(f"{label}-got-{code}")
-        finally:
-            if slave is not None:
-                os.close(slave)
-            os.close(master)
+        argv = [*admin, "/usr/bin/python3", "-I", "-B", str(prior.DEST / "codex-auth.py"),
+                "account-" + action, "claude", alias]
+        account_terminal(argv, expected, f"account-{action}-expected-{expected}")
 
     check("check", 4)  # Checking an unknown slot must leave it absent.
     prior._run(*admin, "/usr/bin/test", "!", "-e", str(slot))
@@ -735,6 +738,9 @@ def main(argv=None):
             installed = True
             stage = "account-credentials"
             account_lifecycle_cycle(temp)
+            stage = "codex-live-limits"
+            import ci_codex_quota
+            ci_codex_quota.run_cycle(temp, SHIM, account_terminal)
             stage = "login-pty"
             mode(temp, "login")
             login_pty(accepted=True)

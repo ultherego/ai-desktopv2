@@ -1,17 +1,15 @@
 """Separate systemd activation endpoint for the explicitly approved A+ path."""
 import os
 import json
-from pathlib import Path
 import re
 import select
 import socket
-import stat
 
 from .analysis_contract import (SERVICE_MARGIN, request_seconds, AnalysisDenied, Approval, MAX_PACKET, REASONS,
                                 digest, parse_request, read_result, result_packet)
 from .analysis_sandbox import run_client, transport_supervisor_ready as supervisor_ready
 from .analysis_framing import send_message, receive_message
-from . import e2_account, e2_ipc
+from . import activation_socket, e2_account, e2_ipc
 
 DIRECTORY = "/run/ai-desktop-analysis"
 READY = b"ANALYSIS2 READY"
@@ -27,24 +25,11 @@ def socket_path(uid):
 
 
 def endpoint(uid):
-    path = socket_path(uid)
-    for name in ("/", "/run", DIRECTORY):
-        info = os.lstat(name)
-        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
-            raise AnalysisDenied("endpoint")
-    info = os.lstat(path)
-    if (not stat.S_ISSOCK(info.st_mode) or info.st_uid != uid
-            or stat.S_IMODE(info.st_mode) != 0o600):
-        raise AnalysisDenied("endpoint")
-    return info.st_dev, info.st_ino
+    return activation_socket.endpoint(socket_path(uid), uid)
 
 
 def manager_peer(channel, uid):
-    if (channel.family != socket.AF_UNIX
-            or channel.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE) != socket.SOCK_SEQPACKET
-            or channel.getpeername() != socket_path(uid)
-            or e2_ipc._kernel_peer(channel) != (1, 0, 0)):
-        raise AnalysisDenied("endpoint")
+    return activation_socket.manager_peer(channel, socket_path(uid))
 
 
 def local_readiness():
@@ -126,23 +111,7 @@ def send_once(approval):
 
 
 def activation_listener(uid):
-    env = {key: os.environ.pop(key, None) for key in (
-        "LISTEN_PID", "LISTEN_FDS", "LISTEN_FDNAMES", "LISTEN_PIDFDID")}
-    if (env["LISTEN_PID"] != str(os.getpid()) or env["LISTEN_FDS"] != "1"
-            or env["LISTEN_FDNAMES"] != "analysis"):
-        raise AnalysisDenied("endpoint")
-    listener = socket.socket(fileno=3)
-    try:
-        os.set_inheritable(3, False)
-        if (listener.family != socket.AF_UNIX
-                or listener.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE) != socket.SOCK_SEQPACKET
-                or listener.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) != 1
-                or listener.getsockname() != socket_path(uid)):
-            raise AnalysisDenied("endpoint")
-        return listener
-    except BaseException:
-        listener.close()
-        raise
+    return activation_socket.listener(socket_path(uid), "analysis")
 
 
 def receive_once(uid):

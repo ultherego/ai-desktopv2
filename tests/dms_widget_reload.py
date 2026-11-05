@@ -30,10 +30,21 @@ def write_dms_modules(root):
             property string statusReply: ""
             property int statusCalls: 0
             property var changes: []
-            function runCommand(key, args, callback) {
+            property var limitReads: []
+            property var pendingLimits: null
+            function finishLimits(output, code) {
+                const callback = pendingLimits;
+                pendingLimits = null;
+                callback(output, code);
+            }
+
+            function runCommand(key, args, callback, debounceMs, timeoutMs, owner) {
                 if (args[1] === "status") {
                     statusCalls++;
                     callback(statusReply, 0);
+                } else if (args[1] === "usage") {
+                    limitReads = limitReads.concat([args]);
+                    pendingLimits = callback;
                 } else {
                     changes = changes.concat([args]);
                     callback("", 0);
@@ -65,6 +76,7 @@ def write_dms_modules(root):
             # Declaring optional properties here previously hid a live load error.
             "DButton": ("", """MouseArea {
                 property string iconName
+                property bool busy: false
                 property string text
                 property color backgroundColor
                 property color textColor

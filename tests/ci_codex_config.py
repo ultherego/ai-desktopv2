@@ -2,7 +2,8 @@
 
 The trusted parent downloads a digest-pinned asset into a private temporary
 directory. The native process sees an empty home/work and no network, token,
-profile or proxy. Only initialize is sent; no thread or model turn is started.
+profile or proxy. The offline SIWC turn must stop at the network boundary,
+and native account/read must report the empty profile as signed out.
 Normal verification never executes this opt-in driver.
 """
 import json
@@ -20,6 +21,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from ai_desktop import codex_account_protocol as native, codex_protocol
 from ai_desktop.analysis_contract import AnalysisDenied, application_input
 from ai_desktop.codex_protocol import (CLIENT_VERSION, Protocol, exchange, fixed_command,
                                       notification_fields, startup_notification)
@@ -33,7 +35,7 @@ MAX_LINE = 65536
 
 class StartupDenied(ValueError):
     def __init__(self, reason, *, check=None, shape=None):
-        self.reason = reason if reason in {"preflight", "pin", "initialize", "protocol", "exit", "timeout", "limit", "turn"} else "preflight"
+        self.reason = reason if reason in {"preflight", "pin", "initialize", "protocol", "exit", "timeout", "limit", "turn", "native-account"} else "preflight"
         message = "CI CODEX CONFIG: FAIL reason=" + self.reason
         if type(check) is str and (check in ("empty-line", "non-json", "unexpected-record", "extra-startup-notification")
                                    or self.reason == "turn" and re.fullmatch(r"(?:refusal=[a-z-]{1,24} )?codex-[a-z-]{1,40}", check)):
@@ -85,7 +87,7 @@ def require_ci():
         raise StartupDenied("pin")
 
 
-def command(binary, directory):
+def command(binary, directory, *, native_account=False):
     directory = Path(directory)
     return base_command() + [
         "--disable-userns", "--assert-userns-disabled", "--remount-ro", "/proc",
@@ -94,7 +96,7 @@ def command(binary, directory):
         "--ro-bind", str(directory / "passwd"), "/etc/passwd",
         "--ro-bind", str(directory / "group"), "/etc/group",
         "--ro-bind", str(binary), "/opt/codex", "--chdir", "/work",
-        *fixed_command("/opt/codex"),
+        *(native.fixed_command("/opt/codex") if native_account else fixed_command("/opt/codex")),
     ]
 
 
@@ -239,6 +241,18 @@ def offline_turn(argv, *, timeout=60):
     raise StartupDenied("turn")
 
 
+def offline_native_account(argv):
+    """The real pinned build must accept the account config and report its empty native store."""
+    protocol = native.AccountProtocol("read")
+    try:
+        codex_protocol._exchange(argv, protocol, env={"PATH": "/usr/bin", "LANG": "C.UTF-8"}, timeout=20)
+    except AnalysisDenied as exc:
+        if exc.reason == "auth-required" and protocol.state == "signed-out":
+            return
+        raise StartupDenied("native-account") from None
+    raise StartupDenied("native-account")
+
+
 def run():
     require_ci()
     with tempfile.TemporaryDirectory(prefix="aid-codex-config-") as temporary:
@@ -250,6 +264,7 @@ def run():
             (os.getuid(), os.getgid()))
         (directory / "group").write_text("client:x:%d:\n" % os.getgid())
         initialize_only(command(binary, directory))
+        offline_native_account(command(binary, directory, native_account=True))
         offline_turn(turn_command(binary, directory))
 
 
@@ -265,7 +280,7 @@ def main(argv=None):
     except (asset.AssetDenied, OSError, ValueError, subprocess.SubprocessError):
         print("CI CODEX CONFIG: FAIL reason=preflight")
         return 2
-    print("CI CODEX CONFIG: PASS pinned=0.166.0 strict-config=PASS initialize=PASS network=OFF auth=NONE turn=PASS(offline, stops at network) inference=NOT_RUN")
+    print("CI CODEX CONFIG: PASS pinned=0.166.0 strict-config=PASS initialize=PASS network=OFF auth=NONE native-account=signed-out turn=PASS(offline, stops at network) inference=NOT_RUN")
     return 0
 
 

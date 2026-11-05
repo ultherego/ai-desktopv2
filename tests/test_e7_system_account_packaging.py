@@ -91,7 +91,8 @@ class SystemAccountPackagingTests(unittest.TestCase):
             desktop = ROOT / "packaging/desktop"
             for name in ("ai-desktop.desktop", "ai-desktop-panel.desktop", "ai-desktop-login-claude.desktop",
                          "ai-desktop-login-codex.desktop", "ai-desktop-logout-claude.desktop",
-                         "ai-desktop-logout-codex.desktop", "ai-desktop-check-sign-in.desktop", "niri-bindings.kdl",
+                         "ai-desktop-logout-codex.desktop", "ai-desktop-check-sign-in.desktop",
+                         "ai-desktop-codex-limits.desktop", "ai-desktop-codex-limits-disconnect.desktop", "niri-bindings.kdl",
                          "dms/AiDesktop/plugin.json", "dms/AiDesktop/Widget.qml", "dms/AiDesktop/Settings.qml",
                          "dms/AiDesktop/usage/QuotaCard.qml", "dms/AiDesktop/usage/Status.js"):
                 base = "usr/share/applications" if name.endswith(".desktop") else "usr/share/ai-desktop"
@@ -118,6 +119,11 @@ class SystemAccountPackagingTests(unittest.TestCase):
             self.assertEqual(
                 (package_root / "usr/lib/ai-desktop/activated-worker.py").read_bytes(),
                 (ROOT / "packaging/systemd/activated-worker.py").read_bytes())
+            for name in ("ai-desktop-codex-limits@.socket", "ai-desktop-codex-limits@.service"):
+                self.assertEqual((package_root / "usr/lib/systemd/system" / name).read_bytes(),
+                                 (ROOT / "packaging/systemd" / name).read_bytes())
+            self.assertEqual((package_root / "usr/lib/ai-desktop/codex-quota.py").read_bytes(),
+                             (ROOT / "packaging/systemd/codex-quota.py").read_bytes())
             self.assertFalse((package_root / "etc/systemd").exists())
             exe = package_root / "usr/bin/ai-desktop"
             self.assertTrue(exe.is_file())
@@ -215,6 +221,8 @@ class SystemAccountPackagingTests(unittest.TestCase):
             "/usr/bin/systemd-analyze", "verify",
             str(units / "ai-desktop-handoff@.socket"),
             str(units / "ai-desktop-handoff@.service"),
+            str(units / "ai-desktop-codex-limits@.service"),
+            str(units / "ai-desktop-codex-limits@.socket"),
         ], check=False, capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr[:2000])
         # Unknown settings are sometimes warnings even with exit 0.

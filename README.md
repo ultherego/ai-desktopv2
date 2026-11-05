@@ -21,7 +21,7 @@ Underneath runs the official Claude Code client in the exact version **2.1.312**
 | `ai-desktop agent list` / `ai-desktop agent use local` | Inspect services or choose the default for future conversations. |
 | `ai-desktop agents use reviewer` | Select a role and its Skills. A role cannot expand the access policy. |
 | `/provider codex` inside `ask` | Review the destination and the context the new recipient would receive. Confirm to continue the same conversation there. |
-| `ai-desktop account list` / `ai-desktop usage` | See named accounts and provider-reported quota windows with their observation times. |
+| `ai-desktop account list` / `ai-desktop usage` | See accounts and cached quota windows. After connecting native Codex limits in DankBar, click refresh or run `ai-desktop usage --refresh --provider codex` for a fresh reading. |
 | `ai-desktop panel` / `ai-desktop status --json` | Open the interactive panel or read local metadata for a desktop widget. |
 | `ai-desktop local models` | Explicitly query the model list of your configured local inference server. |
 
@@ -33,7 +33,7 @@ See [agent settings, accounts and sessions](docs/AGENT_MANAGEMENT.md), [verified
 
 This is a development version, not a 1.0 release.
 
-The current candidate package is **0.1.0-76** (changes: [CHANGELOG.md](CHANGELOG.md)).
+The current candidate package is **0.1.0-77** (changes: [CHANGELOG.md](CHANGELOG.md)).
 
 What is still missing and what has not been checked is described in [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md). Read that file before using this on important data. The plan up to version 1.0: [docs/ROADMAP.md](docs/ROADMAP.md), tasks: [docs/TODO.md](docs/TODO.md).
 
@@ -58,7 +58,7 @@ and ./claude-code --version  # must print: 2.1.312 (Claude Code)
 
 # 4. Build and install the package (the version in the file name = pkgrel from PKGBUILD)
 makepkg --cleanbuild
-sudo pacman -U ai-desktop-0.1.0-76-x86_64.pkg.tar.zst
+sudo pacman -U ai-desktop-0.1.0-77-x86_64.pkg.tar.zst
 sudo systemctl daemon-reload
 
 # 5. Log in to Claude (interactive, once)

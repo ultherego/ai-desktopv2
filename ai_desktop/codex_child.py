@@ -38,6 +38,9 @@ def private_input(raw):
 
 def main(argv):
     try:
+        if len(argv) == 2 and argv[0] in ("quota-connect", "quota-read"):
+            from .codex_quota_runtime import quota_child
+            return quota_child(argv[0], json.loads(argv[1]))
         if len(argv) != 2 or argv[0] not in ("version", "analyze"):
             raise AnalysisDenied("input")
         with failure_stage("boundary"):

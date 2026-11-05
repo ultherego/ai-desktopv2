@@ -38,14 +38,23 @@ def panel_rows(*, store=None, now=None):
     values = {(p, n): (t, s) for p, n, _, t, s in state.rows}
     logins = {(p, n): t for p, n, t in state.logins}
     plans = {(p, n): (plan, t) for p, n, plan, t in state.plans}
+    native_limits = {name: (t, plan, windows) for name, t, plan, windows in state.native_limits}
     rows = []
     for provider in CLOUD:
         for name in state.items(provider):
             observed, samples = values.get((provider, name), (0, None))
             plan, plan_time = plans.get((provider, name), (None, None))
+            native = native_limits.get(name) if provider == "codex" else None
+            source = "provider_event" if samples or plan else None
+            if native is not None and native[0]:
+                observed, plan, samples = native
+                plan_time = observed if plan else None
+                source = "codex_native"
             retired = (provider, name) in state.retired
             auth = "signed_out" if retired else state.auth_status(provider, name)
-            rows.append({"auth_state": "signed_out" if auth == "new_alias" else auth,
+            rows.append({"live_limits_connected": native is not None, "quota_source": source,
+                         "native_limits_cleanup_pending": provider == "codex" and name in state.native_stale,
+                         "auth_state": "signed_out" if auth == "new_alias" else auth,
                          "requires_new_alias": auth == "new_alias", "plan": plan, "plan_observed_at": plan_time, "provider": provider, "account": name, "selected": name == state.active(provider),
                          "usage": _window_text(observed, samples, now), "observed_at": observed or None,
                          "windows": samples or {}, "last_login_at": logins.get((provider, name)),
@@ -95,11 +104,22 @@ def print_usage(rows):
         print("  Account  " + name + selected)
         print("  Plan     " + plan)
         print("  Status   " + row.get("status", "unchecked"))
+        if row.get("quota_source") == "codex_native":
+            print("  Source   Native Codex limits")
         windows = row.get("windows") or {}
         if not windows:
             print("  Limits   " + paint("Not reported", "muted"))
             if provider == "codex" and row.get("status") != "retired":
-                print("    Sign-in does not return usage limits.")
+                if row.get("quota_source") == "codex_native":
+                    print("    The native Codex account reported no 5-hour or 7-day window.")
+                    if row.get("observed_at"):
+                        print("    Checked " + _local_time(row["observed_at"]))
+                elif row.get("live_limits_connected"):
+                    print("    Read live limits: ai-desktop usage --refresh")
+                else:
+                    print("    Sign-in does not return usage limits.")
+                    if row.get("auth_state") == "signed_in":
+                        print("    Connect live limits: ai-desktop account connect-limits codex " + row["account"])
                 print("    https://chatgpt.com/settings/usage")
             continue
         for key, label in (("five_hour", "5-hour"), ("seven_day", "7-day")):
@@ -147,19 +167,38 @@ def print_usage(rows):
 
 
 def usage_main(argv=None):
-    parser = argparse.ArgumentParser(prog="ai-desktop usage", description="Last quota windows reported by approved subscriptions")
+    parser = argparse.ArgumentParser(prog="ai-desktop usage", description="Display local quota readings or explicitly refresh native Codex limits")
     parser.add_argument("--provider", choices=CLOUD)
+    parser.add_argument("--account", help="Local account alias for this provider")
+    parser.add_argument("--refresh", action="store_true", help="Read live limits for the selected connected Codex slot")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    if args.account is not None and (args.account != "default" and not named_account(args.account)
+                                     or not args.provider and not args.refresh):
+        parser.error("--account requires a valid local alias and a provider or --refresh")
+    if args.refresh and args.provider == "claude":
+        parser.error("--refresh is available for Codex")
+    provider, name = args.provider, args.account
     try:
-        rows = [r for r in panel_rows() if args.provider in (None, r["provider"])]
+        if args.refresh:
+            from .codex_limits_cli import refresh_limits
+            provider = "codex"
+            name = refresh_limits(AccountStore(), name)
+        rows = [r for r in panel_rows() if provider in (None, r["provider"]) and name in (None, r["account"])]
+        if name and not rows:
+            raise ProfileError("account")
         if args.json:
             print(json.dumps(rows, ensure_ascii=False))
         else:
             print_usage(rows)
         return 0
-    except (OSError, ValueError):
-        print("Could not read account settings.")
+    except (OSError, ValueError) as error:
+        from .codex_limits_cli import ERRORS, error_reason
+        reason = error_reason(error)
+        if args.json:
+            print(json.dumps({"error": reason}))
+        else:
+            print(ERRORS[reason] if args.refresh or name else "Could not read account settings.")
         return 2
 
 
@@ -284,7 +323,14 @@ def _connect(provider, store, *, from_widget=False):
         choices = []
         if state.auth_status(provider, "default") != "signed_in":
             choices.append((f"Sign in to default and select the {label} service", ["login", "--provider", provider]))
+        linked = {record[0] for record in state.native_limits}
+        undisplayed = []
         for name in state.items(provider):
+            if provider == "codex":
+                if name in linked or name in state.native_stale:
+                    choices.append(("Disconnect live limits for " + name, ["account", "disconnect-limits", "codex", name]))
+                else:
+                    undisplayed.append(name)
             if (provider, name) in state.retired:
                 continue
             auth = state.auth_status(provider, name)
@@ -293,16 +339,27 @@ def _connect(provider, store, *, from_widget=False):
             elif name != "default" and auth != "new_alias":
                 choices.append(("Sign in to " + name, ["account", "login", provider, name]))
             choices.append(("Check sign-in for " + name, ["account", "check", provider, name]))
+            if provider == "codex" and name == selected and auth == "signed_in" and name not in linked:
+                choices.append(("Connect live limits for " + name, ["account", "connect-limits", "codex", name]))
             if name != selected and auth != "new_alias":
                 choices.append(("Use " + name + " for new tasks", ["account", "use", provider, name]))
         choices.append(("Add a named account and sign in", ["account", "add", provider, "--login"]))
+        if undisplayed:
+            # A credential can outlive a failed desktop receipt write.
+            choices.append(("Remove an unlisted native limits connection…", []))
         choices.append(("Close", None))
         pick = _pick(f"{label} accounts · selected: {selected}", [title for title, _ in choices])
         if pick is None or choices[pick][1] is None:
             return 0
         # Only the legacy default login can choose the service; named logins and account selection
         # keep their existing scope and checks. Leave the result visible before the next choice.
-        result = dispatch(choices[pick][1])
+        command = choices[pick][1]
+        if command == []:
+            slot = _pick("Which Codex limits connection should be removed?", [*undisplayed, "Back"])
+            if slot is None or slot == len(undisplayed):
+                continue
+            command = ["account", "disconnect-limits", "codex", undisplayed[slot]]
+        result = dispatch(command)
         if from_widget:
             return _widget_result(result)
 
@@ -314,6 +371,12 @@ def main(argv=None):
     connect = actions.add_parser("connect", help="Choose an account to sign in, add or use for this service")
     connect.add_argument("provider", choices=CLOUD)
     connect.add_argument("--from-widget", action="store_true", help=argparse.SUPPRESS)
+    for action, help_text in (("connect-limits", "Pair a native Codex account to read its live quota"),
+                              ("disconnect-limits", "Remove a native Codex quota connection")):
+        cmd = actions.add_parser(action, help=help_text)
+        cmd.add_argument("--from-widget", action="store_true", help=argparse.SUPPRESS)
+        cmd.add_argument("provider", choices=("codex",))
+        cmd.add_argument("name", help="Exact local Codex account alias, including default")
     for action in ("check", "logout"):
         cmd = actions.add_parser(action, help="Check local credentials" if action == "check" else "Sign out of one local account")
         cmd.add_argument("--from-widget", action="store_true", help=argparse.SUPPRESS)
@@ -332,6 +395,14 @@ def main(argv=None):
     signing_in = args.action == "login" or (args.action == "add" and args.login)
     try:
         store = AccountStore()
+        if args.action in ("connect-limits", "disconnect-limits"):
+            from .codex_limits_cli import ERRORS, error_reason, manage_limits
+            try:
+                result = manage_limits(store, args.name, connect=args.action == "connect-limits")
+            except (OSError, ValueError) as error:
+                print(ERRORS[error_reason(error)])
+                result = 2
+            return _widget_result(result) if args.from_widget else result
         if args.action == "connect":
             return _connect(args.provider, store, from_widget=args.from_widget)
         if args.action in (None, "list"):

@@ -106,6 +106,115 @@ Item {
             compare(Proc.changes.length, 2, "Blocked provider card must ignore clicks");
         }
 
+        function exerciseLiveLimits(widget, popout, snapshot, provider, account, host) {
+            const refresh = findChild(popout, "statusRefresh");
+            const error = findChild(popout, "liveLimitsError");
+            provider.allowed = true;
+            Proc.statusReply = JSON.stringify(snapshot);
+            widget.refresh();
+            clickButton(popout, "Connect live limits…");
+            compare(SessionService.lastLaunched, "ai-desktop-codex-limits.desktop");
+            compare(JSON.stringify(SessionService.lastArgs), JSON.stringify([account.account]));
+
+            account.live_limits_connected = true;
+            Proc.statusReply = JSON.stringify(snapshot);
+            host.shouldBeVisible = false;
+            host.shouldBeVisible = true;
+            widget.refresh();
+            compare(Proc.limitReads.length, 0, "Passive refresh cannot fetch a native quota");
+            widget.fetchLiveLimits("--help");
+            widget.manageLiveLimits("spare", true);
+            compare(Proc.limitReads.length, 0);
+            compare(SessionService.lastLaunched, "ai-desktop-codex-limits.desktop");
+
+            mouseClick(refresh);
+            compare(JSON.stringify(Proc.limitReads), JSON.stringify([
+                ["/usr/bin/ai-desktop", "usage", "--refresh", "--provider", "codex", "--account", account.account, "--json"]
+            ]));
+            verify(!refresh.enabled);
+            widget.fetchLiveLimits(account.account);
+            compare(Proc.limitReads.length, 1, "In-flight refresh cannot be duplicated");
+
+            account.quota_source = "codex_native";
+            const now = Math.floor(Date.now() / 1000);
+            account.observed_at = now - 1;
+            account.windows = {five_hour: {percent: 41, reset: now + 3600}};
+            Proc.statusReply = JSON.stringify(snapshot);
+            Proc.finishLimits("unused output", 0);
+            tryVerify(() => widget.codexAccount.quota_source === "codex_native" && refresh.enabled);
+            const label = findChild(popout, "nativeQuotaSource_" + account.account);
+            verify(label && label.visible);
+            const track = findChild(popout, "quotaTrack_five_hour");
+            const gauge = findChild(popout, "quotaFill_five_hour");
+            verify(track && gauge && Math.abs(gauge.width - track.width * 0.41) < 1);
+
+            mouseClick(refresh);
+            Proc.finishLimits('{"error":"network","private":"PRIVATE-RAW-ERROR"}', 2);
+            tryVerify(() => error.visible && error.text.includes(account.account));
+            verify(!error.text.includes("PRIVATE-RAW-ERROR"));
+            compare(widget.codexAccount.observed_at, now - 1);
+            compare(widget.codexAccount.windows.five_hour.percent, 41);
+
+            // Switching slots while the broker is working must not redirect a response or its error.
+            mouseClick(refresh);
+            const original = account.account;
+            account.account = "other";
+            account.windows = {};
+            account.quota_source = null;
+            account.live_limits_connected = false;
+            Proc.statusReply = JSON.stringify(snapshot);
+            widget.refresh();
+            Proc.finishLimits('{"error":"auth-required"}', 2);
+            tryVerify(() => widget.codexAccount.account === "other" && refresh.enabled);
+            verify(!error.visible);
+            compare(Proc.limitReads[2][6], original);
+
+            provider.allowed = false;
+            account.live_limits_connected = true;
+            Proc.statusReply = JSON.stringify(snapshot);
+            mouseClick(refresh);
+            compare(Proc.limitReads.length, 3, "Policy denial prevents a live network request");
+            verify(error.visible && error.text.includes("policy"));
+            clickButton(popout, "Accounts & login");
+            clickButton(popout, "Disconnect live limits…");
+            compare(SessionService.lastLaunched, "ai-desktop-codex-limits-disconnect.desktop");
+            compare(JSON.stringify(SessionService.lastArgs), JSON.stringify(["other"]));
+
+            // A separately authorized credential must remain removable after SIWC sign-out or policy changes.
+            account.live_limits_connected = false;
+            account.native_limits_cleanup_pending = true;
+            account.auth_state = "signed_out";
+            SessionService.lastLaunched = "";
+            Proc.statusReply = JSON.stringify(snapshot);
+            mouseClick(refresh);
+            clickButton(popout, "Disconnect live limits…");
+            compare(SessionService.lastLaunched, "ai-desktop-codex-limits-disconnect.desktop");
+            compare(JSON.stringify(SessionService.lastArgs), JSON.stringify(["other"]));
+            compare(Proc.limitReads.length, 3);
+            verify(!visibleButton(popout, "Reconnect live limits…"));
+
+            account.auth_state = "signed_in";
+            provider.allowed = true;
+            Proc.statusReply = JSON.stringify(snapshot);
+            mouseClick(refresh);
+            clickButton(popout, "Reconnect live limits…");
+            compare(SessionService.lastLaunched, "ai-desktop-codex-limits.desktop");
+            verify(visibleButton(popout, "Disconnect live limits…"));
+
+            // An otherwise unavailable current slot still offers access to the picker for a retired link.
+            account.auth_state = "signed_out";
+            account.native_limits_cleanup_pending = false;
+            provider.allowed = false;
+            provider.client_present = false;
+            snapshot.accounts.push({provider: "codex", account: "retired", status: "retired", native_limits_cleanup_pending: true});
+            Proc.statusReply = JSON.stringify(snapshot);
+            mouseClick(refresh);
+            clickButton(popout, "Manage accounts…");
+            compare(SessionService.lastLaunched, "ai-desktop-login-codex.desktop");
+            compare(Proc.limitReads.length, 3);
+            clickButton(popout, "Usage");
+        }
+
         function test_recoverWithoutRestart(data) {
             plugin = data.state + "/plugins/AiDesktop/";
             const old = loadWidget(0);
@@ -140,6 +249,7 @@ Item {
                               role: "diagnostic", model: "default", sessions: [], providers: [provider], accounts: [account]};
             Proc.statusReply = JSON.stringify(snapshot);
             Proc.changes = [];
+            Proc.limitReads = [];
             const widget = createTemporaryObject(updated, stage, {snapshot, sampledAt: now});
             verify(widget);
             const popout = createTemporaryObject(widget.popoutContent, stage, {width: 420});
@@ -176,6 +286,7 @@ Item {
                 Proc.statusReply = JSON.stringify(snapshot);
                 mouseClick(refresh);
                 tryVerify(() => visibleButton(popout, "View usage in ChatGPT") !== null);
+                exerciseLiveLimits(widget, popout, snapshot, provider, account, host);
             }
             clickButton(popout, "Open chat");
             compare(SessionService.lastLaunched, "ai-desktop.desktop");

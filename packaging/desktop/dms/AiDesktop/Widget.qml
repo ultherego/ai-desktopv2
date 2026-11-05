@@ -18,7 +18,14 @@ PluginComponent {
     property bool switching: false
     property bool refreshing: false
     property bool refreshQueued: false
+    property string fetchingLimitsFor: ""
+    property string liveErrorAccount: ""
+    property string liveErrorText: ""
+    readonly property var codexAccount: Status.currentAccount(snapshot, "codex")
+    readonly property var codexProvider: snapshot?.providers?.find(p => p.id === "codex")
+    readonly property bool codexAvailable: codexProvider?.allowed === true && codexProvider?.client_present === true
     readonly property var activeAccount: Status.currentAccount(snapshot, service)
+    readonly property bool activeNativeQuota: service === "codex" && activeAccount?.quota_source === "codex_native"
     readonly property var shortWindow: Status.accountWindows(activeAccount, sampledAt).find(w => w.name === "five_hour" && w.current) || null
     readonly property string service: snapshot?.selected || "Unavailable"
     readonly property bool notifyUsage: pluginData.notifyUsage === true
@@ -30,7 +37,7 @@ PluginComponent {
         textColor: highlightedChoice ? Theme.onPrimaryContainer : Theme.surfaceText
     }
 
-    function refresh() {
+    function refresh(liveTarget) {
         if (refreshing) {
             refreshQueued = true;
             return;
@@ -42,13 +49,73 @@ PluginComponent {
             root.sampledAt = Math.floor(Date.now() / 1000);
             root.snapshot = (code === 0 || code === 2) ? Status.parseStatus(output) : null;
             for (const message of Status.alerts(root.snapshot, root.notifyUsage, root.usageThreshold, root.sampledAt))
-                ToastService.showWarning("AI Desktop · subscription usage", message);
+                ToastService.showWarning(root.activeNativeQuota ? "AI Desktop · native Codex limits" : "AI Desktop · subscription usage", message);
             root.refreshing = false;
+            if (typeof liveTarget === "string" && root.codexAccount?.account === liveTarget &&
+                root.codexAccount.live_limits_connected === true) {
+                if (root.codexAvailable) {
+                    root.fetchLiveLimits(liveTarget);
+                } else {
+                    root.liveErrorAccount = liveTarget;
+                    root.liveErrorText = root.codexProvider?.allowed === true ? "The Codex client is unavailable." :
+                                         "Live limits are blocked by policy.";
+                }
+            }
             if (root.refreshQueued) {
                 root.refreshQueued = false;
                 Qt.callLater(root.refresh);
             }
         });
+    }
+
+    function validAlias(name) {
+        return typeof name === "string" && name === name.trim() && /^[a-z][a-z0-9-]{0,31}$/.test(name);
+    }
+
+    function fetchLiveLimits(name) {
+        if (!validAlias(name) || fetchingLimitsFor || switching || !codexAvailable ||
+            codexAccount?.account !== name || codexAccount.live_limits_connected !== true)
+            return;
+        fetchingLimitsFor = name;
+        liveErrorAccount = "";
+        const key = "aiDesktop.limits." + (widgetInstanceId || "default") + "." + (parentScreen?.name || "screen");
+        Proc.runCommand(key, ["/usr/bin/ai-desktop", "usage", "--refresh", "--provider", "codex", "--account", name, "--json"],
+                        (output, code) => {
+            root.fetchingLimitsFor = "";
+            if (code !== 0) {
+                let reason = "";
+                try {
+                    if (typeof output === "string" && output.length < 1024)
+                        reason = JSON.parse(output).error;
+                } catch (_) {}
+                const messages = {
+                    "auth-required": "Reconnect live limits for this account.",
+                    "not-connected": "Connect live limits for this account.",
+                    "identity": "Reconnect with the intended Codex account.",
+                    "policy": "Live limits are blocked by policy.",
+                    "check-sign-in": "Check sign-in in Accounts & login, then try again.",
+                    "busy": "Another account action is running. Try again."
+                };
+                root.liveErrorText = typeof reason === "string" && Object.prototype.hasOwnProperty.call(messages, reason) ?
+                                     messages[reason] : "Could not refresh live limits. Try again.";
+                root.liveErrorAccount = name;
+            }
+            // Only the CLI stores the result for this exact slot. Always read back the current selection.
+            Qt.callLater(root.refresh);
+        }, 0, 90000, root);
+    }
+
+    function manageLiveLimits(name, disconnect) {
+        if (!validAlias(name) || switching || fetchingLimitsFor || codexAccount?.account !== name)
+            return;
+        const connected = codexAccount.live_limits_connected === true;
+        if (disconnect && (connected || codexAccount.native_limits_cleanup_pending === true)) {
+            liveErrorAccount = "";
+            launch("ai-desktop-codex-limits-disconnect.desktop", [name]);
+        } else if (!disconnect && !connected && codexAccount.auth_state === "signed_in" && codexAvailable) {
+            liveErrorAccount = "";
+            launch("ai-desktop-codex-limits.desktop", [name]);
+        }
     }
 
     function changeSelection(args, key) {
@@ -77,7 +144,7 @@ PluginComponent {
     function accountAction(provider, name, action) {
         const selected = Status.currentAccount(snapshot, provider);
         if (!["claude", "codex"].includes(provider) || selected?.account !== name ||
-            typeof name !== "string" || name !== name.trim() || !/^[a-z][a-z0-9-]{0,31}$/.test(name))
+            !validAlias(name))
             return;
         if (action === "check" && selected.auth_state === "unknown")
             launch("ai-desktop-check-sign-in.desktop", [provider, name]);
@@ -123,7 +190,7 @@ PluginComponent {
             StyledText {
                 anchors.verticalCenter: parent.verticalCenter
                 text: Status.providerName(root.service)
-                      + (root.shortWindow ? "  ·  5h " + Status.percentText(root.shortWindow.percent) : "")
+                      + (root.shortWindow ? (root.activeNativeQuota ? "  ·  CLI 5h " : "  ·  5h ") + Status.percentText(root.shortWindow.percent) : "")
                 textFormat: Text.PlainText
                 font.pixelSize: root.textSize
                 color: Theme.surfaceText
@@ -153,12 +220,13 @@ PluginComponent {
                 DButton {
                     objectName: "statusRefresh"
                     iconName: "refresh"
-                    enabled: !root.refreshing
+                    enabled: !root.refreshing && !root.switching && !root.fetchingLimitsFor
+                    busy: !!root.fetchingLimitsFor
                     minimumWidth: 36
                     horizontalPadding: 8
-                    tooltipText: "Refresh local status and limits"
-                    Accessible.name: "Refresh local status and limits"
-                    onClicked: root.refresh()
+                    tooltipText: "Refresh local status and linked Codex limits"
+                    Accessible.name: tooltipText
+                    onClicked: root.refresh(root.codexAccount?.account)
                 }
             }
             detailsText: root.snapshot ? [Status.providerName(root.service), root.snapshot.role, root.snapshot.model].filter(Boolean).join("  ·  ")
@@ -183,6 +251,16 @@ PluginComponent {
                     }
                 }
 
+                StyledText {
+                    objectName: "liveLimitsError"
+                    width: parent.width
+                    visible: !!root.liveErrorAccount && root.liveErrorAccount === root.codexAccount?.account
+                    text: visible ? "Codex / " + root.liveErrorAccount + " · " + root.liveErrorText : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
+                    color: Theme.error
+                }
+
                 ListView {
                     id: usageList
                     visible: !popout.showAccounts && count > 0
@@ -192,29 +270,49 @@ PluginComponent {
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
                     model: root.snapshot?.accounts || []
-                    delegate: Quota.QuotaCard {
+                    delegate: Column {
+                        id: usageRow
                         required property var modelData
                         width: ListView.view.width
-                        account: modelData
-                        sampledAt: root.sampledAt
-                        active: modelData.provider === root.service && modelData.selected && modelData.status !== "retired"
-                        fontFamily: Theme.fontFamily
-                        accentColor: Theme.primary
-                        surfaceColor: Theme.surfaceContainer
-                        textColor: Theme.surfaceText
-                        mutedColor: Theme.surfaceVariantText
-                        trackColor: Theme.outlineVariant
-                        successColor: Theme.success
-                        warningColor: Theme.warning
-                        dangerColor: Theme.error
-                        emptyUsageAction: Component {
-                            ChoiceButton {
-                                objectName: "chatgptUsageLink"
-                                text: "View usage in ChatGPT"
-                                iconName: "open_in_new"
-                                tooltipText: "Opens the account signed in to your browser"
-                                onClicked: Qt.openUrlExternally("https://chatgpt.com/settings/usage")
+                        spacing: Theme.spacingXS
+
+                        StyledText {
+                            objectName: "nativeQuotaSource_" + usageRow.modelData.account
+                            visible: usageRow.modelData.provider === "codex" && usageRow.modelData.quota_source === "codex_native"
+                            text: "Native Codex limits"
+                            color: Theme.surfaceVariantText
+                        }
+                        Quota.QuotaCard {
+                            width: parent.width
+                            account: usageRow.modelData
+                            sampledAt: root.sampledAt
+                            active: account.provider === root.service && account.selected === true && account.status !== "retired"
+                            fontFamily: Theme.fontFamily
+                            accentColor: Theme.primary
+                            surfaceColor: Theme.surfaceContainer
+                            textColor: Theme.surfaceText
+                            mutedColor: Theme.surfaceVariantText
+                            trackColor: Theme.outlineVariant
+                            successColor: Theme.success
+                            warningColor: Theme.warning
+                            dangerColor: Theme.error
+                            emptyUsageAction: Component {
+                                ChoiceButton {
+                                    objectName: "chatgptUsageLink"
+                                    text: "View usage in ChatGPT"
+                                    iconName: "open_in_new"
+                                    tooltipText: "Opens the account signed in to your browser"
+                                    onClicked: Qt.openUrlExternally("https://chatgpt.com/settings/usage")
+                                }
                             }
+                        }
+                        ChoiceButton {
+                            visible: usageRow.modelData.provider === "codex" && usageRow.modelData.selected === true &&
+                                     usageRow.modelData.auth_state === "signed_in" && !usageRow.modelData.live_limits_connected &&
+                                     usageRow.modelData.status !== "retired" && root.codexAvailable
+                            enabled: !root.switching && !root.fetchingLimitsFor
+                            text: usageRow.modelData.native_limits_cleanup_pending === true ? "Reconnect live limits…" : "Connect live limits…"
+                            onClicked: root.manageLiveLimits(usageRow.modelData.account, false)
                         }
                     }
                 }
@@ -242,6 +340,11 @@ PluginComponent {
                         readonly property string provider: modelData.id
                         readonly property var selectedAccount: Status.currentAccount(root.snapshot, provider)
                         readonly property bool signedIn: selectedAccount?.auth_state === "signed_in"
+                        readonly property bool linked: selectedAccount?.live_limits_connected === true
+                        readonly property bool cleanupPending: selectedAccount?.native_limits_cleanup_pending === true
+                        readonly property bool otherLimitsSlots: provider === "codex" && (root.snapshot?.accounts || []).some(
+                            a => a.provider === "codex" && a.account !== selectedAccount?.account &&
+                                 (a.live_limits_connected === true || a.native_limits_cleanup_pending === true))
                         readonly property var accounts: (root.snapshot?.accounts || []).filter(a => a.provider === provider && a.status !== "retired")
                         width: ListView.view.width
                         height: serviceBody.implicitHeight + 24
@@ -342,7 +445,21 @@ PluginComponent {
                                     onClicked: root.accountAction(serviceCard.provider, serviceCard.selectedAccount.account, "check")
                                 }
                                 ChoiceButton {
-                                    visible: serviceCard.signedIn
+                                    visible: serviceCard.provider === "codex" && !serviceCard.linked && serviceCard.signedIn && root.codexAvailable
+                                    enabled: !root.switching && !root.fetchingLimitsFor
+                                    text: serviceCard.cleanupPending ? "Reconnect live limits…" : "Connect live limits…"
+                                    tooltipText: "Link a native Codex account for reading limits"
+                                    onClicked: root.manageLiveLimits(serviceCard.selectedAccount.account, false)
+                                }
+                                ChoiceButton {
+                                    visible: serviceCard.provider === "codex" && (serviceCard.linked || serviceCard.cleanupPending)
+                                    enabled: !root.switching && !root.fetchingLimitsFor
+                                    text: "Disconnect live limits…"
+                                    tooltipText: "Remove the native Codex connection for this slot"
+                                    onClicked: root.manageLiveLimits(serviceCard.selectedAccount.account, true)
+                                }
+                                ChoiceButton {
+                                    visible: serviceCard.signedIn || serviceCard.otherLimitsSlots
                                     enabled: !root.switching
                                     text: "Manage accounts…"
                                     onClicked: root.manageAccounts(serviceCard.provider)

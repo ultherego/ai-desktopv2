@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-77: live Codex limits in DankBar
+
+- Connect a separate native Codex account from the widget. The upper-right refresh button and `ai-desktop usage --refresh --provider codex` fetch its current quota windows and reset times without sending a model request.
+- The native session is isolated per desktop UID and slot. Connecting is opt-in, opening the widget reads local status, and a terminal action can disconnect the native grant.
+
 ## 0.1.0-76: account actions and status in DankBar
 
 - Select Claude or Codex by clicking its card in **Accounts & login**. The refresh icon on both tabs reloads local status and saved quota readings.

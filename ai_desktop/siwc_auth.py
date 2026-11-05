@@ -294,6 +294,19 @@ class AuthStore:
                     os.close(lock)
                 os.close(directory)
 
+    def quota_binding(self, *, enroll=False):
+        """Service-private ID for this SIWC login. Never returned to a desktop client."""
+        with self.locked() as (state, save):
+            entry = state["accounts"].get(state["active"])
+            if entry is None or not entry["access_token"] or not PLAN_SCOPES.issubset(entry["scopes"]):
+                raise AuthError("auth-required")
+            if "quota_generation" not in entry:
+                if not enroll:
+                    raise AuthError("auth-required")
+                entry["quota_generation"] = secrets.token_hex(16)
+                save(state)
+            return entry["quota_generation"]
+
     def status(self):
         try:
             descriptor = self._directory()
@@ -326,7 +339,9 @@ def _account_fingerprint(account):
 
 def _validate_account(account):
     fields = {"client_id", "subject", "email", "id_token", "access_token", "refresh_token", "expires_at", "scopes"}
-    if type(account) is not dict or set(account) != fields:
+    if (type(account) is not dict or set(account) - {"quota_generation"} != fields
+            or "quota_generation" in account and (type(account["quota_generation"]) is not str
+                or not re.fullmatch(r"[0-9a-f]{32}", account["quota_generation"]))):
         raise AuthError("storage")
     if type(account["client_id"]) is not str or not _CLIENT_ID.fullmatch(account["client_id"]):
         raise AuthError("storage")
@@ -624,5 +639,6 @@ class AuthClient:
             for name in ("access_token", "refresh_token", "id_token"):
                 account[name] = ""
             account["expires_at"] = 0
+            account.pop("quota_generation", None)
             save(state)
             return confirmed

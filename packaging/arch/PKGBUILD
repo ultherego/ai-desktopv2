@@ -4,7 +4,7 @@
 # Only the guarded package scriptlet may apply it during this approved install.
 pkgname=ai-desktop
 pkgver=0.1.0
-pkgrel=76
+pkgrel=77
 pkgdesc='Terminal AI assistant for CachyOS and Arch with an isolated client and approved changes'
 arch=('x86_64')
 url='https://github.com/ultherego/ai-desktopv2'
@@ -52,13 +52,14 @@ package() {
 
     # Dormant units only: no enable/start, polkit rule or automatic preset.
     local unit
-    for unit in ai-desktop-handoff@.socket ai-desktop-handoff@.service ai-desktop-analysis@.socket ai-desktop-analysis@.service; do
+    for unit in ai-desktop-handoff@.socket ai-desktop-handoff@.service ai-desktop-analysis@.socket ai-desktop-analysis@.service \
+                ai-desktop-codex-limits@.socket ai-desktop-codex-limits@.service; do
         [[ -f "${startdir}/../systemd/${unit}" && ! -L "${startdir}/../systemd/${unit}" ]] || return 1
         install -Dm644 "${startdir}/../systemd/${unit}" "${pkgdir}/usr/lib/systemd/system/${unit}"
     done
     [[ -f "${startdir}/../systemd/activated-worker.py" && ! -L "${startdir}/../systemd/activated-worker.py" ]] || return 1
     install -m644 "${startdir}/../systemd/activated-worker.py" "${target}/activated-worker.py"
-    for src in analysis-worker.py analysis-client.py analysis-session.py codex-auth.py codex-client.py; do
+    for src in analysis-worker.py analysis-client.py analysis-session.py codex-auth.py codex-client.py codex-quota.py; do
         [[ -f "${startdir}/../systemd/${src}" && ! -L "${startdir}/../systemd/${src}" ]] || return 1
         install -m644 "${startdir}/../systemd/${src}" "${target}/${src}"
     done
@@ -98,7 +99,8 @@ package() {
     local desktop="${root}/packaging/desktop" widget="dms/AiDesktop"
     [[ -d "${desktop}" && ! -L "${desktop}" && ! -L "${desktop}/dms" && ! -L "${desktop}/${widget}" ]] || return 1
     [[ -d "${desktop}/${widget}/usage" && ! -L "${desktop}/${widget}/usage" ]] || return 1
-    for src in ai-desktop.desktop ai-desktop-panel.desktop ai-desktop-{login,logout}-{claude,codex}.desktop ai-desktop-check-sign-in.desktop; do
+    for src in ai-desktop.desktop ai-desktop-panel.desktop ai-desktop-{login,logout}-{claude,codex}.desktop ai-desktop-check-sign-in.desktop \
+               ai-desktop-codex-limits{,-disconnect}.desktop; do
         [[ -f "${desktop}/${src}" && ! -L "${desktop}/${src}" ]] || return 1
         install -Dm644 "${desktop}/${src}" "${pkgdir}/usr/share/applications/${src}" || return 1
     done

@@ -15,7 +15,9 @@ class DesktopIntegrationTests(unittest.TestCase):
                              ("ai-desktop-login-codex", "account connect codex --from-widget"),
                              ("ai-desktop-logout-claude", "account logout claude --from-widget"),
                              ("ai-desktop-logout-codex", "account logout codex --from-widget"),
-                             ("ai-desktop-check-sign-in", "account check --from-widget")):
+                             ("ai-desktop-check-sign-in", "account check --from-widget"),
+                             ("ai-desktop-codex-limits", "account connect-limits codex --from-widget"),
+                             ("ai-desktop-codex-limits-disconnect", "account disconnect-limits codex --from-widget")):
             with self.subTest(name=name):
                 entry = configparser.ConfigParser(interpolation=None)
                 entry.read(DESKTOP / (name + ".desktop"), encoding="utf-8")
@@ -32,7 +34,7 @@ class DesktopIntegrationTests(unittest.TestCase):
         widget = (plugin / manifest["component"]).read_text()
         self.assertIn('pluginId: "' + manifest["id"] + '"', settings)
         self.assertIn('defaultValue: false', settings)
-        self.assertEqual(widget.count("Proc.runCommand("), 2)
+        self.assertEqual(widget.count("Proc.runCommand("), 3)
         self.assertEqual(widget.count("changeSelection("), 3)
         self.assertIn('["/usr/bin/ai-desktop"].concat(args)', widget)
         self.assertIn('if (Status.canSelectService(snapshot, provider))\n            changeSelection(["agent", "use", provider]', widget)
@@ -42,11 +44,13 @@ class DesktopIntegrationTests(unittest.TestCase):
         self.assertIn("onTriggered: root.refresh()", widget)
         self.assertNotIn("sudo", widget)
         self.assertIn('["/usr/bin/ai-desktop", "status", "--json"]', widget)
+        self.assertIn('["/usr/bin/ai-desktop", "usage", "--refresh", "--provider", "codex", "--account", name, "--json"]', widget)
         for item in ("ai-desktop.desktop", "ai-desktop-panel.desktop",
                      "ai-desktop-login-claude.desktop", "ai-desktop-login-codex.desktop"):
             self.assertIn('launch("' + item + '")', widget)
             self.assertTrue((DESKTOP / item).is_file())
-        for name in ("ai-desktop-check-sign-in", "ai-desktop-logout-claude", "ai-desktop-logout-codex"):
+        for name in ("ai-desktop-check-sign-in", "ai-desktop-logout-claude", "ai-desktop-logout-codex",
+                     "ai-desktop-codex-limits", "ai-desktop-codex-limits-disconnect"):
             self.assertIn(f'launch("{name}.desktop", [', widget)
             self.assertTrue((DESKTOP / (name + ".desktop")).is_file())
         self.assertEqual(widget.count("Qt.openUrlExternally("), 1)
