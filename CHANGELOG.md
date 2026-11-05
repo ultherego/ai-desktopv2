@@ -2,6 +2,7 @@
 
 ## Niewydane
 
+- `permissions.toml`: szablon `systemctl -H host <word>` jest odrzucany, bo `<word>` mógłby stać się poleceniem. Po opcji spoza listy opcji bez wartości kolejne słowo jest traktowane jako jej wartość. Lista `change` może mieć 128 szablonów także w żądaniu do modelu (było 24).
 - Przebudowane procedury 21 Skilli: interpretacja wyników, warunki dalszych kroków, rozpoznanie ograniczeń dostępu i weryfikacja zmian. Usunięte zbyt szerokie recepty, m.in. pełny balance jako domyślne sprzątanie i `systemctl revert` jako cofnięcie pojedynczej edycji.
 - Pliki ze znakiem BOM i końcami linii Windows, np. CSV z Excela, dają się czytać i edytować. Model i diff widzą zwykły tekst, a zapis zachowuje format pliku. Cofnięcie przywraca dokładnie te same bajty. Pomieszane końce linii: odczyt działa, edycja jest odrzucana.
 - `ai-desktop ask`: wynik wykonanej zmiany zostaje w pamięci, gdy następna odpowiedź modelu nie dotrze, więc model nie zaproponuje jej ponownie. Po cofnięciu dostępu nowe, niezależne odpowiedzi zostają, a szczegóły akcji zależnych od tego pliku znikają. Rozmowa z wieloma plikami zawsze się zapisuje.

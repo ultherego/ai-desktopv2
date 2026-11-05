@@ -160,6 +160,27 @@ class ReviewFindingsTests(unittest.TestCase):
                 ops.parse_template(program + " x")
         ops.parse_template("systemctl status <unit>")                       # a literal verb is the owner's choice
 
+    def test_the_value_of_an_option_is_not_taken_for_the_verb(self):
+        for strict, bad in ((False, "systemctl -H host <word>"), (True, "systemctl -H host <word>"),
+                            (False, "docker --context synthetic <word> x"), (True, "custom-tool -c value <word>"),
+                            (True, "systemctl --user -M box <word> x.service")):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                ops.parse_template(bad, strict=strict)
+        for strict, good in ((True, "systemctl --user restart <unit>"), (True, "systemctl -H host restart <unit>"),
+                             (True, "systemctl --no-pager --user status <unit>"), (False, "pactl --format=json list <word>"),
+                             (False, "systemctl status <unit> --no-pager"), (False, "nmcli -t connection show <word>"),
+                             (False, "journalctl -u <unit> -n <int>"), (False, "pacman -Qi <word>")):
+            with self.subTest(good=good):
+                ops.parse_template(good, strict=strict)
+
+    def test_the_contract_takes_as_many_change_templates_as_the_policy(self):
+        from ai_desktop.assistant_contract import validate_access
+        access = {"files": [], "systemd": [], "weather": False, "commands": ["uname -r"]}
+        names = ["app-%d restart" % number for number in range(ops.MAX_TEMPLATES + 1)]
+        self.assertEqual(len(validate_access({**access, "change_commands": names[:-1]})["change_commands"]), ops.MAX_TEMPLATES)
+        with self.assertRaises(ValueError):
+            validate_access({**access, "change_commands": names})
+
     def test_a_link_to_a_forbidden_program_never_resolves(self):
         with tempfile.TemporaryDirectory() as directory:
             link = Path(directory) / "innocent"

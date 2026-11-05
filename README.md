@@ -132,6 +132,8 @@ Domyślnie model nie uruchamia niczego. `allow` to lista dokładnych szablonów,
 
 Polecenia z `allow` działają w piaskownicy: system plików tylko do odczytu, ukryte `/home`, `/root` i `/run/user`, bez sieci i bez wejścia. Nie izoluje ona gniazd Unix hosta, więc wpisuj tu tylko polecenia, które niczego nie zmieniają. Część programów nie zobaczy stanu hosta (np. `ip`, `wpctl`, `glxinfo`).
 
+Znacznik nie może stać tam, gdzie mogłoby być polecenie narzędzia. Opcję, która przyjmuje wartość, zapisz razem z nią (`--output=json`) albo podaj polecenie dalej: `systemctl -H host restart <unit>` jest poprawny, a `systemctl -H host <word>` nie.
+
 `change` to polecenia, które zmieniają system, np.:
 
 ```toml
