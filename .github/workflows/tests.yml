@@ -152,6 +152,15 @@ jobs:
           }
           PROFILE
           sudo apparmor_parser -r "$RUNNER_TEMP/ai-desktop-bwrap.apparmor"
+      - name: Check out the button shipped with DMS 2.1.0
+        if: matrix.bubblewrap == 'distro'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: duxlabs-dev/dux-qml-common
+          ref: be3e16ca62866a749b34cfefe1aaed81cfe21e94 # DMS v2.1.0 submodule
+          path: .ci-dms-common
+          sparse-checkout: DCommon/Widgets
+          persist-credentials: false
       - name: Validate optional desktop launchers, DMS QML and subscription alerts
         if: matrix.bubblewrap == 'distro'
         run: |
@@ -164,7 +173,7 @@ jobs:
           QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software /usr/lib/qt6/bin/qmltestrunner -input tests/qml
           python -B tests/dms_widget_reload.py /usr/lib/qt6/bin/qmltestrunner
           python -m pip install --only-binary=:all: PySide6-Essentials==6.11.3
-          python -B tests/dms_widget_reload.py --pyside
+          python -B tests/dms_widget_reload.py --pyside --dms-common .ci-dms-common
       - name: Pinned Codex strict-config startup (offline namespace, no OAuth or inference)
         if: matrix.bubblewrap == 'distro'
         run: python -B tests/ci_codex_config.py --allow-disposable-codex-config-test

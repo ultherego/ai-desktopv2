@@ -23,6 +23,8 @@ Enable **AI Desktop** under **Settings → Plugins**, then add the widget in the
 
 After a package update, run `dms ipc call plugins reload aiDesktop` to refresh the installed widget. If version `0.1.0-73` reports `QuotaCard is not a type`, check that both `Widget.qml` and `QuotaCard.qml` are readable in the DMS plugin directory. With the packaged files in place, `dms restart` starts a fresh QML engine. Version `0.1.0-74` imports the card explicitly and uses fresh component and script URLs so a running shell can load the new layout.
 
+On DMS 2.0 and 2.1, use package `0.1.0-75` or later. If a previous build reports an unknown button property named `variant`, install the updated package and reload the widget.
+
 Click the horizontal provider indicator to open **Usage**. If a current five-hour reading exists, the bar shows its percentage. The popout groups each account into a card. Its gauges show independent five-hour and seven-day usage, local reset times, remaining time and the observation timestamp. Live gauges turn yellow at 75% and red at 90%. Expired readings are marked as historical and missing readings have no fill. All accounts are reachable by scrolling; the chat and panel launchers stay below the list.
 
 Open **Accounts & login** to switch the service for future conversations. When a provider has multiple available slots, click a name to select it for new tasks. Choose **Sign in…** under Claude or Codex to open a dedicated terminal picker. The arrow keys select the default login, an available named slot or the option to add an account. Entering a new alias, granting sudo and completing provider authentication can still require interaction. Existing conversations keep their approved recipient. Local inference has no subscription login.
@@ -31,4 +33,4 @@ The widget reads the local `ai-desktop status --json` on startup and every 60 se
 
 Notifications are disabled initially. Enable **Subscription limit notifications** in the plugin settings and choose the percentage used (default 90%). While the widget is running, a current 5-hour or 7-day window for the selected service and account can trigger one DMS toast when a sample meets the threshold. Multiple bars share notification state. Restarting DMS clears that state. To disable the widget, remove it from the bar or disable the plugin in Settings.
 
-The widget uses the [upstream DMS plugin interface](https://github.com/AvengeMedia/DankMaterialShell/tree/c4b6303d72f9fb53d00fbf28f557313469bedc52/quickshell/PLUGINS).
+The widget follows the DMS 2.x plugin interface and uses the color properties provided by the released button. [DMS 2.1 plugin examples](https://github.com/AvengeMedia/DankMaterialShell/tree/7627111c3ebd402662283f5f4a93223cda9e0a9d/quickshell/PLUGINS) · [DMS 2.1 button implementation](https://github.com/duxlabs-dev/dux-qml-common/blob/be3e16ca62866a749b34cfefe1aaed81cfe21e94/DCommon/Widgets/DButton.qml).

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-75: open the widget on released DMS 2.x versions
+
+- Use the button colors supported by DMS 2.0 and 2.1 to mark the selected tab. Opening the usage and account tabs works with the released button API.
+
 ## 0.1.0-74: load the quota card after a running DMS upgrade
 
 - Move the quota card and its status script into a dedicated directory. When DMS reloads the widget after an upgrade, Qt can discover both files and show the current percentages and reset times.

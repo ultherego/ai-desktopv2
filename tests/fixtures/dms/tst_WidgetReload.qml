@@ -1,5 +1,7 @@
 import QtQuick
 import QtTest
+import qs.Common
+import qs.Services
 
 Item {
     id: stage
@@ -27,9 +29,32 @@ Item {
             }, 10000, "Timed out installing " + state + " / " + phase);
         }
 
+        function visibleButton(item, label) {
+            if (!item.visible)
+                return null;
+            if (item.text === label && typeof item.clicked === "function")
+                return item;
+            for (let index = 0; index < item.children.length; index++) {
+                const found = visibleButton(item.children[index], label);
+                if (found)
+                    return found;
+            }
+            return null;
+        }
+
+        function clickButton(popout, label) {
+            let button;
+            tryVerify(() => {
+                button = visibleButton(popout, label);
+                return button && button.enabled && button.width > 0 && button.height > 0;
+            }, 5000, "Expected an enabled " + label + " button");
+            waitForRendering(popout);
+            mouseClick(button);
+        }
+
         function test_recoverWithoutRestart_data() {
-            return [{tag: "missing card", state: "missing"},
-                    {tag: "cached card and script", state: "cached"}];
+            return [{tag: "missing card", state: "missing", provider: "claude"},
+                    {tag: "cached card and script", state: "cached", provider: "codex"}];
         }
 
         function test_recoverWithoutRestart(data) {
@@ -54,7 +79,7 @@ Item {
             compare(updated.status, Component.Ready, updated.errorString());
 
             const snapshot = {selected: "claude", role: "diagnostic", model: "default",
-                              sessions: [], providers: [], accounts: [
+                              sessions: [], providers: [{id: data.provider, allowed: true, client_present: true}], accounts: [
                                   {provider: "claude", account: "personal", selected: true,
                                    observed_at: 1799999900, windows: {five_hour: {percent: 19, reset: 1800000900}}}
                               ]};
@@ -68,6 +93,24 @@ Item {
             const track = findChild(popout, "quotaTrack_five_hour");
             verify(gauge && track && track.visible && track.width > 0);
             verify(Math.abs(gauge.width - track.width * 0.19) <= 1, "Expected a visible 19% quota bar");
+
+            SessionService.lastLaunched = "";
+            const usage = visibleButton(popout, "Usage");
+            const accounts = visibleButton(popout, "Accounts & login");
+            verify(usage && accounts);
+            compare(usage.backgroundColor, Theme.primaryContainer);
+            compare(accounts.backgroundColor, Theme.surfaceContainerHigh);
+            clickButton(popout, "Accounts & login");
+            compare(usage.backgroundColor, Theme.surfaceContainerHigh);
+            compare(accounts.backgroundColor, Theme.primaryContainer);
+            clickButton(popout, "Sign in…");
+            compare(SessionService.lastLaunched, "ai-desktop-login-" + data.provider + ".desktop");
+            clickButton(popout, "Usage");
+            tryCompare(track, "visible", true);
+            clickButton(popout, "Open chat");
+            compare(SessionService.lastLaunched, "ai-desktop.desktop");
+            clickButton(popout, "Open panel");
+            compare(SessionService.lastLaunched, "ai-desktop-panel.desktop");
         }
     }
 }

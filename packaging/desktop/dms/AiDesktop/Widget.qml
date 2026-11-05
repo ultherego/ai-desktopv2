@@ -22,6 +22,12 @@ PluginComponent {
     readonly property bool notifyUsage: pluginData.notifyUsage === true
     readonly property int usageThreshold: pluginData.usageThreshold ?? 90
 
+    component ChoiceButton: DButton {
+        property bool highlightedChoice: false
+        backgroundColor: highlightedChoice ? Theme.primaryContainer : Theme.surfaceContainerHigh
+        textColor: highlightedChoice ? Theme.onPrimaryContainer : Theme.surfaceText
+    }
+
     function refresh() {
         const key = "aiDesktop.status." + (widgetInstanceId || "default") + "." + (parentScreen?.name || "screen");
         Proc.runCommand(key, ["/usr/bin/ai-desktop", "status", "--json"], (output, code) => {
@@ -116,14 +122,14 @@ PluginComponent {
 
                 Row {
                     spacing: Theme.spacingS
-                    DButton {
+                    ChoiceButton {
                         text: "Usage"
-                        variant: popout.showAccounts ? "outlined" : "tonal"
+                        highlightedChoice: !popout.showAccounts
                         onClicked: popout.showAccounts = false
                     }
-                    DButton {
+                    ChoiceButton {
                         text: "Accounts & login"
-                        variant: popout.showAccounts ? "tonal" : "outlined"
+                        highlightedChoice: popout.showAccounts
                         onClicked: popout.showAccounts = true
                     }
                 }
@@ -214,11 +220,11 @@ PluginComponent {
                                 visible: serviceCard.accounts.length > 1
                                 Repeater {
                                     model: serviceCard.accounts.length > 1 ? serviceCard.accounts : []
-                                    DButton {
+                                    ChoiceButton {
                                         required property var modelData
                                         text: modelData.account
                                         maximumWidth: serviceBody.width
-                                        variant: modelData.selected ? "tonal" : "outlined"
+                                        highlightedChoice: modelData.selected
                                         enabled: !root.switching && !modelData.selected
                                         onClicked: root.selectAccount(serviceCard.provider, modelData.account)
                                     }
@@ -232,7 +238,6 @@ PluginComponent {
                                     enabled: serviceCard.modelData.client_present === true
                                     text: "Sign in…"
                                     iconName: "login"
-                                    variant: "tonal"
                                     onClicked: {
                                         if (serviceCard.provider === "claude")
                                             root.launch("ai-desktop-login-claude.desktop");
@@ -240,11 +245,10 @@ PluginComponent {
                                             root.launch("ai-desktop-login-codex.desktop");
                                     }
                                 }
-                                DButton {
+                                ChoiceButton {
                                     visible: serviceCard.provider !== root.service
                                     enabled: !root.switching && Status.canSelectService(root.snapshot, serviceCard.provider)
                                     text: "Use service"
-                                    variant: "outlined"
                                     onClicked: root.selectService(serviceCard.provider)
                                 }
                             }
@@ -265,10 +269,9 @@ PluginComponent {
                         iconName: "chat"
                         onClicked: root.launch("ai-desktop.desktop")
                     }
-                    DButton {
+                    ChoiceButton {
                         text: "Open panel"
                         iconName: "terminal"
-                        variant: "outlined"
                         onClicked: root.launch("ai-desktop-panel.desktop")
                     }
                 }

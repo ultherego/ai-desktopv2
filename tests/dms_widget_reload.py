@@ -1,4 +1,5 @@
 """Run the real widget through a DMS-style package upgrade in a single Qt engine."""
+import argparse
 import os
 from pathlib import Path
 import re
@@ -6,6 +7,8 @@ import shutil
 import subprocess
 import sys
 import tempfile
+
+from dms_button_fixture import install_released_buttons
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,14 +18,25 @@ PLUGIN = ROOT / "packaging/desktop/dms/AiDesktop"
 def write_dms_modules(root):
     # Only DMS-owned types are stand-ins. The widget, cards, JS and Qt loader are real.
     modules = {
-        "qs.Services": {"Proc": ("singleton", "QtObject { function runCommand(key, args, callback) {} }")},
-        "qs.Common": {"Theme": ("singleton", """QtObject {
+        "qs.Services": {
+            "SessionService": ("singleton", """QtObject {
+                property string lastLaunched: ""
+                function resolveDesktopId(id) { return {id: id}; }
+                function launchDesktopEntry(entry) { lastLaunched = entry.id; }
+            }"""),
+        },
+        "qs.Common": {"Proc": ("singleton", "QtObject { function runCommand(key, args, callback) {} }"),
+                      "Theme": ("singleton", """QtObject {
             property int spacingXS: 4
             property int spacingS: 8
             property int spacingM: 12
             property string fontFamily: "Sans Serif"
             property color primary: "blue"
+            property color primaryContainer: "navy"
+            property color onPrimaryContainer
+            Component.onCompleted: onPrimaryContainer = "lightblue"
             property color surfaceContainer: "black"
+            property color surfaceContainerHigh: "darkgray"
             property color surfaceText: "white"
             property color surfaceVariantText: "gray"
             property color outlineVariant: "gray"
@@ -33,12 +47,17 @@ def write_dms_modules(root):
         "qs.DCommon.Widgets": {
             "DIcon": ("", "Text { property string name; property real size }"),
             "StyledText": ("", "Text {}"),
-            "DButton": ("", """Item {
+            # Keep the basic API available on the supported DMS installations.
+            # Declaring optional properties here previously hid a live load error.
+            "DButton": ("", """MouseArea {
                 property string iconName
                 property string text
-                property string variant
-                property real maximumWidth
-                signal clicked()
+                property color backgroundColor
+                property color textColor
+                property real maximumWidth: Infinity
+                implicitWidth: Math.min(maximumWidth, label.implicitWidth + 20)
+                implicitHeight: 28
+                Text { id: label; text: parent.text }
             }"""),
         },
         "qs.Modules.Plugins": {
@@ -70,6 +89,12 @@ def write_dms_modules(root):
 
 
 def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--pyside", action="store_true", help="use PySide's Qt Quick Test runner")
+    group.add_argument("runner", nargs="?", help="path to qmltestrunner")
+    parser.add_argument("--dms-common", type=Path, help="load DButton and its base from this DMS dependency checkout")
+    args = parser.parse_args()
     with tempfile.TemporaryDirectory(prefix="dms-widget-reload-") as temp:
         root = Path(temp)
         installs = {}
@@ -94,12 +119,14 @@ def main():
         shutil.copyfile(ROOT / "tests/fixtures/dms/tst_WidgetReload.qml", root / "tst_WidgetReload.qml")
         write_dms_modules(root / "modules")
         env = dict(os.environ, QML_XHR_ALLOW_FILE_READ="1", QT_QPA_PLATFORM="offscreen", QT_QUICK_BACKEND="software")
-        if sys.argv[1] == "--pyside":
+        if args.dms_common:
+            install_released_buttons(root / "modules", args.dms_common)
+        if args.pyside:
             runner = [sys.executable, "-B", "-c",
                       'import sys; from PySide6.QtQuickTest import QUICK_TEST_MAIN; '
                       'sys.exit(QUICK_TEST_MAIN("WidgetReload", sys.argv))']
         else:
-            runner = [sys.argv[1]]
+            runner = [args.runner]
         command = runner + ["-import", str(root / "modules"), "-input", str(root / "tst_WidgetReload.qml")]
         with subprocess.Popen(command, env=env, text=True, stdout=subprocess.PIPE,
                               stderr=subprocess.STDOUT) as qt:
