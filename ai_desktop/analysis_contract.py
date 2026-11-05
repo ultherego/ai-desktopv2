@@ -271,7 +271,7 @@ MAX_ANSWER_PACKET = 32768
 # One model call. Slow reasoning (xhigh / max) gets a longer budget; every layer derives its limit from this one table:
 # the client waits REQUEST + SERVICE_MARGIN, the per-request unit and the session helper outlive that (see packaging).
 REQUEST_SECONDS = 110
-REQUEST_SECONDS_LONG = 260
+REQUEST_SECONDS_LONG = 900     # high reasoning can legitimately think for many minutes
 LONG_EFFORTS = frozenset(("xhigh", "max"))
 SERVICE_MARGIN = 40
 # The privileged session helper stays open while the client holds the pipe, i.e. for a whole request: the longest
@@ -303,7 +303,7 @@ def consent_seconds(effort):
 
 
 TTL = consent_seconds(None)
-CONSENT_CEILING = 1800        # a whole question never stays approved longer than this, however often it is renewed
+CONSENT_CEILING = 3600        # a whole question never stays approved longer than this, however often it is renewed
 REASONS = frozenset({"consent", "input", "endpoint", "runtime", "identity", "busy",
                      "sandbox", "auth-required", "auth-method", "version", "client",
                      "timeout", "output-limit", "result", "internal", "cancelled",

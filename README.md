@@ -330,7 +330,7 @@ Do dostawcy trafia: Twoje pytanie, instrukcje programu i agenta (z przypisanymi 
 | `doctor` pisze „Klient Claude: brak” | W pakiecie nie ma pliku `claude-code`. Dodaj go według kroku 3 instalacji i zbuduj pakiet ponownie. |
 | `status`: `auth=unchecked` | To normalne: `status` i `doctor` nie sprawdzają logowania ani sieci. |
 | Prośba o logowanie | `ai-desktop login`, potem nowe pytanie. |
-| Limit usługi, błąd sieci, przekroczony czas | Nic nie jest ponawiane samo. Odczekaj i zadaj pytanie ponownie. Czas oczekiwania to 110 s, a dla `xhigh` i `max` 260 s. |
+| Limit usługi, błąd sieci, przekroczony czas | Nic nie jest ponawiane samo. Odczekaj i zadaj pytanie ponownie. Czas oczekiwania to 110 s, a dla `xhigh` i `max` 15 minut. |
 | Sesja zajęta lub niepotwierdzone zatrzymanie | `ai-desktop status`, potem `ai-desktop stop` (zatrzymuje tylko Twoją sesję). |
 | `Niepoprawny permissions.toml` | Komunikat wskazuje klucz. Sprawdź też prawa `0600`. |
 | `Claude jest zablokowany` | Ustaw `claude = true` w `[network]`. |

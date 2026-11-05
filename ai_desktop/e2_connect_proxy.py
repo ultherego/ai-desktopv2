@@ -269,7 +269,7 @@ class ConnectProxy(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     block_on_close = True
 
     def __init__(self, path, *, dial, stream_seconds=TIME_LIMIT, hosts=HOSTS):
-        if type(stream_seconds) is not int or not 1 <= stream_seconds <= 300:
+        if type(stream_seconds) is not int or not 1 <= stream_seconds <= 1200:
             raise Denied()
         self.stream_seconds = stream_seconds
         self.hosts = _fixed_hosts(hosts)

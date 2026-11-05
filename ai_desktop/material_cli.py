@@ -43,7 +43,7 @@ from .terminal_progress import WaitingIndicator
 from .question_input import FOLLOWUP_PROMPT, PromptSession, QuestionInputError, read_question
 from .terminal_consent import confirm
 
-SESSION_REUSE_SECONDS = 80      # helper cap (SESSION_SECONDS) minus the longest request wait (300 s), exactly
+SESSION_REUSE_SECONDS = 80      # helper cap (SESSION_SECONDS) minus the longest request wait, exactly
 MAX_HANDOFFS_PER_MINUTE = 3     # the socket allows 4 activations per 60 s
 GRANT_SECONDS = 600
 TASK_SECONDS = 1800                 # validity of the ONE consent for a whole-file task (stage grants never outlive it)

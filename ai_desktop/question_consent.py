@@ -77,6 +77,11 @@ class QuestionConsent:
 
     def _validate(self):
         try:
+            if not self._closed and self._clock() > self._expires:
+                self.close()
+                denied = AnalysisDenied("consent")
+                denied.expired = True
+                raise denied
             if (self._closed or self._clock() > self._expires
                     or canonical(current_execution()) != self._execution
                     or self._snapshot.policy is not self._policy

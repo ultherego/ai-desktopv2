@@ -105,6 +105,7 @@ class QuestionConsentTests(unittest.TestCase):
         self.assertEqual((TTL, consent_seconds(None), consent_seconds("high")), (180, 180, 180))
         self.assertEqual(consent_seconds("max"), consent_seconds("xhigh"))
         self.assertGreater(consent_seconds("max"), 180)
+        self.assertGreater(consent_seconds("max"), 900)              # a slow model is not mistaken for a lapsed consent
 
     def assert_closed(self, permit):
         with self.assertRaises(AnalysisDenied):

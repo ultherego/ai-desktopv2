@@ -284,6 +284,20 @@ def _escape_ext(fd):
     return b"ignore"
 
 
+def _discard_paste(fd, *, idle=0.3, limit=64 * 1024 * 1024):
+    """A refused paste is thrown away whole. What is left of it must not reach the next prompt, where one of its lines
+    would be read as a message. Ends at the paste's end marker, or when the terminal stops sending (no marker came)."""
+    tail, total = b"", 0
+    while total < limit and select.select([fd], [], [], idle)[0]:
+        chunk = os.read(fd, 65536)
+        if not chunk:
+            return
+        total += len(chunk)
+        if _PASTE_END in tail + chunk:
+            return
+        tail = chunk[-(len(_PASTE_END) - 1):]
+
+
 def _paste(fd, remaining, newlines=False):
     value = bytearray()
     while len(value) <= remaining + len(_PASTE_END):
@@ -291,7 +305,7 @@ def _paste(fd, remaining, newlines=False):
         if value.endswith(_PASTE_END):
             raw = bytes(value[:-len(_PASTE_END)])
             if len(raw) > remaining:
-                break
+                raise QuestionInputError("question paste")       # complete, and over the limit: nothing is left to read
             return _safe_text(raw, newlines)
         # ESC is permitted only as the prefix of the final paste delimiter.
         escape = value.find(b"\x1b")
@@ -300,6 +314,7 @@ def _paste(fd, remaining, newlines=False):
         if value[-1] < 32 and value[-1] != 27 or value[-1] == 127:
             if not (newlines and value[-1] in (9, 10, 13)):
                 break
+    _discard_paste(fd)
     raise QuestionInputError("question paste")
 
 

@@ -188,7 +188,9 @@ def _explain_denied(exc, args, state):
     if args.details or web_diagnostic(exc.diagnostic) is not None:
         print(str(exc))
     if exc.reason == "consent":
-        print("Zgoda wygasła lub warunki dostępu uległy zmianie. Pytanie zostało zatrzymane.")
+        print("Minął czas na to pytanie: model myślał dłużej, niż pozwala limit. Pytanie zostało zatrzymane. Zadaj je ponownie "
+              "albo użyj niższego poziomu (/sila)." if getattr(exc, "expired", False)
+              else "Zgoda wygasła lub warunki dostępu uległy zmianie. Pytanie zostało zatrzymane.")
     elif exc.reason == "web-no-results":
         print("Nie uzyskano potwierdzonych wyników wyszukiwania. Pytanie zakończono bez odpowiedzi.")
     else:
