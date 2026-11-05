@@ -27,12 +27,12 @@ Działa i jest scalone:
 
 | Zadanie | Stan |
 |---|---|
-| Cofanie zmiany nie nadpisuje ani nie usuwa nowszego zapisu edytora, zarówno przy edycji, jak i przy nowym pliku | do zrobienia |
-| Suma SHA-256 klienta sprawdzana przy budowie pakietu | w toku |
-| Zgoda na rozmowę obejmuje cały `permissions.toml` | w toku |
-| Długie polecenie zmiany nie jest odrzucane na etapie edycji (`ask` przyjmuje 128 KiB, edycja 2 KiB) | do zrobienia |
-| Słowo zaczynające się od `/` da się wysłać jako pytanie, zgodnie z komunikatem programu | do zrobienia |
-| 129. usunięcie do kosza jest odrzucane przed wykonaniem | do zrobienia |
+| Cofanie zmiany nie nadpisuje ani nie usuwa nowszego zapisu edytora, zarówno przy edycji, jak i przy nowym pliku | w toku |
+| Suma SHA-256 klienta sprawdzana przy budowie pakietu | gotowe |
+| Zgoda na rozmowę obejmuje cały `permissions.toml` | gotowe |
+| Długie polecenie zmiany nie jest odrzucane na etapie edycji (`ask` przyjmuje 128 KiB, edycja 2 KiB) | w toku |
+| Słowo zaczynające się od `/` da się wysłać jako pytanie, zgodnie z komunikatem programu | w toku |
+| 129. usunięcie do kosza jest odrzucane przed wykonaniem | w toku |
 
 **Ukończone, gdy:** testy odtwarzają równoczesny zapis przy cofaniu obu rodzajów zmian, a wersja edytora zostaje na miejscu.
 

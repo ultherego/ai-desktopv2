@@ -9,6 +9,7 @@ import unicodedata
 
 from .e2_ipc import _unique_pairs
 
+MAX_INSTRUCTION = 128 * 1024           # an `ask` message may be this long, so a change it asks for must fit too
 _SEGMENT = re.compile(r"[A-Za-z0-9_.][A-Za-z0-9_.-]{0,63}\Z")
 
 MAX_FILES = 64
@@ -39,7 +40,7 @@ def text(value, limit=MAX_FILE):
 def request(value):
     if type(value) is not dict or set(value) != {"instruction", "files"}:
         raise ValueError("task")
-    if not text(value["instruction"], 2048).strip():
+    if not text(value["instruction"], MAX_INSTRUCTION).strip():
         raise ValueError("instruction")
     files = value["files"]
     if type(files) is not list or not 1 <= len(files) <= MAX_FILES:

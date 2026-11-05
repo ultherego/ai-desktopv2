@@ -765,7 +765,8 @@ class EditTests(Base):
                 super().__init__()
                 self._add_paste(body)
         self.model = script({"action": "edit", "files": [], "create": ["a.txt"], "check": "text"})
-        with patch.object(pcli, "PromptSession", Seeded), patch.object(pcli.ask_cli, "request") as request:
+        with patch.object(pcli, "PromptSession", Seeded), patch.object(pcli.ask_cli, "request") as request, \
+                patch.object(pcli.task_contract, "MAX_INSTRUCTION", 2048):
             self.run_cli(["wpisz: " + qi.paste_token(1, body), "/koniec"], ["tak"])
         request.assert_not_called()
         self.assertRegex(self.output, r"Odmowa\s+Polecenie zmiany pliku razem z wklejką przekracza 2048 B")

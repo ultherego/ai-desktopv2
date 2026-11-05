@@ -181,6 +181,9 @@ def delete_files(plan, snapshot, reader):
         policy.require_write(tuple(workspace + "/" + name for name in names), index=index)
         prepared = workspace_trash.prepare(workspace, names)
         sizes = [entry["size"] for entry in prepared.data()["entries"]]
+    except workspace_trash.TrashFull:
+        print(workspace_trash.FULL_MESSAGE)
+        raise EditDenied("input") from None
     except (OSError, ValueError, TypeError, KeyError, AttributeError, ExecutionDenied):
         raise EditDenied("input") from None
     print()

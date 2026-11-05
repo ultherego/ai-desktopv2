@@ -4,9 +4,9 @@ Stan: pakiet `0.1.0-70`. Ograniczenia obecnej wersji opisuje [KNOWN_LIMITATIONS.
 
 ## Najbliżej
 Etapy i warunki ich ukończenia opisuje [ROADMAP.md](ROADMAP.md).
-- [ ] `task rollback`: nie nadpisywać ani nie usuwać nowszego zapisu edytora.
-- [ ] Długie polecenie zmiany: etap edycji odrzuca instrukcję powyżej 2 KiB, choć `ask` przyjmuje 128 KiB.
-- [ ] Spacja przed `/` jest usuwana, więc słowa z `/` nie da się wysłać jako pytania.
+- [x] `task rollback`: nie nadpisywać ani nie usuwać nowszego zapisu edytora.
+- [x] Długie polecenie zmiany: etap edycji odrzuca instrukcję powyżej 2 KiB, choć `ask` przyjmuje 128 KiB.
+- [x] Spacja przed `/` jest usuwana, więc słowa z `/` nie da się wysłać jako pytania.
 - [ ] Końcowa odpowiedź po odczycie pliku dostaje wyniki poleceń i wczytane Skille.
 - [ ] Wynik wykonanej zmiany zostaje w pamięci mimo błędu usługi.
 - [ ] Zależność od cofniętego pliku nie przechodzi na niezależne odpowiedzi.
@@ -36,7 +36,7 @@ Etapy i warunki ich ukończenia opisuje [ROADMAP.md](ROADMAP.md).
 ## Błędy funkcjonalne
 - [ ] Etap edycji (`ask_edit`, `project`) nie dostaje wcześniejszych ustaleń rozmowy, tylko samo „zrób to".
 - [ ] Zapis rozmowy odmawia przy 33 zależnych plikach (limit 32), a odczyt dopuszcza 64.
-- [ ] Kosz: 129. usunięcie się wykonuje, a potem lista historii kosza przestaje działać.
+- [x] Kosz: 129. usunięcie jest odrzucane przed wykonaniem.
 - [x] Skill o największym dopuszczalnym rozmiarze można przypisać do agenta.
 - [ ] Codex: poprawne zakończenie logowania/wylogowania bywa zgłaszane jako błąd (`not-found` z kodem 1).
 - [ ] Skrypty odbioru: `update_candidate.fish` wymaga `0.1.0-17`; część skryptów odwołuje się do nieistniejących gałęzi.

@@ -42,6 +42,19 @@ class TrashTests(unittest.TestCase):
         self.assertEqual(self.journal(plan)["status"], "restored")
         self.assertTrue(trash.restore(self.ws, plan))                     # idempotent
 
+    def test_a_full_trash_refuses_before_anything_moves_and_the_list_keeps_working(self):
+        original = trash.tw.MAX_JOURNALS
+        with patch.object(trash.tw, "MAX_JOURNALS", 2):
+            for name in ("a.txt", "b.txt"):
+                (self.root / name).write_text("x\n")
+                trash.trash(str(self.root), [name])
+            (self.root / "c.txt").write_text("keep\n")
+            with self.assertRaises(trash.TrashFull):
+                trash.trash(str(self.root), ["c.txt"])
+            self.assertEqual((self.root / "c.txt").read_text(), "keep\n")
+            self.assertEqual(len(trash.recovery_records(str(self.root))), 2)
+        self.assertEqual(trash.tw.MAX_JOURNALS, original)
+
     def test_a_recreated_name_is_a_conflict_and_is_never_overwritten(self):
         plan = trash.trash(self.ws, ["b.txt"])
         self.b.write_text("new life\n")
