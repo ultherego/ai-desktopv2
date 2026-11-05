@@ -2,6 +2,7 @@
 from contextlib import redirect_stdout
 import io
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
@@ -40,6 +41,53 @@ class NamedAccounts(unittest.TestCase):
             self.assertEqual(cli.main(["add", "codex", "other", "--login"]), 2)
             self.assertEqual(self.store.load().config.active("codex"), "default")
             login.assert_called_once_with("codex", "other")
+
+    def _desktop_login_menu(self, provider, choices, *, terminal=True):
+        self.enterContext(patch.object(cli, "AccountStore", return_value=self.store))
+        identity = self.enterContext(patch.object(cli, "os", wraps=os))
+        identity.isatty.return_value = terminal
+        identity.getuid.return_value = identity.geteuid.return_value = 1000
+        menus = []
+
+        def pick(title, options):
+            menus.append(list(options))
+            label = next(choices)
+            return options.index(label) if label is not None else None
+
+        self.enterContext(patch("ai_desktop.ask_commands._pick", side_effect=pick))
+        with redirect_stdout(io.StringIO()):
+            code = cli.main(["connect", provider])
+        return code, menus
+
+    def test_desktop_connect_cancels_before_auth_and_declines_a_background_launch(self):
+        with patch("ai_desktop.cli.main", side_effect=AssertionError("no dispatch before account choice")):
+            code, menus = self._desktop_login_menu("claude", iter([None]))
+            self.assertEqual(code, 0)
+            self.assertEqual(menus[0][0], "Sign in to default and select the Claude service")
+            code, menus = self._desktop_login_menu("claude", iter(()), terminal=False)
+            self.assertEqual((code, menus), (2, []))
+
+    def test_desktop_connect_routes_default_login_to_the_requested_provider(self):
+        with patch("ai_desktop.cli.main", return_value=2) as dispatch, patch.object(cli, "_login") as named:
+            code, menus = self._desktop_login_menu("codex", iter(["Sign in to default and select the Codex service", "Close"]))
+        self.assertEqual(code, 0)
+        dispatch.assert_called_once_with(["login", "--provider", "codex"])
+        named.assert_not_called()
+        self.assertEqual(menus[0], menus[1], "a failed default login cannot mark a new provider status")
+
+    def test_desktop_connect_adds_and_selects_named_account_only_after_each_separate_choice(self):
+        self.store.mutate(lambda state: state.add("claude", "existing").add("claude", "retired").retire("claude", "retired"))
+        with patch.object(cli, "_login", side_effect=[2, 0]) as login, \
+                patch("ai_desktop.terminal_consent.fresh_input", return_value="side"):
+            choices = iter(["Sign in to existing", "Add a named account and sign in", "Use side for new tasks", "Close"])
+            code, menus = self._desktop_login_menu("claude", choices)
+        self.assertEqual(code, 0)
+        self.assertEqual([call.args for call in login.call_args_list], [("claude", "existing"), ("claude", "side")])
+        self.assertIn("Sign in to existing", menus[1], "failed login remains available")
+        self.assertNotIn("Sign in to side", menus[2], "a connected slot is immutable")
+        self.assertTrue(all("retired" not in label for menu in menus for label in menu))
+        self.assertEqual(self.store.load().config.active("claude"), "side")
+        self.assertEqual(self.store.load().config.active("codex"), "default")
 
     def test_earlier_nonsecret_registry_remains_readable(self):
         earlier = b'{"schema":1,"rows":[["codex","work",true,0,null]]}'

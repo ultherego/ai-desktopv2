@@ -97,7 +97,8 @@ jobs:
   e2-boundary:
     name: E2 kernel boundary (${{ matrix.bubblewrap }}, synthetic)
     runs-on: ubuntu-24.04
-    timeout-minutes: 8
+    # Includes distribution package downloads and the Qt Quick runtime tests.
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -154,12 +155,13 @@ jobs:
       - name: Validate optional desktop launchers, DMS QML and subscription alerts
         if: matrix.bubblewrap == 'distro'
         run: |
-          sudo apt-get install -y qt6-declarative-dev-tools desktop-file-utils
+          sudo apt-get install -y qt6-declarative-dev-tools desktop-file-utils qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtqml-workerscript qml6-module-qttest
           desktop-file-validate packaging/desktop/*.desktop
           for file in packaging/desktop/dms/AiDesktop/*.qml; do
             /usr/lib/qt6/bin/qmlformat "$file" >/dev/null
           done
           node tests/desktop_widget.mjs
+          QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software /usr/lib/qt6/bin/qmltestrunner -input tests/qml
       - name: Pinned Codex strict-config startup (offline namespace, no OAuth or inference)
         if: matrix.bubblewrap == 'distro'
         run: python -B tests/ci_codex_config.py --allow-disposable-codex-config-test

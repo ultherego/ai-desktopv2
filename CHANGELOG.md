@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-73: graphical subscription usage and login
+
+- The DMS bar can show the current five-hour percentage. The popout shows proportional usage bars with local resets for each reported window.
+- Its **Accounts & login** tab can switch the service or account for new tasks and launch the native Claude/Codex sign-in picker. Authentication stays in the approved client flow.
+
 ## 0.1.0-72: subscription display and project test feedback
 
 - The terminal panel and `usage` show separate five-hour and seven-day windows, utilization bars and local reset times. Current usage is colored by percentage. Expired readings are labelled with their last recorded value.

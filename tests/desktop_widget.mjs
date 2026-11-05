@@ -31,3 +31,39 @@ assert.equal(widget.alerts(status(), true, 95, now + 601).length, 0);
 const next = {...sample, observed_at: now + 610, windows: {five_hour: {percent: 96, reset: now + 2000}}};
 assert.deepEqual(Array.from(widget.alerts(status(next), true, 95, now + 620)), ["codex / personal · 5 h · 96% used"]);
 console.log("Desktop usage, expiry and notification checks passed.");
+
+
+// Switching is restricted to a listed, usable destination. No data from a snapshot is treated as a command.
+const serviceActions = {selected: "claude", providers: [
+    {id: "claude", client_present: true, allowed: true},
+    {id: "codex", client_present: true, allowed: true},
+    {id: "local", allowed: false}
+], accounts: [
+    {provider: "codex", account: "personal", selected: true},
+    {provider: "codex", account: "work", selected: false},
+    {provider: "codex", account: "old", selected: false, status: "retired"},
+    {provider: "codex", account: "--help", selected: false}
+]};
+assert.equal(widget.canSelectService(serviceActions, "codex"), true);
+for (const provider of ["claude", "local", "--help"])
+    assert.equal(widget.canSelectService(serviceActions, provider), false);
+assert.equal(widget.canSelectService({...serviceActions, providers: [{id: "codex", client_present: false, allowed: true}]}, "codex"), false);
+assert.equal(widget.canSelectAccount(serviceActions, "codex", "work"), true);
+for (const name of ["personal", "old", "missing", "--help", "work\n", "work; other"])
+    assert.equal(widget.canSelectAccount(serviceActions, "codex", name), false);
+assert.equal(widget.canSelectAccount(serviceActions, "claude", "work"), false);
+
+assert.equal(widget.currentAccount(serviceActions, "codex").account, "personal");
+assert.equal(widget.currentAccount(serviceActions, "local"), null);
+assert.equal(widget.canSelectService({...serviceActions, providers: [{id: "codex", allowed: false, client_present: true}]}, "codex"), false);
+assert.equal(widget.canSelectAccount(serviceActions, "local", "work"), false);
+assert.equal(widget.percentText(0), "0%");
+assert.equal(widget.percentText(0.04), "<0.1%");
+assert.equal(widget.percentText(75.25), "75.3%");
+assert.equal(widget.percentText(99.96), ">99.9%");
+assert.equal(widget.percentText(100), "100%");
+assert.equal(widget.remaining(45), "<1m");
+assert.equal(widget.remaining(1020), "17m");
+assert.equal(widget.remaining(5400), "1h 30m");
+assert.equal(widget.remaining(259200), "3d 0h");
+console.log("Quota labels and user-initiated selection checks passed.");

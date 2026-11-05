@@ -1,8 +1,8 @@
 {
     "id": "aiDesktop",
     "name": "AI Desktop",
-    "description": "Show the selected service, conversations and reported subscription limits.",
-    "version": "1.0.0",
+    "description": "View subscription usage, select a service or account, and open sign-in.",
+    "version": "1.1.0",
     "author": "AI Desktop contributors",
     "type": "widget",
     "capabilities": ["dankbar-widget"],

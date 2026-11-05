@@ -33,7 +33,7 @@ See [agent settings, accounts and sessions](docs/AGENT_MANAGEMENT.md), [verified
 
 This is a development version, not a 1.0 release.
 
-The current candidate package is **0.1.0-72** (changes: [CHANGELOG.md](CHANGELOG.md)).
+The current candidate package is **0.1.0-73** (changes: [CHANGELOG.md](CHANGELOG.md)).
 
 What is still missing and what has not been checked is described in [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md). Read that file before using this on important data. The plan up to version 1.0: [docs/ROADMAP.md](docs/ROADMAP.md), tasks: [docs/TODO.md](docs/TODO.md).
 
@@ -58,7 +58,7 @@ and ./claude-code --version  # must print: 2.1.312 (Claude Code)
 
 # 4. Build and install the package (the version in the file name = pkgrel from PKGBUILD)
 makepkg --cleanbuild
-sudo pacman -U ai-desktop-0.1.0-72-x86_64.pkg.tar.zst
+sudo pacman -U ai-desktop-0.1.0-73-x86_64.pkg.tar.zst
 sudo systemctl daemon-reload
 
 # 5. Log in to Claude (interactive, once)

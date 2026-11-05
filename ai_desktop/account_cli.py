@@ -180,10 +180,43 @@ def _login(provider, name, *, action="login"):
         return 2
 
 
+def _connect(provider, store):
+    """Interactive account picker used by the packaged desktop sign-in actions."""
+    if os.getuid() < 1000 or os.getuid() != os.geteuid() or not os.isatty(0) or not os.isatty(1):
+        print("Open this account picker in your regular user's terminal.")
+        return 2
+    from .ask_commands import _pick
+    from .cli import main as dispatch
+
+    label = {"claude": "Claude", "codex": "Codex"}[provider]
+    while True:
+        state = store.load().config
+        selected = state.active(provider)
+        logged_in = {name for service, name, _ in state.logins if service == provider}
+        choices = [(f"Sign in to default and select the {label} service", ["login", "--provider", provider])]
+        for name in state.items(provider):
+            if (provider, name) in state.retired:
+                continue
+            if name != "default" and name not in logged_in:
+                choices.append(("Sign in to " + name, ["account", "login", provider, name]))
+            if name != selected:
+                choices.append(("Use " + name + " for new tasks", ["account", "use", provider, name]))
+        choices.append(("Add a named account and sign in", ["account", "add", provider, "--login"]))
+        choices.append(("Close", None))
+        pick = _pick(f"{label} accounts · selected: {selected}", [title for title, _ in choices])
+        if pick is None or choices[pick][1] is None:
+            return 0
+        # Only the legacy default login can choose the service; named logins and account selection
+        # keep their existing scope and checks. Leave the result visible before the next choice.
+        dispatch(choices[pick][1])
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="ai-desktop account", description="Separate subscription logins by provider")
     actions = parser.add_subparsers(dest="action")
     actions.add_parser("list")
+    connect = actions.add_parser("connect", help="Choose an account to sign in, add or use for this service")
+    connect.add_argument("provider", choices=CLOUD)
     for action in ("add", "use", "login", "retire"):
         cmd = actions.add_parser(action)
         cmd.add_argument("provider", nargs="?", choices=CLOUD)
@@ -196,6 +229,8 @@ def main(argv=None):
     args = parser.parse_args(argv)
     try:
         store = AccountStore()
+        if args.action == "connect":
+            return _connect(args.provider, store)
         if args.action in (None, "list"):
             for row in panel_rows(store=store):
                 print("%s %s/%s · %s" % ("*" if row["selected"] else "-", row["provider"], row["account"], row["status"]))

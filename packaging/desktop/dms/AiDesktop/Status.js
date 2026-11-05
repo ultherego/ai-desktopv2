@@ -51,3 +51,43 @@ function alerts(snapshot, enabled, threshold, now) {
     }
     return messages
 }
+
+function providerName(id) {
+    return id === "claude" ? "Claude" : id === "codex" ? "Codex" : id === "local" ? "Local" : "Unavailable";
+}
+
+function currentAccount(snapshot, provider) {
+    return snapshot?.accounts?.find(a => a.provider === provider && a.selected && a.status !== "retired") || null;
+}
+
+function canSelectService(snapshot, provider) {
+    if (!snapshot || !["claude", "codex", "local"].includes(provider) || snapshot.selected === provider)
+        return false;
+    const entry = snapshot.providers?.find(p => p.id === provider);
+    return !!entry && entry.allowed !== false && (provider === "local" ? entry.allowed === true : entry.client_present === true);
+}
+
+function canSelectAccount(snapshot, provider, name) {
+    return ["claude", "codex"].includes(provider) && typeof name === "string"
+        && name === name.trim() && /^[a-z][a-z0-9-]{0,31}$/.test(name)
+        && !!snapshot?.accounts?.some(a => a.provider === provider && a.account === name && !a.selected && a.status !== "retired");
+}
+
+function percentText(value) {
+    if (value > 99.9 && value < 100)
+        return ">99.9%";
+    if (value > 0 && value < 0.1)
+        return "<0.1%";
+    return Number(value.toFixed(1)) + "%";
+}
+
+function remaining(seconds) {
+    if (seconds < 60)
+        return "<1m";
+    const minutes = Math.floor(seconds / 60), hours = Math.floor(minutes / 60);
+    if (hours >= 24)
+        return Math.floor(hours / 24) + "d " + (hours % 24) + "h";
+    if (hours)
+        return hours + "h " + (minutes % 60) + "m";
+    return minutes + "m";
+}
