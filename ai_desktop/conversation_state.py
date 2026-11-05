@@ -15,7 +15,7 @@ from .execution import HISTORY_ANSWER_BYTES, HISTORY_QUESTION_BYTES, HISTORY_TOT
 MAX_TURNS = 64                 # finished turns kept for revalidation; only the last MAX_HISTORY are sent verbatim
 MAX_SOURCE_PATHS = 256         # one saved conversation's table of sources (conversation_sessions.MAX_PATHS)
 MAX_SOURCES = 8                # files remembered per turn (more are summarised as "too many": the turn is then tainted by all)
-REDACTED = "[answer removed: the source it used is no longer allowed]"
+REDACTED = "[answer withheld: its sources cannot be verified under the current permissions]"
 FACT_REDACTED = "Action taken: details removed because access to the source it used was revoked."
 _log = ContextVar("ai_desktop_turn_sources", default=None)
 
@@ -188,17 +188,18 @@ def export(conversation):
 
     # The source table is bounded. A turn whose sources no longer fit cannot be revoked precisely later, so it is stored
     # redacted (conservative) rather than with a shortened dependency list. A later turn inherits what earlier ones read.
-    known, fits = set(), {}
+    known, kept_turns = set(), set()
     for turn in reversed(turns):
         if not turn.redacted and len(known | set(turn.taint)) <= MAX_SOURCE_PATHS:
             known.update(turn.taint)
-            fits[id(turn)] = True
-    over = [not t.redacted and id(t) not in fits for t in turns]
-    history = [{"question": _bounded(t.question, HISTORY_QUESTION_BYTES),
-                "answer": _bounded(REDACTED if t.redacted or cut else t.answer, HISTORY_ANSWER_BYTES - 64)}
-               for t, cut in zip(turns, over)]
-    meta_turns = [{"n": t.n, "taint": [] if cut else [index(p) for p in t.taint], "redacted": t.redacted or cut}
-                  for t, cut in zip(turns, over)]
+            kept_turns.add(turn)
+    history, meta_turns = [], []
+    for turn in turns:
+        redacted = turn not in kept_turns
+        history.append({"question": _bounded(turn.question, HISTORY_QUESTION_BYTES),
+                        "answer": REDACTED if redacted else _bounded(turn.answer, HISTORY_ANSWER_BYTES - 64)})
+        meta_turns.append({"n": turn.n, "taint": [] if redacted else [index(p) for p in turn.taint],
+                           "redacted": redacted})
     # A note that depends on sources which no longer fit is left out, for the same reason.
     kept = []
     for entry in conversation.memory["entries"]:
@@ -237,7 +238,8 @@ def load(state):
                                            tuple(paths[i] for i in meta["taint"]), meta["redacted"]))
         conversation.number = max((t.n for t in conversation.turns), default=0)
     else:
-        for pair in history:                      # a pre-memory record: verbatim turns only, no known sources
+        for pair in history:
+            # Earlier versions saved the user's words but no evidence of what the answer read.
             conversation.number += 1
-            conversation.turns.append(Turn(conversation.number, pair["question"], pair["answer"]))
+            conversation.turns.append(Turn(conversation.number, pair["question"], REDACTED, redacted=True))
     return conversation
