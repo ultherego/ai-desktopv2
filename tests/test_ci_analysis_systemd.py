@@ -137,6 +137,7 @@ class CiAnalysisGuardTests(unittest.TestCase):
 
     def test_compact_task_check_retains_fenced_diff_and_two_ordered_consents(self):
         output = (driver.PROMPTS["transfer"].encode()
+                  + b"\nTest on a copy: passed (python-unittest); 2 selected file(s)."
                   + b"\n=== Changes to save ===\n```diff\n"
                   + b"--- a/calc.py\n+++ b/calc.py\n-    return a - b\n+    return a + b\n```\n"
                   + driver.PROMPTS["write"].encode() + b"\nChanges saved.\n")
@@ -147,6 +148,7 @@ class CiAnalysisGuardTests(unittest.TestCase):
                     output.replace(b"```diff\n", b""),
                     output.replace(b"\n```", b""),
                     output + b"Test on a copy: passed (python-unittest).\n",
+                    output.replace(b"2 selected file(s)", b"1 selected file(s)"),
                     output.replace(driver.PROMPTS["transfer"].encode(), b""),
                     output.replace(driver.PROMPTS["write"].encode(), b"")
                         + driver.PROMPTS["write"].encode() * 2,

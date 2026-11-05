@@ -274,21 +274,24 @@ def compact_task(output, *, rollback=False):
     if rollback:
         required = (b"Changes undone.", PROMPTS["rollback"].encode())
     else:
-        required = (b"=== Changes to save ===", b"```diff\n", b"\n```\n", b"--- a/calc.py",
+        required = (b"Test on a copy: passed (python-unittest); 2 selected file(s).",
+                    b"=== Changes to save ===", b"```diff\n", b"\n```\n", b"--- a/calc.py",
                     b"+++ b/calc.py", b"-    return a - b", b"+    return a + b",
                     b"Changes saved.", PROMPTS["transfer"].encode(), PROMPTS["write"].encode())
     forbidden = (b"APPLICATION INSTRUCTIONS", b"RULES AND RECIPIENT", b"New content as JSON:",
                  b"TASK:", b"TASK TEST:", b"TASK ROLLBACK:", b"SESSION: STOPPED", b"SHA256",
-                 b"Checking the changes", b"Test on a copy: passed", b"The test covers", b"Only the changes shown will be saved")
+                 b"Checking the changes", b"The test covers", b"Only the changes shown will be saved")
     output = output.replace(b"\r\n", b"\n")
     if (any(item not in output for item in required) or any(item in output for item in forbidden)
             or re.search(rb"\b[0-9a-f]{64}\b", output)):
         raise ValueError("compact-task")
+    if output.count(b"Test on a copy:") != (0 if rollback else 1):
+        raise ValueError("compact-task-result")
     prompts = ("rollback",) if rollback else ("transfer", "write")
     if any(output.count(PROMPTS[prompt].encode()) != 1 for prompt in prompts):
         raise ValueError("compact-task-consent")
     if not rollback and not (output.index(PROMPTS["transfer"].encode())
-                            < output.index(b"```diff\n") < output.index(b"--- a/calc.py")
+                            < output.index(b"Test on a copy:") < output.index(b"```diff\n") < output.index(b"--- a/calc.py")
                             < output.index(b"\n```\n") < output.index(PROMPTS["write"].encode())):
         raise ValueError("compact-task-order")
 
