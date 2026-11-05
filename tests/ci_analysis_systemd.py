@@ -11,7 +11,6 @@ import pwd
 import pty
 import re
 import select
-import shlex
 import signal
 import socket
 import subprocess
@@ -167,10 +166,29 @@ def account_lifecycle_cycle(temp):
     def check(action, expected):
         command = [*admin, "/usr/bin/python3", "-I", "-B", str(prior.DEST / "codex-auth.py"),
                    "account-" + action, "claude", alias]
-        result = subprocess.run(["/usr/bin/script", "-qec", shlex.join(command), "/dev/null"],
-                                stdin=subprocess.DEVNULL, capture_output=True, timeout=30)
-        if result.returncode != expected:
-            raise ValueError(f"account-{action}-expected-{expected}-got-{result.returncode}")
+        # Keep the input side of the PTY open, just like an interactive owner.
+        # Feeding immediate EOF through script(1) can stall systemd-run --pty.
+        label = f"account-{action}-expected-{expected}"
+        print("CI ACCOUNT: " + label, flush=True)
+        master, slave = pty.openpty()
+        try:
+            with subprocess.Popen(command, stdin=slave, stdout=slave, stderr=slave,
+                                  close_fds=True, start_new_session=True,
+                                  env={"PATH": "/usr/bin", "LANG": "C.UTF-8", "TERM": "dumb"}) as proc:
+                os.close(slave)
+                slave = None
+                try:
+                    code = proc.wait(timeout=45)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    proc.wait()
+                    raise ValueError(label + "-timeout") from None
+            if code != expected:
+                raise ValueError(f"{label}-got-{code}")
+        finally:
+            if slave is not None:
+                os.close(slave)
+            os.close(master)
 
     check("check", 4)  # Checking an unknown slot must leave it absent.
     prior._run(*admin, "/usr/bin/test", "!", "-e", str(slot))
