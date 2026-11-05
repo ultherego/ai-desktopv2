@@ -8,6 +8,7 @@ Etapy i warunki ich ukończenia opisuje [ROADMAP.md](ROADMAP.md).
 - [x] Długie polecenie zmiany: etap edycji odrzuca instrukcję powyżej 2 KiB, choć `ask` przyjmuje 128 KiB.
 - [x] Spacja przed `/` jest usuwana, więc słowa z `/` nie da się wysłać jako pytania.
 - [x] Końcowa odpowiedź po odczycie pliku dostaje wyniki poleceń i wczytane Skille.
+- [x] Pliki z BOM i końcami linii Windows dają się czytać i edytować bez zmiany formatu.
 - [x] Wynik wykonanej zmiany zostaje w pamięci mimo błędu usługi.
 - [x] Zależność od cofniętego pliku nie przechodzi na niezależne odpowiedzi.
 - [ ] Zgodne limity szablonów `change` (polityka 128, kontrakt 24).

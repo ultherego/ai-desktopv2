@@ -17,7 +17,7 @@ import stat
 import tomllib
 import unicodedata
 
-from .file_context_contract import (MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES,
+from .file_context_contract import (plain_text, MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES,
                                     contains_private_key, validate_context)
 
 MAX_POLICY_BYTES = 16384
@@ -1040,6 +1040,7 @@ def read_selected(policy, paths):
             content = raw.decode("utf-8", errors="strict")
         except UnicodeError:
             raise ValueError("files-text") from None
+        content = plain_text(content)
         if policy._version == 1 and contains_private_key(content):
             raise ValueError("files-private-key")
         total += len(raw)

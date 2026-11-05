@@ -35,6 +35,59 @@ class TaskWorkspaceTests(unittest.TestCase):
     def apply(self, plan):
         workspace.apply(plan, plan.authorize("ZAPISZ " + plan.sha256))
 
+    def windows_plan(self, data):
+        (self.root / "data.csv").write_bytes(data)
+        before = workspace.snapshot(str(self.root), ["data.csv"])
+        source = contract.request({"instruction": "change", "files": [
+            {"path": "data.csv", "content": contract.plain_text(before["files"]["data.csv"]["file"]["content"]),
+             "writable": True}]})
+        return source, TaskPlan(before, source, {"summary": "change", "files": [
+            {"path": "data.csv", "content": "a;b\n1;2\n"}]}, "text")
+
+    def test_an_edit_keeps_the_bom_and_windows_line_ends_and_undo_restores_the_exact_bytes(self):
+        original = b"\xef\xbb\xbfa,b\r\n1,2\r\n"
+        source, plan = self.windows_plan(original)
+        self.assertEqual(source["files"][0]["content"], "a,b\n1,2\n")     # no BOM or CR reaches the model
+        difference = plan.diff()
+        self.assertNotIn("\r", difference.replace("\\r", ""))
+        self.assertIn("-a,b\n", difference)
+        self.assertIn("+a;b\n", difference)
+        self.apply(plan)
+        self.assertEqual((self.root / "data.csv").read_bytes(), b"\xef\xbb\xbfa;b\r\n1;2\r\n")
+        self.assertTrue(workspace.rollback(str(self.root), plan.sha256))
+        self.assertEqual((self.root / "data.csv").read_bytes(), original)
+
+    def test_line_ends_alone_are_kept_without_adding_a_bom_and_the_other_way_round(self):
+        for original, expected in ((b"a,b\r\n1,2\r\n", b"a;b\r\n1;2\r\n"), (b"\xef\xbb\xbfa,b\n1,2\n", b"\xef\xbb\xbfa;b\n1;2\n")):
+            with self.subTest(original=original):
+                _, plan = self.windows_plan(original)
+                self.apply(plan)
+                self.assertEqual((self.root / "data.csv").read_bytes(), expected)
+                self.assertTrue(workspace.rollback(str(self.root), plan.sha256))
+
+    def test_a_file_whose_bytes_an_edit_could_not_give_back_is_refused(self):
+        for data in (b"a\r\nb\n", b"a\rb\n", b"a\r\r\nb\r\n", b"a\xef\xbb\xbfb\n", b"\xef\xbb\xbf\xef\xbb\xbfa\n", b"a\x00\n"):
+            with self.subTest(data=data):
+                (self.root / "data.csv").write_bytes(data)
+                with self.assertRaises(ValueError):
+                    workspace.snapshot(str(self.root), ["data.csv"])
+
+    def test_the_model_cannot_send_windows_line_ends_or_a_bom(self):
+        source, _ = self.windows_plan(b"a,b\r\n")
+        for content in ("a;b\r\n", "\ufeffa;b\n"):
+            with self.subTest(content=content), self.assertRaises(ValueError):
+                contract.proposal(canonical({"summary": "x", "files": [{"path": "data.csv", "content": content}]}), source)
+
+    def test_a_format_that_no_longer_fits_the_limit_is_refused_before_any_write(self):
+        body = "a\n" * (contract.MAX_FILE // 2)
+        (self.root / "data.csv").write_bytes(b"a\r\nb\r\n")
+        before = workspace.snapshot(str(self.root), ["data.csv"])
+        source = {"instruction": "change", "files": [{"path": "data.csv", "content": "a\nb\n", "writable": True}]}
+        plan = TaskPlan(before, source, {"summary": "x", "files": [{"path": "data.csv", "content": body}]}, "text")
+        with self.assertRaises(ValueError):
+            self.apply(plan)
+        self.assertEqual((self.root / "data.csv").read_bytes(), b"a\r\nb\r\n")
+
     def test_apply_existing_create_new_and_idempotent_durable_rollback(self):
         plan = self.plan(); self.apply(plan)
         self.assertEqual((self.root / "calc.py").read_text(), "new\n")

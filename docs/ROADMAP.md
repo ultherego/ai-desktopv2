@@ -33,6 +33,7 @@ Działa i jest scalone:
 | Długie polecenie zmiany nie jest odrzucane na etapie edycji (`ask` przyjmuje 128 KiB, edycja 2 KiB) | w toku |
 | Słowo zaczynające się od `/` da się wysłać jako pytanie, zgodnie z komunikatem programu | w toku |
 | 129. usunięcie do kosza jest odrzucane przed wykonaniem | w toku |
+| Edycja pliku z BOM i końcami linii Windows zachowuje jego format, a cofnięcie przywraca te same bajty | w toku |
 
 **Ukończone, gdy:** testy odtwarzają równoczesny zapis przy cofaniu obu rodzajów zmian, a wersja edytora zostaje na miejscu.
 

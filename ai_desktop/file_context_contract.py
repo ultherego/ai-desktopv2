@@ -29,6 +29,11 @@ def validate_path(value):
     return value
 
 
+def plain_text(value):
+    """A file as it is read: without the BOM and Windows line ends many programs add, which carry no content."""
+    return (value[1:] if value.startswith("\ufeff") else value).replace("\r\n", "\n")
+
+
 def validate_text(value):
     if (type(value) is not str
             or any(char not in "\n\t" and unicodedata.category(char) in ("Cc", "Cf", "Cs")

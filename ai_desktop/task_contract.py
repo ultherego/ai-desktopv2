@@ -8,6 +8,7 @@ import re
 import unicodedata
 
 from .e2_ipc import _unique_pairs
+from .file_context_contract import plain_text
 
 MAX_INSTRUCTION = 128 * 1024           # an `ask` message may be this long, so a change it asks for must fit too
 _SEGMENT = re.compile(r"[A-Za-z0-9_.][A-Za-z0-9_.-]{0,63}\Z")
@@ -35,6 +36,26 @@ def text(value, limit=MAX_FILE):
             or any(c not in "\n\t" and unicodedata.category(c) in ("Cc", "Cf", "Cs") for c in value)):
         raise ValueError("text")
     return value
+
+
+def file_text(value, limit=MAX_FILE):
+    """A file on disk that an edit can give back byte for byte: a leading BOM and Windows line ends are kept, so line ends
+    must be all of one kind. Everything else follows text()."""
+    if type(value) is not str or len(value.encode("utf-8")) > limit:
+        raise ValueError("text")
+    body = text(plain_text(value), limit)
+    if "\r\n" in value and value.count("\r\n") != body.count("\n"):
+        raise ValueError("text")
+    return value
+
+
+def in_file_format(content, original):
+    """Proposed text in the form of the file it replaces. The model and the diff only ever see plain text."""
+    if original is None:
+        return content
+    if "\r\n" in original["content"]:
+        content = content.replace("\n", "\r\n")
+    return "\ufeff" + content if original["content"].startswith("\ufeff") else content
 
 
 def request(value):

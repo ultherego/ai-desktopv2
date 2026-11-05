@@ -113,7 +113,7 @@ def read_file(parent, name):
         if (len(raw) != info.st_size or info.st_mtime_ns != after.st_mtime_ns
                 or info.st_ctime_ns != after.st_ctime_ns):
             raise ValueError("changed file")
-        content = contract.text(raw.decode("utf-8"))
+        content = contract.file_text(raw.decode("utf-8"))
         return {"inode": identity(info), "mode": stat.S_IMODE(info.st_mode),
                 "sha256": sha(raw), "content": content}
     finally:
@@ -230,7 +230,7 @@ def _record_size(record):
             or record["mode"] & 0o022):
         raise ValueError("record")
     _valid_identity(record["inode"])
-    raw = contract.text(record["content"]).encode("utf-8")
+    raw = contract.file_text(record["content"]).encode("utf-8")
     if sha(raw) != record["sha256"]:
         raise ValueError("record")
     return len(raw)
@@ -514,6 +514,8 @@ def apply(session, authorization, *, write_guard=None):
                         "undo_temp": _stage_name(stage_names)})
     if not 1 <= len(entries) <= contract.MAX_CHANGED_FILES:
         raise ValueError("entries")
+    replacements = [dict(item, content=contract.file_text(contract.in_file_format(
+        item["content"], before["files"][item["path"]]["file"]))) for item in replacements]
     root = _root(before["workspace"])
     try:
         if identity(os.fstat(root)) != before["root"]:

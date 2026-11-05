@@ -22,7 +22,7 @@ class TaskPlan:
             raise ValueError("selection")
         for item in source["files"]:
             old = before["files"][item["path"]]["file"]
-            if item["content"] != (old["content"] if old else None):
+            if item["content"] != (contract.plain_text(old["content"]) if old else None):
                 raise ValueError("source changed")
         if check not in ("text", "toml", "python-unittest", "python-syntax", "json", "bash-syntax", "fish-syntax"):
             raise ValueError("check")
@@ -45,7 +45,7 @@ class TaskPlan:
         for item in data["proposal"]["files"]:
             old = data["before"]["files"][item["path"]]["file"]
             result.append("".join(difflib.unified_diff(
-                (old["content"] if old else "").splitlines(keepends=True),
+                (contract.plain_text(old["content"]) if old else "").splitlines(keepends=True),
                 item["content"].splitlines(keepends=True),
                 fromfile="a/" + item["path"] if old else "/dev/null",
                 tofile="b/" + item["path"])))
