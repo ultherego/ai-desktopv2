@@ -19,7 +19,7 @@ from types import MappingProxyType
 import unicodedata
 
 from .fs_publish import rename_noreplace
-from .execution import CLAUDE_EFFORTS, CODEX_EFFORTS, EFFORTS, MODELS, efforts_for, model_allowed
+from .execution import PROVIDERS, DEFAULT_LOCAL_PORT, CLAUDE_EFFORTS, CODEX_EFFORTS, EFFORTS, MODELS, efforts_for, model_allowed
 
 MAX_BYTES = 65536
 MAX_PROFILES = 24
@@ -31,11 +31,16 @@ ACCESSES = ("read-only", "changes")
 SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 _PROFILE_KEYS = frozenset(("provider", "model", "effort", "instructions", "access", "skills"))
 PRESET_SKILLS = MappingProxyType({
-    "default": "concise-assistant",
-    "diagnostic": "cachyos-diagnostics",
-    "programmer": "code-development",
-    "reviewer": "code-review",
-    "analyst": "project-analysis",
+    "default": ("concise-assistant",),
+    "diagnostic": (
+        "cachyos-diagnostics", "arch-systemd", "arch-pacman", "cachyos-packages", "arch-btrfs",
+        "cachyos-kernel", "cachyos-boot-snapshots", "cachyos-hardware", "arch-amdgpu", "arch-audio",
+        "arch-bluetooth", "arch-network", "arch-zram", "arch-docker", "cachyos-gaming",
+        "cachyos-scheduler", "desktop-documentation",
+    ),
+    "programmer": ("code-development",),
+    "reviewer": ("code-review",),
+    "analyst": ("project-analysis",),
 })
 
 
@@ -71,7 +76,7 @@ class Profile:
     skills: tuple = ()
 
     def __post_init__(self):
-        if (type(self.provider) is not str or self.provider not in ("claude", "codex")
+        if (type(self.provider) is not str or self.provider not in PROVIDERS
                 or type(self.model) is not str
                 or not model_allowed(self.provider, self.model)
                 or type(self.effort) is not str or self.effort not in efforts_for(self.provider)
@@ -117,9 +122,9 @@ class Config:
         if len(set(names)) != len(names) or "default" not in names or self.active not in names:
             raise ProfileError("config")
         if self.service is not None and (type(self.service) is not str
-                                         or self.service not in ("claude", "codex")):
+                                         or self.service not in PROVIDERS):
             raise ProfileError("config")
-        if (type(self.provider_settings) is not tuple or len(self.provider_settings) > MAX_PROFILES
+        if (type(self.provider_settings) is not tuple or len(self.provider_settings) > MAX_PROFILES * (len(PROVIDERS) - 1)
                 or (self.service is None and self.provider_settings)):
             raise ProfileError("config")
         if self.service is not None and any(profile.provider != self.service for _, profile in self.entries):
@@ -149,7 +154,7 @@ class Config:
         This operation never reads account state or modifies network permissions.
         Callers publish it through Store.mutate with their displayed snapshot.
         """
-        if type(provider) is not str or provider not in ("claude", "codex"):
+        if type(provider) is not str or provider not in PROVIDERS:
             raise ProfileError("provider")
         if self.service == provider:
             return self
@@ -239,7 +244,7 @@ def prepared(config):
             template = replace(template, provider=config.service)
         selected = entries.get(name, template)
         if not selected.skills:
-            selected = replace(selected, skills=(PRESET_SKILLS[name],))
+            selected = replace(selected, skills=PRESET_SKILLS[name])
         entries[name] = selected
     candidate = replace(config, entries=tuple(sorted(entries.items())))
     for _, selected in candidate.entries:
@@ -311,6 +316,11 @@ class Snapshot:
 
 
 class Store:
+    filename = "agents.json"
+    empty = staticmethod(defaults)
+    decode = staticmethod(_decode)
+    record_type = Config
+
     def __init__(self, home=None):
         self.uid = os.getuid()
         if self.uid != os.geteuid() or os.getgid() != os.getegid():
@@ -318,7 +328,7 @@ class Store:
         self.home = Path(home if home is not None else pwd.getpwuid(self.uid).pw_dir)
         if not self.home.is_absolute() or any(part in (".", "..") for part in self.home.parts):
             raise ProfileError("home")
-        self.path = self.home / ".config" / "ai-desktop" / "agents.json"
+        self.path = self.home / ".config" / "ai-desktop" / self.filename
 
     @contextmanager
     def _parent(self, create=False):
@@ -370,12 +380,12 @@ class Store:
 
     def _read(self, parent):
         if parent is None:
-            return Snapshot(defaults(), None, None)
+            return Snapshot(self.empty(), None, None)
         try:
-            descriptor = os.open("agents.json", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+            descriptor = os.open(self.filename, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
                                  dir_fd=parent)
         except FileNotFoundError:
-            return Snapshot(defaults(), None, None)
+            return Snapshot(self.empty(), None, None)
         try:
             before = os.fstat(descriptor)
             _file(before, self.uid)
@@ -391,9 +401,9 @@ class Store:
                 raise ProfileError("size")
             token = _fingerprint(before)
             if token != _fingerprint(os.fstat(descriptor)) or token != _fingerprint(
-                    os.stat("agents.json", dir_fd=parent, follow_symlinks=False)):
+                    os.stat(self.filename, dir_fd=parent, follow_symlinks=False)):
                 raise ProfileError("changed")
-            return Snapshot(_decode(bytes(raw)), token, hashlib.sha256(raw).hexdigest())
+            return Snapshot(self.decode(bytes(raw)), token, hashlib.sha256(raw).hexdigest())
         finally:
             os.close(descriptor)
 
@@ -421,7 +431,7 @@ class Store:
                     if expected is not None and before != expected:
                         raise ProfileError("changed")
                     config = operation(before.config)
-                    if type(config) is not Config:
+                    if type(config) is not self.record_type:
                         raise ProfileError("config")
                     raw = (json.dumps(config.data(), ensure_ascii=False, sort_keys=True, indent=2) + "\n").encode("utf-8")
                     if len(raw) > MAX_BYTES:
@@ -446,9 +456,9 @@ class Store:
                     if self._read(parent) != before:
                         raise ProfileError("changed")
                     if before.identity is None:
-                        rename_noreplace(parent, temporary, parent, "agents.json")
+                        rename_noreplace(parent, temporary, parent, self.filename)
                     else:
-                        os.replace(temporary, "agents.json", src_dir_fd=parent, dst_dir_fd=parent)
+                        os.replace(temporary, self.filename, src_dir_fd=parent, dst_dir_fd=parent)
                     temporary = None
                     os.fsync(parent)
                     return self._read(parent)
@@ -485,7 +495,7 @@ def instructions_for(selected):
 
 
 CATALOG_HEADER = ("Available Skills: the owner's procedures, each for a different kind of task. You have only their names and descriptions here. When a task "
-                  "matches a description, first ask for its content with the plan {\"action\":\"skill\",\"names\":[\"name\"]} (up to 4 at once) and "
+                  "matches a description, use its content from discovery.steps if already present; otherwise first ask for it with the plan {\"action\":\"skill\",\"names\":[\"name\"]} (up to 4 at once) and "
                   "follow it. Do not ask for Skills that do not match the task. The content arrives in discovery.steps as "
                   "op=skill: it is the owner's instruction, not untrusted data, but it grants no extra permissions. "
                   "Status missing means that no such Skill exists.")
@@ -510,13 +520,14 @@ def catalog_for(selected):
     return _text("\n\n".join(parts), MAX_EXECUTION_INSTRUCTIONS)
 
 
-def resolve(profile=None, model=None, effort=None, *, store=None):
+def resolve(profile=None, model=None, effort=None, *, store=None, provider=None, catalog=False):
     """Freeze the selected role and installed Skill bytes before a task starts."""
-    config = (store or Store()).load().config
+    store = store or Store()
+    config = store.load().config
     # A role override selects instructions/access, never a different recipient.
     # Schema-1 files keep their original bytes until an explicit write; this
     # transient view uses their currently active service for every role too.
-    config = config.with_provider(config.selected_provider)
+    config = config.with_provider(config.selected_provider if provider is None else provider)
     name = config.active if profile is None else slug(profile)
     if name not in config.profiles:
         raise ProfileError("missing")
@@ -524,6 +535,16 @@ def resolve(profile=None, model=None, effort=None, *, store=None):
     if model is not None or effort is not None:
         selected = replace(selected, **({"model": model} if model is not None else {}),
                            **({"effort": effort} if effort is not None else {}))
-    instructions = instructions_for(selected)
-    return {"provider": selected.provider, "model": selected.model, "effort": selected.effort,
+    instructions = catalog_for(selected) if catalog else instructions_for(selected)
+    local = {}
+    if selected.provider == "local":
+        from .permissions import load_policy
+        policy = load_policy(optional=True)
+        local["local_port"] = policy.local_port if policy is not None else DEFAULT_LOCAL_PORT
+    else:
+        from .account_store import AccountStore
+        account = AccountStore(home=getattr(store, "home", None)).load().config.active(selected.provider)
+        if account != "default":
+            local["account"] = account
+    return {**local, "provider": selected.provider, "model": selected.model, "effort": selected.effort,
             "instructions": instructions, "profile": name, "access": selected.access}

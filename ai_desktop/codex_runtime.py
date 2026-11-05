@@ -12,6 +12,7 @@ import stat
 import tempfile
 import threading
 
+from . import account_runtime
 from .analysis_contract import (request_effort, request_seconds, AnalysisDenied, MAX_PACKET_LARGE, ModelText,
                                 canonical, result_text_limit, terminal_text, validate_meta)
 from .analysis_sandbox import (CA, HOME, INSTALL, NAMESPACES, child_failure,
@@ -194,7 +195,7 @@ def run_client(action, report=b"", *, cancelled=None, mode="analysis"):
         if cancelled is not None and cancelled():
             raise AnalysisDenied("cancelled")
         try:
-            token = checked_token(AuthClient(AuthStore(PROFILE)).access_token())
+            token = checked_token(AuthClient(AuthStore(account_runtime.directory(PROFILE))).access_token())
         except AuthError as error:
             raise _auth_failure(error) from None
         packet = private_packet(token, report)

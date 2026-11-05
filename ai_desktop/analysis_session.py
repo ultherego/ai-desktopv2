@@ -22,8 +22,16 @@ def identity(*, terminal=False):
     return uid
 
 
+def _local_selected():
+    from .execution import current
+    selected = current()
+    return selected is not None and selected["provider"] == "local"
+
+
 def installation_ready():
     uid = identity()
+    if _local_selected():
+        return
     if not e2_account.account_ready():
         raise AnalysisDenied("identity")
     if Path("/proc/1/comm").read_text().strip() != "systemd":
@@ -124,6 +132,10 @@ class Session:
 def managed_session(*, quiet=False):
     if type(quiet) is not bool:
         raise AnalysisDenied("input")
+    if _local_selected():
+        identity(terminal=True)
+        yield
+        return
     authenticate(quiet=True) if quiet else authenticate()
     process = subprocess.Popen(helper_command("open"), env=ENV, stdin=subprocess.PIPE,
                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,

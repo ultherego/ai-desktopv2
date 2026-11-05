@@ -13,7 +13,19 @@ from . import conversation_memory as memory_schema
 
 
 UNSET = object()
-PROVIDERS = ("claude", "codex")
+PROVIDERS = ("claude", "codex", "local")
+DEFAULT_LOCAL_PORT = 8080
+LOCAL_MODEL = re.compile(r"[a-zA-Z0-9][a-zA-Z0-9._-]{0,95}\Z", re.ASCII)
+
+
+def provider_name(provider):
+    return {"claude": "Claude", "codex": "Codex", "local": "Local llama.cpp"}[provider]
+
+
+def valid_local_port(port):
+    return type(port) is int and 1024 <= port <= 65535
+
+
 MODELS = ("default", "best", "fable", "opus", "sonnet", "haiku", "opusplan")   # Claude client aliases
 CLAUDE_EFFORTS = ("default", "low", "medium", "high", "xhigh", "max")
 CODEX_EFFORTS = ("default", "low", "medium", "high", "xhigh")
@@ -39,13 +51,15 @@ def efforts_for(provider):
     """Closed effort choices for the selected native client."""
     if type(provider) is not str or provider not in PROVIDERS:
         raise ValueError("execution")
-    return CLAUDE_EFFORTS if provider == "claude" else CODEX_EFFORTS
+    return {"claude": CLAUDE_EFFORTS, "codex": CODEX_EFFORTS, "local": ("default",)}[provider]
 
 
 def model_allowed(provider, model):
     """Closed Claude aliases; shape-checked Codex ids. Authority over the id stays with the native client."""
     if type(provider) is not str or type(model) is not str:
         return False
+    if provider == "local":
+        return LOCAL_MODEL.fullmatch(model) is not None
     if provider == "claude":
         return model in MODELS
     # A Claude alias is never a Codex model id; every other well-formed id is left to the client to accept or refuse.
@@ -55,7 +69,7 @@ def model_allowed(provider, model):
 
 def model_argument(value):
     """argparse type: a Claude alias or a shape-valid id; the provider-specific check happens at resolution."""
-    if type(value) is str and (value in MODELS or CODEX_MODEL.fullmatch(value)):
+    if type(value) is str and (value in MODELS or LOCAL_MODEL.fullmatch(value)):
         return value
     import argparse
     raise argparse.ArgumentTypeError("invalid model; use a Claude alias (ai-desktop settings models) or a Codex ID")
@@ -65,9 +79,17 @@ def validate(value):
     """Return an independent closed snapshot, or reject all unknown controls."""
     if value is None:
         return None
-    if type(value) is not dict or set(value) != _FIELDS:
+    if type(value) is not dict:
         raise ValueError("execution")
-    if any(type(item) is not str for item in value.values()):
+    fields = _FIELDS | ({"local_port"} if value.get("provider") == "local" and "local_port" in value else set())
+    if "account" in value:
+        from .account_store import named_account
+        if value.get("provider") not in ("claude", "codex") or not named_account(value["account"]):
+            raise ValueError("execution")
+        fields = fields | {"account"}
+    if set(value) != fields or ("local_port" in value and not valid_local_port(value["local_port"])):
+        raise ValueError("execution")
+    if any(type(item) is not str for key, item in value.items() if key != "local_port"):
         raise ValueError("execution")
     if (value["provider"] not in PROVIDERS or value["effort"] not in efforts_for(value["provider"])
             or value["access"] not in ACCESS

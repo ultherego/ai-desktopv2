@@ -8,6 +8,7 @@ import time
 from urllib.parse import urlsplit
 
 from .analysis_contract import AnalysisDenied
+from . import account_runtime
 from .analysis_sandbox import HOME, INSTALL, trusted_file
 
 
@@ -19,7 +20,7 @@ def auth_worker(action, *, details=False):
         print("Codex: refused to start the login.")
         return 2
     try:
-        directory = HOME / "codex"
+        directory = account_runtime.directory(HOME / "codex", login=action == "login")
         if action == "login":
             try:
                 directory.mkdir(mode=0o700)
@@ -79,6 +80,7 @@ def auth_worker(action, *, details=False):
             if not state["success"]:
                 print("Codex: the login was interrupted or expired; it is not retried automatically.")
                 return 2
+        account_runtime.connected(directory)
         if details:
             print("Codex: subscription connected. Model availability is checked when you approve a task.")
         return 0
@@ -87,7 +89,7 @@ def auth_worker(action, *, details=False):
         return 2
 
 
-def main(action, *, allow=False, details=False):
+def main(action, *, allow=False, details=False, named=None):
     if (allow is not True or type(details) is not bool or action not in ("login", "logout") or os.getuid() != 0 or os.geteuid() != 0
             or not os.isatty(0) or not os.isatty(1)):
         print("Codex: this needs explicit consent, an administrator and a terminal.")
@@ -96,7 +98,17 @@ def main(action, *, allow=False, details=False):
     from .codex_runtime import runtime_ready
     unit, code = None, 2
     try:
-        runtime_ready()
+        if named is not None:
+            provider, name = named
+            uid = int(os.environ.get("SUDO_UID", ""))
+            account_runtime.identity(uid, provider, name)
+            if action != "login":
+                raise AnalysisDenied("input")
+        if named and provider == "claude":
+            from .analysis_sandbox import runtime_ready as claude_ready
+            claude_ready()
+        else:
+            runtime_ready()
         entry = trusted_file(INSTALL / "codex-auth.py")
         command = login_command(details=details)
         for index, value in enumerate(command):
@@ -104,6 +116,8 @@ def main(action, *, allow=False, details=False):
                 command[index] = "--unit=ai-desktop-codex-auth-" + secrets.token_hex(8)
                 unit = command[index][7:] + ".service"
         command[-2:] = [str(entry), "worker-" + action + ("-verbose" if details else "")]
+        if named:
+            command[-1:] = ["account-worker", str(uid), provider, name]
         code = subprocess.run(command, env={"PATH": "/usr/bin", "LANG": "C.UTF-8", "TERM": "dumb"},
                               close_fds=True, timeout=610, check=False).returncode
     except (AnalysisDenied, OSError, ValueError, subprocess.SubprocessError, KeyboardInterrupt):
@@ -128,3 +142,21 @@ def main(action, *, allow=False, details=False):
                 code = 2
                 print("Could not confirm that the Codex login process stopped.")
     return code
+
+
+def named_worker(uid, provider, name):
+    from .e2_socket_activation import _worker_identity
+    from .analysis_sandbox import profile_lock, run_client, supervisor_ready
+    try:
+        if not _worker_identity() or not os.isatty(0) or not os.isatty(1):
+            return 2
+        supervisor_ready()
+        with account_runtime.selected(int(uid), provider, name):
+            if provider == "claude":
+                run_client("login")
+                return 0
+            with profile_lock():
+                return auth_worker("login")
+    except (OSError, ValueError, AnalysisDenied):
+        print("The named login was refused. Use a fresh account name for another subscription.")
+        return 2

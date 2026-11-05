@@ -625,12 +625,16 @@ class Policy:
     _commands: tuple = ()
     _changes: tuple = ()
     _share_processes: bool = False
+    _local: bool = False
+    local_port: int = 8080
 
     def fingerprint(self):
         """Identifies the exact permissions.toml this policy came from, including what `access()` does not list."""
         return hashlib.sha256(self._raw).hexdigest()
 
     def provider_allowed(self, provider):
+        if provider == "local":
+            return self._local
         if provider not in ("claude", "codex"):
             raise ValueError("provider")
         return self._claude if provider == "claude" else self._codex
@@ -911,7 +915,7 @@ def load_policy(*, optional=False):
         missing = [key for key in ("version", "files") if key not in value]
         if missing:
             raise _Problem("Missing required top-level key: " + ", ".join(missing) + ".")
-        unknown = sorted(set(value) - {"version", "files", "network", "system", "commands"})
+        unknown = sorted(set(value) - {"version", "files", "network", "system", "commands", "local"})
         if unknown:
             raise _Problem("Unknown section: " + ", ".join(_shown(key) for key in unknown) + ".")
         if type(value["version"]) is not int or value["version"] not in (1, 2):
@@ -951,9 +955,13 @@ def load_policy(*, optional=False):
                 validate_write_path(rule.base, home, managed=value["version"] == 2)
             except ValueError:
                 raise _Problem("A files.write rule is not allowed: " + _shown(rule.original)) from None
+        from .execution import valid_local_port, DEFAULT_LOCAL_PORT
+        local = value.get("local", {})
+        if type(local) is not dict or set(local) - {"port"} or not valid_local_port(local.get("port", DEFAULT_LOCAL_PORT)):
+            raise _Problem("[local] accepts only a numeric loopback port between 1024 and 65535.")
         network, system = value.get("network", {}), value.get("system", {})
-        if type(network) is not dict or set(network) - {"claude", "codex", "weather", "web"}:
-            raise _Problem("[network] only accepts the keys claude, codex, weather, web.")
+        if type(network) is not dict or set(network) - {"claude", "codex", "local", "weather", "web"}:
+            raise _Problem("[network] only accepts the keys claude, codex, local, weather, web.")
         if any(type(flag) is not bool for flag in network.values()):
             raise _Problem("Values in [network] must be true or false.")
         if type(system) is not dict or set(system) - {"systemd"}:
@@ -1001,7 +1009,8 @@ def load_policy(*, optional=False):
             raise _Problem("commands.share_processes must be true or false.")
         policy = Policy(uid, home, raw, identity, *rules,
                         network.get("claude", False), network.get("weather", False), tuple(systemd), value["version"],
-                        network.get("web", False), file_size, part_size, network.get("codex", False), limits, commands, changes, share)
+                        network.get("web", False), file_size, part_size, network.get("codex", False), limits, commands, changes, share,
+                        network.get("local", False), local.get("port", DEFAULT_LOCAL_PORT))
         for template in (*commands, *changes):
             for token in template[1:]:
                 if token[:1] == "/":        # templates carry absolute literal paths only (`~` is refused by the parser)

@@ -106,7 +106,7 @@ class ProviderSurfaceTests(unittest.TestCase):
                     patch.object(task_cli.workspace, "unchanged"), \
                     patch.object(task_cli.task_sandbox, "run", return_value={"passed": False, "output": ""}), \
                     patch.object(task_cli.workspace, "apply") as apply, redirect_stdout(io.StringIO()) as output:
-                result = task_cli.finish_task({}, SOURCE, "response", args, lambda _: "n")
+                result = task_cli.finish_task({"files": {}}, SOURCE, "response", args, lambda _: "n")
             name = "Codex" if provider == "codex" else "Claude"
             self.assertEqual(result, 2)
             self.assertIn("=== PROPOSAL FROM " + name.upper() + " ===", output.getvalue())

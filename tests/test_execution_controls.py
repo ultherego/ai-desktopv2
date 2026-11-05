@@ -374,15 +374,16 @@ class ExecutionNativeTests(unittest.TestCase):
 class ConversationControlsTests(unittest.TestCase):
     def test_idle_effort_hints_and_selection_use_the_active_provider(self):
         for provider in execution.PROVIDERS:
-            selected = changed(provider=provider, model="default")
+            selected = changed(provider=provider, model="default", effort="default")
             output = io.StringIO()
             with self.subTest(provider=provider), execution.using(selected), contextlib.redirect_stdout(output):
                 self.assertTrue(run_controls.conversation_command("/ustawienia"))
                 self.assertIn("|".join(execution.efforts_for(provider)), output.getvalue())
                 self.assertTrue(run_controls.conversation_command("/sila xhigh"))
-                self.assertEqual(execution.current()["effort"], "xhigh")
+                previous = "xhigh" if "xhigh" in execution.efforts_for(provider) else "default"
+                self.assertEqual(execution.current()["effort"], previous)
                 self.assertTrue(run_controls.conversation_command("/sila max"))
-                self.assertEqual(execution.current()["effort"], "max" if provider == "claude" else "xhigh")
+                self.assertEqual(execution.current()["effort"], "max" if provider == "claude" else previous)
 
     def test_history_is_closed_copied_and_scoped(self):
         history = [{"question": "poprzednie pytanie", "answer": "poprzednia odpowiedź"}]

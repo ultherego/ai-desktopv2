@@ -248,7 +248,7 @@ class AnalysisSandboxTests(unittest.TestCase):
                 sandbox.model_text(0, json.dumps(dict(base, result="ok")).encode(), mode=mode)
 
     def test_native_pipe_limits_are_explicit_and_data_never_enters_argv(self):
-        for mode, output_limit in (("question", 131072), ("workspace", 768 * 1024)):
+        for mode, output_limit in (("question", 256 * 1024), ("workspace", 3 * contract.MAX_PACKET_LARGE)):
             proxy = Mock()
             proxy.begin_phase.return_value.is_set.return_value = False
             native = json.dumps({"type": "result", "subtype": "success", "is_error": False,

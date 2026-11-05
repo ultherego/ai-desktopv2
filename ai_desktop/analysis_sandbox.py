@@ -4,6 +4,7 @@ Only the official child opens its OAuth files. The trusted supervisor owns the
 external CONNECT proxy; the child receives a Unix bridge, never a host uplink.
 """
 from contextlib import contextmanager
+from . import account_runtime
 import fcntl
 import json
 import os
@@ -209,12 +210,12 @@ def client_command(action, execution=None):
                          "--max-turns", "4", "--system-prompt", prompt]
     if action != "analyze":
         raise AnalysisDenied("input")
-    return common + ["-p", "--output-format", "json", "--tools", "", "--strict-mcp-config",
+    return common + ["-p", "--output-format", "stream-json", "--verbose", "--tools", "", "--strict-mcp-config",
                      "--mcp-config", '{"mcpServers":{}}', "--permission-mode", "dontAsk",
                      "--no-session-persistence", "--max-turns", "1", "--system-prompt", prompt]
 
 
-def namespace_command(action, directory, *, online):
+def namespace_command(action, directory, *, online, account_path=None):
     if action not in ("version", "status", "analyze", "web", "login") or online != (action != "version"):
         raise AnalysisDenied("input")
     directory = Path(directory)
@@ -226,7 +227,7 @@ def namespace_command(action, directory, *, online):
                 "--ro-bind", str(directory / "group"), "/etc/group",
                 "--ro-bind", str(CA.resolve(strict=True)), "/etc/ssl/certs/ca-certificates.crt"]
     if online:
-        command += ["--bind", str(PROFILE), INNER_PROFILE,
+        command += ["--bind", str(PROFILE if account_path is None else account_path), INNER_PROFILE,
                     "--ro-bind", str(directory / "egress.sock"), "/run/egress.sock"]
     metadata = json.dumps({name: os.readlink("/proc/self/ns/" + name) for name in NAMESPACES})
     return command + ["--chdir", "/work", "/usr/bin/python3", "-I", "-B",
@@ -265,12 +266,46 @@ def check_auth(code, output, *, connection_failed=False):
         raise AnalysisDenied("auth-method")
 
 
+def _answer_events(output):
+    """Only the official final result and named numeric quota fields leave the captured transcript."""
+    if type(output) is not bytes or not output or len(output) > 3 * MAX_PACKET_LARGE:
+        raise AnalysisDenied("result")
+    lines = output.splitlines()
+    if len(lines) == 1:
+        return _json_result(0, output), {}
+    try:
+        # Legacy clients and offline fixtures may pretty-print a single result object.
+        if lines[0].strip() == b"{":
+            return _json_result(0, output), {}
+        if not 2 <= len(lines) <= 128:
+            raise ValueError()
+        events = [json.loads(line, object_pairs_hook=_unique_pairs) for line in lines]
+        final = events[-1]
+        if type(final) is not dict or final.get("type") != "result":
+            raise ValueError()
+        session = final.get("session_id")
+        if type(session) is not str or not 1 <= len(session) <= 256:
+            raise ValueError()
+        from .account_store import claude_windows
+        windows = {}
+        for event in events[:-1]:
+            if type(event) is not dict or event.get("session_id") != session or event.get("type") == "result":
+                raise ValueError()
+            if event.get("type") == "rate_limit_event" and type(event.get("rate_limit_info")) is dict:
+                windows.update(claude_windows(event["rate_limit_info"]))
+        return final, windows
+    except (ValueError, UnicodeError, TypeError, RecursionError):
+        raise AnalysisDenied("result") from None
+
+
 def model_text(code, output, *, mode="analysis"):
     limit = result_text_limit(mode)
-    reason = classify_failure(code, output)
+    result, windows = _answer_events(output)
+    reason = classify_failure(code, json.dumps(result).encode())
     if reason is not None:
         raise AnalysisDenied(reason)
-    result = _json_result(code, output)
+    if code != 0:
+        raise AnalysisDenied("client")
     text = result.get("result")
     if (result.get("type") != "result" or result.get("subtype") != "success"
             or result.get("is_error") is not False or type(result.get("num_turns")) is not int
@@ -283,7 +318,10 @@ def model_text(code, output, *, mode="analysis"):
             raise AnalysisDenied("output-limit")
     except UnicodeError:
         raise AnalysisDenied("result") from None
-    return ModelText(text, extract_meta(result))
+    meta = extract_meta(result)
+    if windows:
+        meta = {**(meta or {"models": []}), "quota": windows}
+    return ModelText(text, meta)
 
 
 class _Proxy(ConnectProxy):
@@ -338,6 +376,12 @@ def analysis_failure(code, output, errors, connection_failed):
     if failure.reason != "client":
         return failure
     reason = classify_failure(code, output)
+    if reason is None and b"\n" in output:
+        try:
+            final, _ = _answer_events(output)
+            reason = classify_failure(code, json.dumps(final).encode())
+        except AnalysisDenied:
+            pass
     if reason is not None:
         return AnalysisDenied(reason)
     return AnalysisDenied("network" if code == 1 and connection_failed is True else "client")
@@ -352,6 +396,8 @@ def run_client(action, report=b"", *, cancelled=None, mode="analysis"):
     with failure_stage("supervisor"):
         supervisor_ready()
     with failure_stage("profile"), profile_lock(), tempfile.TemporaryDirectory(prefix="ai-desktop-", dir="/tmp") as temp:
+        account_path = account_runtime.directory(PROFILE, login=action == "login")
+        options = {} if account_path == PROFILE else {"account_path": account_path}
         directory = Path(temp)
         (directory / "passwd").write_text("client:x:%d:%d::/home/client:/usr/bin/false\n" %
                                           (os.geteuid(), os.getegid()))
@@ -375,13 +421,13 @@ def run_client(action, report=b"", *, cancelled=None, mode="analysis"):
                             raise AnalysisDenied("consent", stage="terminal")
                         # Official terminal flow, not parsed, captured, recorded or
                         # forwarded through IPC. No host callback/browser socket.
-                        done = subprocess.run(namespace_command("login", directory, online=True),
+                        done = subprocess.run(namespace_command("login", directory, online=True, **options),
                                               env=env, close_fds=True, timeout=540, check=False)
                         if done.returncode:
                             raise AnalysisDenied("client")
                 with failure_stage("auth-status"):
                     status_connection_failed = proxy.begin_phase()
-                    code, out, errors = bounded_process(namespace_command("status", directory, online=True),
+                    code, out, errors = bounded_process(namespace_command("status", directory, online=True, **options),
                                                        env=env, timeout=20, limit=16384, cancelled=cancelled)
                     if code:
                         failure = child_failure(errors, "client")
@@ -391,12 +437,13 @@ def run_client(action, report=b"", *, cancelled=None, mode="analysis"):
                         raise child_failure(errors, "client")
                     check_auth(code, out, connection_failed=status_connection_failed.is_set())
                 if action == "login":
+                    account_runtime.connected(account_path)
                     return "claude.ai"
                 with failure_stage("analysis"):
                     analysis_connection_failed = proxy.begin_phase()
-                    code, out, errors = bounded_process(namespace_command(action, directory, online=True),
+                    code, out, errors = bounded_process(namespace_command(action, directory, online=True, **options),
                                                        env=env, input_bytes=report, timeout=request_seconds(request_effort(report)),
-                                                       limit=768 * 1024 if mode == "workspace" else 131072,
+                                                       limit=3 * MAX_PACKET_LARGE if mode == "workspace" else (131072 if action == "web" else 256 * 1024),
                                                        input_limit=MAX_PACKET_LARGE, cancelled=cancelled)
                     if code:
                         if action == "web" and child_failure(errors, "client").reason == "client":

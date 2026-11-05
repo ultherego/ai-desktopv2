@@ -17,6 +17,8 @@ def model_choices(provider):
     """(values, labels, note). Claude: the client's aliases. Codex: Auto, the client's own catalog, free text."""
     if provider == "claude":
         return profiles.MODELS, tuple(MODEL_LABELS[key] for key in profiles.MODELS), None
+    if provider == "local":
+        return ("default", "custom"), ("Current server model", MODEL_LABELS["custom"]), None
     print("Getting the model list from the Codex client…", flush=True)
     try:
         entries = model_catalog.fetch()
@@ -28,11 +30,11 @@ def model_choices(provider):
     return values, labels, note
 EFFORT_LABELS = {"default": "client default", "low": "low", "medium": "medium", "high": "high",
                  "xhigh": "very high", "max": "maximum"}
-SERVICE_LABELS = {"claude": "Claude", "codex": "Codex"}
+SERVICE_LABELS = {name: execution.provider_name(name) for name in execution.PROVIDERS}
 
 
 def _profile_flags(parser, *, create=False):
-    parser.add_argument("--provider", choices=("claude", "codex"),
+    parser.add_argument("--provider", choices=execution.PROVIDERS,
                         help="Choose the service for all agents")
     parser.add_argument("--model", type=execution.model_argument, metavar="MODEL")
     parser.add_argument("--effort", choices=profiles.EFFORTS, help="Reasoning level")
@@ -55,9 +57,9 @@ def build_parser(*, prog="ai-desktop claude", provider_neutral=False):
     commands.add_parser("skills", help="Skills of the active profile in the terminal")
     settings = commands.add_parser("set", help="Change the settings of the active profile")
     if provider_neutral:
-        settings.add_argument("--provider", choices=("claude", "codex"),
+        settings.add_argument("--provider", choices=execution.PROVIDERS,
                               help="Choose the service for all agents")
-    settings.add_argument("--model", choices=profiles.MODELS)
+    settings.add_argument("--model", type=execution.model_argument, metavar="MODEL")
     settings.add_argument("--effort", choices=profiles.EFFORTS)
     agents = commands.add_parser("agents", help="Manage profiles")
     actions = agents.add_subparsers(dest="action")
@@ -111,6 +113,8 @@ def _models(provider="claude"):
     print("Reasoning: " + ", ".join(profiles.efforts_for(provider)) + ".")
     if provider == "claude":
         print("Model and level availability depends on your Claude account and the client. The model never changes automatically.")
+    elif provider == "local":
+        print("Use default for the current server model or set the alias configured in llama-server.")
     else:
         print("The Codex client picks the default model. Availability and level depend on your account and the client.")
 
@@ -248,8 +252,8 @@ class _SettingsMenu:
             print("The settings were changed elsewhere at the same time. The menu was refreshed.")
 
     def service(self, before):
-        value = self.pick("Service · for all agents · no login", ("claude", "codex"),
-                          labels=("Claude", "ChatGPT / Codex"), current=before.config.selected_provider)
+        value = self.pick("Service · for all agents · no login", execution.PROVIDERS,
+                          labels=("Claude", "ChatGPT / Codex", "Local llama.cpp"), current=before.config.selected_provider)
         if value is not None:
             selected = before.config.with_provider(value)
             if selected != before.config:
@@ -314,7 +318,7 @@ class _SettingsMenu:
             value = self.pick("Model · " + selected.provider, values, labels=labels,
                               current=selected.model if selected.model in values else None)
             if value == "custom":
-                value = self.text("Codex model ID: ", 96)
+                value = self.text(SERVICE_LABELS[selected.provider] + " model ID: ", 96)
                 value = value.strip() if value is not None else None
             if value is not None:
                 return replace(selected, model=value)

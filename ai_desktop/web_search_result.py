@@ -12,7 +12,7 @@ import math
 import re
 from urllib.parse import urlsplit
 
-from .analysis_contract import AnalysisDenied, MAX_TEXT, terminal_text
+from .analysis_contract import AnalysisDenied, MAX_TEXT, ModelText, terminal_text
 from .e2_ipc import _unique_pairs
 from .provider_errors import classify_failure
 
@@ -309,6 +309,7 @@ def web_text(raw):
             _ui_invalidation(notice, session=session)
         pending, calls, completed, observed = {}, set(), 0, {}
         final = None
+        windows = {}
         for index, event in enumerate(events[start + 1:], start + 1):
             kind = event.get("type")
             # SDKUserMessage alone permits omission of session_id. Subagents
@@ -372,6 +373,8 @@ def web_text(raw):
                 check = "web-rate-metadata"
                 if _rate_status(event) == "rejected":
                     raise AnalysisDenied("rate-limit")
+                from .account_store import claude_windows
+                windows.update(claude_windows(event["rate_limit_info"]))
             elif kind == "system" and event.get("subtype") == "ui_invalidate":
                 check = "web-telemetry"
                 _ui_invalidation(event, session=session)
@@ -385,6 +388,7 @@ def web_text(raw):
             raise ValueError("missing result")
         if not completed or not observed:
             raise AnalysisDenied("web-no-results")
-        return _answer(final, observed)
+        answer = _answer(final, observed)
+        return ModelText(answer, {"models": [], "quota": windows}) if windows else answer
     except (ValueError, UnicodeError, TypeError, KeyError, OverflowError, RecursionError):
         raise AnalysisDenied("result", diagnostic=check) from None

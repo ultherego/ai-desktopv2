@@ -394,6 +394,7 @@ class Protocol:
         self.completed_items = {}
         self.answer = None
         self.model_used = None
+        self.quota = {}
         self.usage = {"input": None, "output": None, "window": None}
         self.bytes = self.messages = self.delta_bytes = 0
 
@@ -408,9 +409,10 @@ class Protocol:
 
     @property
     def meta(self):
-        if self.model_used is None:
+        if self.model_used is None and not self.quota:
             return None
-        return validate_meta({"models": [{"model": self.model_used, **self.usage}]})
+        models = [{"model": self.model_used, **self.usage}] if self.model_used else []
+        return validate_meta({"models": models, **({"quota": self.quota} if self.quota else {})})
 
     def start(self):
         if self.state != "new":
@@ -591,6 +593,8 @@ class Protocol:
             if self.state not in ("turn", "done"):
                 raise AnalysisDenied("result")
             _rate_limits(params)
+            from .account_store import codex_windows
+            self.quota.update(codex_windows(params["rateLimits"]))
             return []
         if self.state != "turn":
             raise AnalysisDenied("result")

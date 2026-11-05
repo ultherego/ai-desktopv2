@@ -46,6 +46,9 @@ class GrantDenied(RuntimeError):
 def current_recipient():
     """The trusted selection chooses one closed recipient before consent."""
     selected = current_execution()
+    if selected is not None and selected["provider"] == "local":
+        from .local_provider import endpoint
+        return endpoint(selected.get("local_port", 8080))
     return CODEX_RECIPIENT if selected is not None and selected["provider"] == "codex" else RECIPIENT
 
 

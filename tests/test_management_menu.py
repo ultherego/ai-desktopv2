@@ -52,6 +52,11 @@ class CompleteManagementMenuTests(unittest.TestCase):
         path.write_text("---\nname: " + name + "\ndescription: Test\n---\n" + body + "\n")
         path.chmod(0o644)
 
+    def install_diagnostic_procedures(self):
+        for name in profiles.PRESET_SKILLS["diagnostic"]:
+            if not (self.root / name).exists():
+                self.skill(name)
+
     def run_menu(self, *steps, argv=("menu",), text=()):
         chooser = Choices(self, *steps)
         answers = iter(text)
@@ -108,6 +113,7 @@ class CompleteManagementMenuTests(unittest.TestCase):
         self.assertEqual(self.store.load().config.profiles["default"].effort, "max")
 
     def test_every_role_uses_selected_service_without_reopening_settings(self):
+        self.install_diagnostic_procedures()
         self.store.mutate(profiles.prepared)
         before = self.store.load().config
         steps = ["Service:", "ChatGPT / Codex"]
@@ -297,6 +303,7 @@ class CompleteManagementMenuTests(unittest.TestCase):
         self.assertEqual(config.active, "default")
 
     def test_setup_is_explicit_idempotent_and_preserves_custom_fields(self):
+        self.install_diagnostic_procedures()
         self.store.mutate(lambda config: config.put("default", replace(config.profiles["default"], model="opus", effort="high")))
         code, _, _ = self.run_menu("Prepare profiles and Skills", "Exit")
         self.assertEqual(code, 0)

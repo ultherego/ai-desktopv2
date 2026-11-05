@@ -22,7 +22,11 @@ def recipient(text=None, *, config=execution.UNSET):
     those values must never be passed in for provider-name substitution.
     """
     selected = recipient_config(config)
-    name = "Codex" if selected is not None and selected["provider"] == "codex" else "Claude"
+    name = execution.provider_name(selected["provider"] if selected is not None else "claude")
+    if selected is not None and selected["provider"] == "local":
+        name += " (127.0.0.1:%d)" % selected.get("local_port", execution.DEFAULT_LOCAL_PORT)
+    if selected is not None and "account" in selected:
+        name += " (account: " + selected["account"] + ")"
     if text is not None and type(text) is not str:
         raise ValueError("recipient text")
     return name if text is None else text.replace("Claude", name)
@@ -50,6 +54,11 @@ def provider_allowed(policy):
 
 def failure_hint(reason, fallback, *, config=execution.UNSET, diagnostic=None):
     selected = recipient_config(config)
+    if selected is not None and selected["provider"] == "local":
+        if reason == "authorization":
+            return "Local inference needs network.local=true and the approved port in permissions.toml."
+        if reason in {"network", "provider-unavailable", "endpoint"}:
+            return "The approved local llama.cpp server is unavailable. Check its address and model alias."
     if selected is not None and selected["provider"] == "codex":
         from .analysis_diagnostics import codex_diagnostic
         code = codex_diagnostic(diagnostic, reason)
@@ -82,6 +91,7 @@ def failure_hint(reason, fallback, *, config=execution.UNSET, diagnostic=None):
 
 
 def add_arguments(parser, *, session=False):
+    parser.add_argument("--provider", choices=execution.PROVIDERS, help="Use this service for the current run")
     parser.add_argument("--agent", metavar="NAME", help="Agent profile saved in ai-desktop agents")
     parser.add_argument("--model", type=execution.model_argument, metavar="MODEL",
                         help="Model for this run: an alias (ai-desktop settings models) or a model ID; default = the client's choice")
@@ -96,7 +106,7 @@ def label(config=execution.UNSET):
     if config is None:
         return "Claude · profile: default · model and reasoning: default"
     return "%s · profile: %s · model: %s · reasoning: %s%s" % (
-        "Claude" if config["provider"] == "claude" else "Codex",
+        recipient(config=config),
         config["profile"], config["model"], config["effort"],
         " · read-only" if config["access"] == "read-only" else "")
 
@@ -127,7 +137,10 @@ def configured(function):
         selected, remaining = common.parse_known_args(arguments)
         try:
             from .agent_profiles import resolve
-            config = resolve(selected.agent, selected.model, selected.effort)
+            overrides = {"provider": selected.provider} if selected.provider is not None else {}
+            if function.__module__.endswith(".ask_cli"):
+                overrides["catalog"] = True
+            config = resolve(selected.agent, selected.model, selected.effort, **overrides)
             config = execution.validate(config)
             # Preserve the accepted wire for an unchanged default installation.
             vanilla = (config == {"provider": "claude", "model": "default", "effort": "default",
@@ -163,12 +176,14 @@ def conversation_command(line, *, saved=False):
         from .agent_profiles import resolve
         before = execution.current()
         if command == "/agent":
-            after = resolve(profile=value)
+            after = resolve(profile=value, provider=before["provider"] if before else "claude")
         else:
             after = dict(before or resolve())
             after["model" if command == "/model" else "effort"] = value
         after = execution.validate(after)
-        if after["provider"] != (before["provider"] if before is not None else "claude"):
+        if (after["provider"] != (before["provider"] if before is not None else "claude")
+                or after.get("account") != (before or {}).get("account")
+                or after.get("local_port") != (before or {}).get("local_port")):
             print("Changing the provider needs a new conversation with separate consent for the data.")
             return True
         execution.select(after)

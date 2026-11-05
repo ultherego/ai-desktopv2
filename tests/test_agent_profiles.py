@@ -40,7 +40,7 @@ class ProfileStoreTests(unittest.TestCase):
     def installed_skills(self):
         root = self.home / "installed-presets"
         root.mkdir(mode=0o755)
-        for name in profiles.PRESET_SKILLS.values():
+        for name in {name for group in profiles.PRESET_SKILLS.values() for name in group}:
             directory = root / name
             directory.mkdir(mode=0o755)
             path = directory / "SKILL.md"
@@ -92,7 +92,7 @@ class ProfileStoreTests(unittest.TestCase):
                 self.assertTrue(profiles.instructions_for(selected))
         self.assertEqual(prepared.active, "default")
         self.assertEqual({name: selected.skills for name, selected in prepared.entries},
-                         {name: (skill,) for name, skill in profiles.PRESET_SKILLS.items()})
+                         profiles.PRESET_SKILLS)
         self.assertEqual(prepared.profiles["analyst"].access, "read-only")
         self.assertEqual(prepared.profiles["reviewer"].access, "read-only")
         self.assertEqual(prepared.profiles["diagnostic"].access, "read-only")
@@ -124,6 +124,32 @@ class ProfileStoreTests(unittest.TestCase):
         self.assertIn("diagnostic", prepared.profiles)
         self.assertIn("programmer", prepared.profiles)
         self.assertEqual(again, prepared)
+
+    def test_ask_resolution_never_falls_back_to_bodies_when_a_long_catalog_overflows(self):
+        root = self.home / "long-descriptions"
+        root.mkdir()
+        names = ("one", "two")
+        for name in names:
+            directory = root / name
+            directory.mkdir()
+            data = "---\nname: " + name + "\ndescription: " + "a" * 53050 + "\n---\nprivate body\n"
+            (directory / "SKILL.md").write_text(data)
+        config = profiles.defaults().put("default", profiles.Profile(skills=names))
+        self.write(config.data())
+        with patch.object(skills, "ROOT", root):
+            self.assertIn("private body", profiles.resolve(store=self.store)["instructions"])
+            with self.assertRaises(profiles.ProfileError):
+                profiles.resolve(store=self.store, catalog=True)
+
+    def test_prepared_diagnostic_can_load_the_btrfs_and_systemd_procedures_it_references(self):
+        with patch.object(skills, "ROOT", self.installed_skills()):
+            selected = profiles.prepared(profiles.defaults()).profiles["diagnostic"]
+            catalog = profiles.catalog_for(selected)
+            for name in ("arch-btrfs", "arch-systemd", "cachyos-boot-snapshots"):
+                self.assertIn("- " + name + ":", catalog)
+            self.assertNotIn("# Diagnosing Btrfs", catalog)
+            original = profiles.defaults().put("diagnostic", replace(selected, skills=("arch-audio",)))
+            self.assertEqual(profiles.prepared(original).profiles["diagnostic"].skills, ("arch-audio",))
 
     def test_prepared_publishes_with_existing_snapshot_transaction(self):
         root = self.installed_skills()

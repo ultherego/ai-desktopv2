@@ -81,7 +81,7 @@ def send_once(approval):
     try:
         uid = os.geteuid()
         if (type(approval) is not Approval or os.getuid() != uid or uid == 0
-                or digest(approval.payload) != approval.sha256 or not e2_account.account_ready()):
+                or digest(approval.payload) != approval.sha256):
             raise AnalysisDenied("consent")
         body = approval.payload.encode("utf-8")
         model_input, _ = parse_request(body)
@@ -89,6 +89,11 @@ def send_once(approval):
         mode = parsed["mode"]
         selected = parsed.get("execution")
         provider = selected["provider"] if selected is not None else "claude"
+        if provider == "local":
+            from .local_provider import complete
+            return complete(parsed, approval.sha256)
+        if not e2_account.account_ready():
+            raise AnalysisDenied("consent")
         before = endpoint(uid)
         with socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET) as conn:
             conn.settimeout(5)
@@ -108,6 +113,9 @@ def send_once(approval):
                                          selected["effort"] if selected else None) + SERVICE_MARGIN), approval.sha256,
                                  mode=mode, provider=provider)
             send_once.last_meta = getattr(result, "meta", None)      # closed model metadata, kept apart from the text
+            if send_once.last_meta and "quota" in send_once.last_meta:
+                from .account_cli import remember
+                remember(provider, (selected or {}).get("account", "default"), send_once.last_meta["quota"])
             return str(result)                                       # callers get the plain text they always got
     except socket.timeout:
         raise AnalysisDenied("timeout") from None
@@ -165,12 +173,19 @@ def receive_once(uid):
             try:
                 if cancelled():
                     raise AnalysisDenied("cancelled")
+                if provider == "local":
+                    # Only the owner controller can consult its policy and reach the loopback endpoint.
+                    raise AnalysisDenied("authorization")
                 action = "web" if mode == "web" else "analyze"
-                if selected is not None and selected["provider"] == "codex":
-                    from .codex_runtime import run_client as run_codex
-                    result = run_codex(action, model_input.encode("utf-8"), cancelled=cancelled, mode=mode)
-                else:
-                    result = run_client(action, model_input.encode("utf-8"), cancelled=cancelled, mode=mode)
+                from contextlib import nullcontext
+                from . import account_runtime
+                account = (selected or {}).get("account")
+                with (account_runtime.selected(uid, provider, account) if account else nullcontext()):
+                    if selected is not None and selected["provider"] == "codex":
+                        from .codex_runtime import run_client as run_codex
+                        result = run_codex(action, model_input.encode("utf-8"), cancelled=cancelled, mode=mode)
+                    else:
+                        result = run_client(action, model_input.encode("utf-8"), cancelled=cancelled, mode=mode)
                 response = result_packet(sha256, text=result, mode=mode, meta=getattr(result, "meta", None))
             except (AnalysisDenied, OSError, ValueError, KeyError) as exc:
                 reason = exc.reason if isinstance(exc, AnalysisDenied) else "internal"
