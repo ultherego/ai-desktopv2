@@ -49,7 +49,27 @@ _PLACEHOLDERS = {
 SUBCOMMAND_TOOLS = frozenset(("systemctl", "docker", "nmcli", "btrfs", "snapper", "bluetoothctl", "resolvectl",
                               "powerprofilesctl", "pactl", "wpctl", "lact", "networkctl", "timedatectl", "hostnamectl",
                               "localectl", "journalctl"))
+# Options of those tools that never take a value. Short forms mean different things across tools (`-f` forces in
+# systemctl and names fields in nmcli), so only the unambiguous ones are listed.
+_STANDALONE_OPTIONS = frozenset(("--user", "--system", "--global", "--runtime", "--no-pager", "--no-legend",
+                                 "--no-ask-password", "--no-block", "--no-reload", "--no-wall", "--now", "--all", "--full",
+                                 "--quiet", "-q", "--force", "--failed", "--plain"))
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-_]")
+
+
+def _require_literal_verb(tokens):
+    """No placeholder may stand where the verb could be. After an option not known to stand alone, the next word may be
+    its value (`systemctl -H host <word>`), so the verb is looked for one word further on."""
+    maybe_value = False
+    for token in tokens[1:]:
+        if token in _PLACEHOLDERS:
+            raise ValueError("command-template")
+        if token.startswith("-"):
+            maybe_value = "=" not in token and token not in _STANDALONE_OPTIONS
+        elif maybe_value:
+            maybe_value = False
+        else:
+            return
 
 
 def parse_template(text, *, strict=False):
@@ -68,19 +88,11 @@ def parse_template(text, *, strict=False):
     if len(tokens) > 1 and tokens[1] in _PLACEHOLDERS:
         raise ValueError("command-template")      # the first argument (usually the verb) is always the owner's literal
     if tokens and os.path.basename(tokens[0]) in SUBCOMMAND_TOOLS and os.path.basename(tokens[0]) != "journalctl":
-        for token in tokens[1:]:
-            if token in _PLACEHOLDERS:
-                raise ValueError("command-template")      # a placeholder before the subcommand
-            if not token.startswith("-"):
-                break
+        _require_literal_verb(tokens)
     if strict:
         # A template with side effects: the verb - the first word that is not an option - must be the owner's literal,
         # so no placeholder may stand in front of it (`systemctl --user <word> x` would let the model choose it).
-        for token in tokens[1:]:
-            if token in _PLACEHOLDERS:
-                raise ValueError("command-template")
-            if not token.startswith("-"):
-                break
+        _require_literal_verb(tokens)
     return tokens
 
 

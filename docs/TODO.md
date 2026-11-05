@@ -11,7 +11,8 @@ Etapy i warunki ich ukończenia opisuje [ROADMAP.md](ROADMAP.md).
 - [x] Pliki z BOM i końcami linii Windows dają się czytać i edytować bez zmiany formatu.
 - [x] Wynik wykonanej zmiany zostaje w pamięci mimo błędu usługi.
 - [x] Zależność od cofniętego pliku nie przechodzi na niezależne odpowiedzi.
-- [ ] Zgodne limity szablonów `change` (polityka 128, kontrakt 24).
+- [x] Zgodne limity szablonów `change` (polityka i kontrakt: 128).
+- [x] Wartość opcji nie jest brana za polecenie w szablonach (`systemctl -H host <word>` jest odrzucany).
 - [ ] Skill przy pytaniu ogólnym bez `permissions.toml`.
 - [x] Dłuższy limit oczekiwania przy najwyższym rozumowaniu i komunikat mówiący, że chodzi o czas.
 - [x] Lista `task rollback` i `task status` od najnowszych wpisów, z datą. Dziś kolejność wynika ze skrótu planu, więc łatwo wybrać nie to zadanie.

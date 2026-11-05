@@ -67,8 +67,8 @@ Działa i jest scalone:
 |---|---|
 | Polecenia `allow` bez dostępu do gniazd Unix hosta (D-Bus, Docker) | do zrobienia |
 | Ogólny filtr wywołań systemowych dla klienta | do zrobienia |
-| Zgodne limity szablonów `change` w polityce i kontrakcie | do zrobienia |
-| Sprawdzenie parsera szablonów pod kątem argumentów opcji | do zrobienia |
+| Zgodne limity szablonów `change` w polityce i kontrakcie | w toku |
+| Sprawdzenie parsera szablonów pod kątem argumentów opcji | w toku |
 | Polecenia z prawdziwym Bubblewrap także w CI | do zrobienia |
 
 **Decyzje do podjęcia:** klient ma dostęp do własnego profilu logowania. Obecna architektura ufa oficjalnemu klientowi w tym zakresie. Przed 1.0 trzeba to świadomie przyjąć albo zmienić.

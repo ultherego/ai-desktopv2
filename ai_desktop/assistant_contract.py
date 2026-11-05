@@ -71,7 +71,7 @@ def validate_access(value):
         result["commands"] = [_text(item, 120) for item in value["commands"]]
     if "change_commands" in value:
         if ("commands" not in result or type(value["change_commands"]) is not list
-                or not 1 <= len(value["change_commands"]) <= 24
+                or not 1 <= len(value["change_commands"]) <= 128
                 or any(type(item) is not str for item in value["change_commands"])
                 or len(set(value["change_commands"])) != len(value["change_commands"])):
             raise ValueError("assistant-access")
