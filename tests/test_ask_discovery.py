@@ -358,7 +358,8 @@ class LargeDirectoryTests(Base):
 
     def test_an_exhausted_scan_budget_is_reported_as_incomplete_never_as_empty(self):
         policy = permissions.load_policy()
-        found, _ = directory_context.find_step(policy, "f0", ["zz-data-209"], "file", policy.limits(),
+        # A name nothing carries: which entries fit in the budget depends on the order the filesystem returns them.
+        found, _ = directory_context.find_step(policy, "f0", ["zz-absent-name"], "file", policy.limits(),
                                                directory_context.Scan(30), 60000, self.permit)
         self.assertTrue(found["incomplete"] and found["truncated"])
         self.assertEqual(found["matches"], [])
