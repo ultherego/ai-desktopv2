@@ -39,9 +39,8 @@ class StartupDenied(ValueError):
         self.reason = reason if reason in {"preflight", "pin", "initialize", "protocol", "exit", "timeout", "limit", "turn", "native-account"} else "preflight"
         message = "CI CODEX CONFIG: FAIL reason=" + self.reason
         if type(check) is str and (check in ("empty-line", "non-json", "unexpected-record", "extra-startup-notification")
-                                   or self.reason == "native-account" and check in {"unexpected-result", "refusal-network",
-                                       "refusal-timeout", "refusal-result", "refusal-client", "refusal-auth-required",
-                                       "refusal-authorization", "refusal-auth-method"}
+                                   or self.reason == "native-account" and (check in {"unexpected-result", "request-verification", "fixture-exit"}
+                                       or re.fullmatch(r"(?:new|initialize|account|limits|signed-out|done)/(?:network|timeout|result|client|auth-required|authorization|auth-method)", check))
                                    or self.reason == "turn" and re.fullmatch(r"(?:refusal=[a-z-]{1,24} )?codex-[a-z-]{1,40}", check)):
             message += " check=" + check
         # Only closed structural categories/counts can cross this boundary.
@@ -261,16 +260,26 @@ def fixture_native_quota(binary, directory):
     """Exercise genuine v0.166.0 account and quota RPCs against a synthetic, loopback-only backend."""
     argv = command(binary, directory, native_account=True)
     pos = argv.index("--chdir")
-    argv[pos:pos] = ["--ro-bind", str(ROOT / "tests/ci_codex_quota_backend.py"), "/opt/quota-backend.py"]
-    pos = argv.index("--chdir") + 2
-    argv[pos:pos] = ["/usr/bin/python3", "-I", "-B", "/opt/quota-backend.py"]
-    try:
-        result = codex_protocol._exchange(argv, native.AccountProtocol("read"),
-                                          env={"PATH": "/usr/bin", "LANG": "C.UTF-8"}, timeout=25)
-    except AnalysisDenied as exc:
-        raise StartupDenied("native-account", check="refusal-" + exc.reason) from None
+    argv[pos:] = ["--ro-bind", str(ROOT / "tests/ci_codex_quota_backend.py"), "/opt/quota-backend.py",
+                  "--ro-bind", str(ROOT / "ai_desktop"), "/opt/ai_desktop",
+                  "--chdir", "/work", "/usr/bin/python3", "-I", "-B", "/opt/quota-backend.py"]
+    fixture = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=25,
+                             env={"PATH": "/usr/bin", "LANG": "C.UTF-8"})
+    if fixture.returncode:
+        # The helper prints only a fixed protocol stage and reason. Discard everything else
+        # (including native/host stderr) rather than let account data into a CI log.
+        clue = fixture.stdout.strip()
+        if re.fullmatch(rb"(?:new|initialize|account|limits|signed-out|done)/(?:network|timeout|result|client|auth-required|authorization|auth-method)", clue):
+            raise StartupDenied("native-account", check=clue.decode())
+        if clue == b"request-verification":
+            raise StartupDenied("native-account", check="request-verification")
+        raise StartupDenied("native-account", check="fixture-exit")
     expected = {"plan": "plus", "windows": {"five_hour": {"percent": 31, "reset": 2000000000},
                                              "seven_day": {"percent": 47, "reset": 2000500000}}}
+    try:
+        result = json.loads(fixture.stdout, object_pairs_hook=_unique_pairs)
+    except (ValueError, UnicodeError, RecursionError):
+        raise StartupDenied("native-account", check="unexpected-result") from None
     if result != expected:
         raise StartupDenied("native-account", check="unexpected-result")
 

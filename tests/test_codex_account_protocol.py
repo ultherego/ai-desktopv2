@@ -185,8 +185,9 @@ class AccountProtocolTests(unittest.TestCase):
             self.assertEqual(transport.call_args.args[0], command)
             self.assertEqual(transport.call_args.kwargs["timeout"], 18)
 
-    def test_bounded_pipe_terminates_actual_child_after_read(self):
-        program = """
+    @staticmethod
+    def native_child():
+        return """
 import json,sys
 def read(method):
     value=json.loads(sys.stdin.readline())
@@ -200,6 +201,38 @@ send(read('account/read')['id'], {'account':{'type':'chatgpt','planType':'free'}
 send(read('account/rateLimits/read')['id'], {'rateLimits':{'primary':None}})
 assert sys.stdin.read()==''
 """
-        result = rpc._exchange([sys.executable, "-I", "-c", program], accounts.AccountProtocol("read"),
-                               env={}, timeout=5)
+
+    def invoke_child(self, suffix="", *, timeout=5):
+        return rpc._exchange([sys.executable, "-I", "-c", self.native_child() + suffix],
+                             accounts.AccountProtocol("read"), env={}, timeout=timeout, stop_after_reply=True)
+
+    def test_bounded_pipe_terminates_actual_child_after_read(self):
+        self.assertEqual(self.invoke_child(), {"windows": {}, "plan": "free"})
+
+    def test_lingering_native_shutdown_after_authoritative_result_is_stopped_and_reaped(self):
+        actual = rpc.subprocess.Popen
+        processes = []
+        def spawn(*args, **kwargs):
+            process = actual(*args, **kwargs)
+            processes.append(process)
+            return process
+        with patch.object(rpc.subprocess, "Popen", side_effect=spawn):
+            result = self.invoke_child("import time; time.sleep(20)", timeout=4)
         self.assertEqual(result, {"windows": {}, "plan": "free"})
+        self.assertEqual(processes[0].returncode, -rpc.signal.SIGKILL)
+        self.assertTrue(all(pipe.closed for pipe in (processes[0].stdin, processes[0].stdout, processes[0].stderr)))
+
+    def test_account_cleanup_preserves_nonzero_exit_and_rejects_trailing_records(self):
+        for suffix, reason in (("sys.exit(7)", "client"),
+                               ("print('invalid')", "result"),
+                               ("sys.stdout.write('incomplete');sys.stdout.flush()", "result"),
+                               ("print(json.dumps({'id':12,'method':'command/exec','params':{}}))", "authorization")):
+            with self.subTest(suffix=suffix), self.assertRaises(AnalysisDenied) as error:
+                self.invoke_child(suffix)
+            self.assertEqual(error.exception.reason, reason)
+
+    def test_mandatory_account_reply_cannot_be_skipped_by_a_lingering_child(self):
+        with self.assertRaises(AnalysisDenied) as error:
+            rpc._exchange([sys.executable, "-I", "-c", "import time; time.sleep(20)"], accounts.AccountProtocol("read"),
+                          env={}, timeout=.25, stop_after_reply=True)
+        self.assertEqual(error.exception.reason, "timeout")

@@ -202,4 +202,5 @@ def run(binary, action, env, *, challenge=None):
     if env != client_environment():
         raise AnalysisDenied("input")
     protocol = AccountProtocol(action, challenge=challenge)
-    return rpc._exchange(fixed_command(binary), protocol, env=env, timeout=300 if action == "connect" else 18)
+    return rpc._exchange(fixed_command(binary), protocol, env=env, timeout=300 if action == "connect" else 18,
+                         stop_after_reply=True)

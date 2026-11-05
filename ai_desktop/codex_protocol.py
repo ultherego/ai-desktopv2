@@ -757,7 +757,7 @@ def exchange(argv, protocol, *, env, timeout=110, cancelled=None):
     return _exchange(argv, protocol, env=env, timeout=timeout, cancelled=cancelled)
 
 
-def _exchange(argv, protocol, *, env, timeout, cancelled=None):
+def _exchange(argv, protocol, *, env, timeout, cancelled=None, stop_after_reply=False):
     """Bounded pipe transport shared by the fixed turn and account RPC state machines."""
     if (type(timeout) not in (int, float)
             or isinstance(timeout, bool) or not math.isfinite(timeout) or not 0 < timeout <= REQUEST_SECONDS_LONG
@@ -779,16 +779,29 @@ def _exchange(argv, protocol, *, env, timeout, cancelled=None):
         pending, buffered = bytearray(initial), bytearray()
         stderr_bytes = wire_bytes = 0
         deadline = time.monotonic() + timeout
+        stop_at, stopped_by_us = None, False
         with selectors.DefaultSelector() as selector:
             for stream, kind in ((process.stdout, "out"), (process.stderr, "err")):
                 os.set_blocking(stream.fileno(), False)
                 selector.register(stream, selectors.EVENT_READ, kind)
             os.set_blocking(process.stdin.fileno(), False)
             selector.register(process.stdin, selectors.EVENT_WRITE, "in")
-            while selector.get_map():
+            while selector.get_map() or process.poll() is None:
                 if cancelled is not None and cancelled():
                     raise AnalysisDenied("cancelled")
-                remaining = deadline - time.monotonic()
+                now = time.monotonic()
+                if stop_at is not None and now >= stop_at:
+                    # An authenticated account app-server can keep draining background tasks after
+                    # replying and receiving EOF. Its authoritative account operation already finished.
+                    # Terminate only this private process group and still drain/validate the pipes.
+                    if process.poll() is None:
+                        try:
+                            os.killpg(process.pid, signal.SIGKILL)
+                            stopped_by_us = True
+                        except ProcessLookupError:
+                            pass
+                    stop_at = None
+                remaining = deadline - now
                 if remaining <= 0:
                     raise AnalysisDenied("timeout", diagnostic=protocol.failure_check("timeout"))
                 for key, _ in selector.select(min(remaining, .1)):
@@ -842,22 +855,15 @@ def _exchange(argv, protocol, *, env, timeout, cancelled=None):
                                 except KeyError:
                                     pass
                                 process.stdin.close()
-                                deadline = min(deadline, time.monotonic() + 3)
+                                if stop_after_reply:
+                                    stop_at = time.monotonic() + 1
+                                else:
+                                    deadline = min(deadline, time.monotonic() + 3)
                         if len(buffered) > protocol.limits.line_bytes:
                             raise AnalysisDenied("output-limit")
             if buffered:
                 raise AnalysisDenied("result", diagnostic=protocol.failure_check("result"))
-            while process.poll() is None:
-                if cancelled is not None and cancelled():
-                    raise AnalysisDenied("cancelled")
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise AnalysisDenied("timeout", diagnostic=protocol.failure_check("timeout"))
-                try:
-                    process.wait(timeout=min(.1, remaining))
-                except subprocess.TimeoutExpired:
-                    pass
-            if process.returncode != 0:
+            if process.returncode != 0 and not (stopped_by_us and process.returncode == -signal.SIGKILL):
                 raise AnalysisDenied("client", diagnostic=("codex-native-exit-2" if process.returncode == 2
                                                           else "codex-native-exit"))
             try:

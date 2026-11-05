@@ -6,7 +6,6 @@ import json
 import os
 from pathlib import Path
 import socket
-import subprocess
 import sys
 import threading
 
@@ -68,28 +67,42 @@ class QuotaHandler(BaseHTTPRequestHandler):
         return super().send_error(code, message, explain)
 
 
-def main(argv=None):
-    argv = sys.argv[1:] if argv is None else argv
+def main():
     home = Path("/home/client/.codex")
     if (Path(__file__) != Path("/opt/quota-backend.py") or Path.cwd() != Path("/work")
-            or os.environ.get("CODEX_HOME") != str(home) or not argv or argv[0] != "/opt/codex"
+            or os.environ.get("CODEX_HOME") != str(home) or sys.argv[1:]
             or {name for _, name in socket.if_nameindex()} != {"lo"} or any(home.iterdir())):
         return 2
+    sys.path.insert(0, "/opt")
+    from ai_desktop import codex_account_protocol as accounts, codex_protocol
+    from ai_desktop.analysis_contract import AnalysisDenied
+
     os.umask(0o077)
     with (home / "auth.json").open("x") as stream:
         json.dump(credential(), stream)
+    protocol = accounts.AccountProtocol("read")
     with ThreadingHTTPServer(("127.0.0.1", 0), QuotaHandler) as server:
         server.accounts, server.usage, server.denied = 0, 0, False
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         try:
             base = f"http://127.0.0.1:{server.server_port}/backend-api"
-            # The child inherits the RPC pipes; the fixture never selects a method on its behalf.
-            proc = subprocess.run([*argv, "-c", "chatgpt_base_url=" + json.dumps(base)], timeout=23, check=False)
-            return 0 if proc.returncode == 0 and server.accounts and server.usage == 1 and not server.denied else 2
+            command = accounts.fixed_command("/opt/codex") + ["-c", "chatgpt_base_url=" + json.dumps(base)]
+            # The private process group belongs to Codex. The fixture must live past the
+            # normal bounded app-server cleanup to check what the actual client requested.
+            result = codex_protocol._exchange(command, protocol, env=dict(os.environ),
+                                               timeout=18, stop_after_reply=True)
+        except AnalysisDenied as failure:
+            print(f"{protocol.state}/{failure.reason}")
+            return 2
         finally:
             server.shutdown()
             thread.join()
+        if not server.accounts or server.usage != 1 or server.denied:
+            print("request-verification")
+            return 2
+        print(json.dumps(result, sort_keys=True))
+        return 0
 
 
 if __name__ == "__main__":

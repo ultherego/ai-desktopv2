@@ -209,18 +209,27 @@ assert sys.stdin.read() == ""
         directory, binary = Path("/fixture"), Path("/fixture/pinned-codex")
         answer = {"plan": "plus", "windows": {"five_hour": {"percent": 31, "reset": 2000000000},
                                               "seven_day": {"percent": 47, "reset": 2000500000}}}
-        with patch.object(check.codex_protocol, "_exchange", return_value=answer) as run:
+        fixture = subprocess.CompletedProcess([], 0, stdout=json.dumps(answer).encode())
+        with patch.object(check.subprocess, "run", return_value=fixture) as run:
             check.fixture_native_quota(binary, directory)
-        command, protocol = run.call_args.args
-        self.assertEqual(protocol.action, "read")
+        command, = run.call_args.args
         self.assertIn("--unshare-net", command)
         self.assertNotIn("--share-net", command)
         self.assertNotIn("/run/egress.sock", command)
         self.assertNotIn("ACCESS_TOKEN", command)
-        self.assertIn("/opt/quota-backend.py", command)
-        self.assertEqual(command[command.index("--chdir") + 2:command.index("--strict-config")],
-                         ["/usr/bin/python3", "-I", "-B", "/opt/quota-backend.py", "/opt/codex"])
-        with patch.object(check.codex_protocol, "_exchange", return_value={}), self.assertRaises(check.StartupDenied):
+        self.assertIn("/opt/ai_desktop", command)
+        self.assertEqual(command[command.index("--chdir") + 2:],
+                         ["/usr/bin/python3", "-I", "-B", "/opt/quota-backend.py"])
+        fixture.stdout = b"{}"
+        with patch.object(check.subprocess, "run", return_value=fixture), self.assertRaises(check.StartupDenied):
+            check.fixture_native_quota(binary, directory)
+        fixture.returncode, fixture.stdout = 2, b"done/timeout"
+        with patch.object(check.subprocess, "run", return_value=fixture), self.assertRaisesRegex(
+                check.StartupDenied, "check=done/timeout"):
+            check.fixture_native_quota(binary, directory)
+        fixture.stdout = b"sensitive"
+        with patch.object(check.subprocess, "run", return_value=fixture), self.assertRaisesRegex(
+                check.StartupDenied, "check=fixture-exit"):
             check.fixture_native_quota(binary, directory)
 
     def test_clean_exit_without_initialize_is_not_success(self):
