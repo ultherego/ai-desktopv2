@@ -168,7 +168,7 @@ class ServiceSelectionTests(unittest.TestCase):
             prepared = profiles.prepared(config)
         self.assertEqual({profile.provider for profile in prepared.profiles.values()}, {"codex"})
         self.assertEqual(prepared.profiles["analyst"].access, "read-only")
-        self.assertEqual(prepared.profiles["diagnostic"].skills, ("cachyos-diagnostics",))
+        self.assertEqual(prepared.profiles["diagnostic"].skills, profiles.PRESET_SKILLS["diagnostic"])
         self.assertEqual(prepared.with_provider("claude").profiles["default"].model, "opus")
         self.assertEqual(prepared.provider_settings, config.provider_settings)
 

@@ -12,7 +12,7 @@ from . import __version__
 from . import agent, audit, compare, controller, diagnose, doctor, e2_handoff_cli, executor, launcher, sandbox, skill_mount, skills, validate_snapshot, workspace_cli
 
 PUBLIC_COMMANDS = ("ask", "material", "project", "task", "status", "stop", "settings",
-                   "agents", "agent", "account", "usage", "panel", "sessions", "skills", "login", "doctor")
+                   "agents", "agent", "account", "usage", "local", "panel", "sessions", "skills", "login", "doctor")
 
 
 def build_parser():
@@ -40,6 +40,7 @@ def build_parser():
     status.add_argument("--json", action="store_true", help="Output machine-readable local status")
     commands.add_parser("panel", help="Open the interactive agent panel")
     commands.add_parser("account", help="Manage isolated subscription accounts", add_help=False)
+    commands.add_parser("local", help="Query the local model catalog or server status", add_help=False)
     commands.add_parser("usage", help="Show cached subscription usage", add_help=False)
     commands.add_parser("stop", help="Stop or recover your own temporary analysis session")
     analysis = commands.add_parser("analyze", help="Approve a report and get an analysis from the selected provider")
@@ -175,6 +176,9 @@ def main(argv=None):
     if argv[0] == "account":
         from . import account_cli
         return account_cli.main(argv[1:])
+    if argv[0] == "local":
+        from . import local_provider
+        return local_provider.main(argv[1:])
     if argv[0] == "usage":
         from . import account_cli
         return account_cli.usage_main(argv[1:])

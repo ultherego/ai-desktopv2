@@ -48,7 +48,7 @@ class AgentPanelTests(unittest.TestCase):
                 stale.write_bytes(contents)
                 stale.chmod(0o600)
                 self.assertEqual(len(presence.live()), 1)
-                self.assertFalse(stale.exists())
+                self.assertTrue(stale.exists(), "status is read-only even for stale entries")
             finally:
                 marker.close()
 

@@ -89,7 +89,7 @@ class Presence:
 
 
 def live():
-    """A held lock proves liveness. Unlocked entries left by killed processes can be discarded."""
+    """A held lock proves liveness. Ignore entries left by killed processes until the user runtime directory expires."""
     try:
         directory = _directory(False)
     except OSError:
@@ -114,8 +114,6 @@ def live():
                                 ("id", "role", "provider", "model", "account", "directory"))
                                 and all(type(value.get(k)) is int for k in ("started", "exchanges"))):
                             rows.append(value)
-                    else:
-                        os.unlink(name, dir_fd=directory)
                 finally:
                     os.close(fd)
             except (OSError, ValueError, RecursionError):

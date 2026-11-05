@@ -58,14 +58,14 @@ def _summary(data):
         print("%s %-7s %s · %s" % (mark, item["id"], details, access))
     if data["policy"]:
         rules = data["policy"]
-        print("Policy: %d read / %d write scopes, %d read / %d change commands" %
+        print("Configured policy: %d read / %d write scopes, %d read / %d change commands" %
               (rules["read_scopes"], rules["write_scopes"], rules["read_commands"], rules["change_commands"]))
     for row in data["sessions"]:
         print("Conversation %s · %s · %s exchanges · %s" %
-              (terminal_text(row["id"]), terminal_text(row["provider"]), row["exchanges"], terminal_text(row["directory"])))
+              (terminal_text(row["id"]), terminal_text(row["provider"]), row["exchanges"], json.dumps(row["directory"], ensure_ascii=True)))
     for row in data["accounts"]:
-        print("Account: %s / %s%s" % (terminal_text(row["provider"]), terminal_text(row["account"]),
-                                      " (selected)" if row["selected"] else ""))
+        current = " (selected)" if row["selected"] else ""
+        print("Account: %s / %s%s · %s" % (row["provider"], row["account"], current, row["usage"]))
     for error in data["errors"]:
         print(error)
 
@@ -79,7 +79,8 @@ def status(as_json=False):
     if data["selected"] == "local":
         print("Local endpoint health: unchecked offline. No subscription login is required.")
         return 2 if data["errors"] else 0
-    return analysis_session.status()
+    result = analysis_session.status()
+    return result or (2 if data["errors"] else 0)
 
 
 def services(argv):
@@ -100,11 +101,12 @@ def services(argv):
 def panel(dispatch):
     from .terminal_menu import MenuInputError, choose
     actions = (("Start a conversation", ["ask"]), ("Service and role", ["settings"]),
-               ("Accounts", ["account", "list"]), ("Subscription limits", ["usage"]),
+               ("Choose an account", ["account", "use"]), ("Subscription limits", ["usage"]),
                ("Saved conversations", ["sessions"]), ("Close", None))
     try:
         while True:
-            _summary(snapshot())
+            data = snapshot()
+            _summary(data)
             if not os.isatty(0) or not os.isatty(1):
                 return 0
             choice = choose("AI Desktop", tuple(title for title, _ in actions))
@@ -113,6 +115,17 @@ def panel(dispatch):
                 return 0
             if command == ["ask"]:
                 return dispatch(command)
-            dispatch(command)
+            if command == ["account", "use"]:
+                from .ask_commands import _pick
+                accounts = data["accounts"]
+                if accounts:
+                    labels = [r["provider"] + " / " + r["account"] + (" (selected)" if r["selected"] else "")
+                              for r in accounts]
+                    account_choice = _pick("Account for new requests", labels)
+                    if account_choice is not None:
+                        row = accounts[account_choice]
+                        dispatch([*command, row["provider"], row["account"]])
+            else:
+                dispatch(command)
     except (KeyboardInterrupt, MenuInputError):
         return 0
