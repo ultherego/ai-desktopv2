@@ -14,6 +14,14 @@ A public issue is visible to everyone, so **do not put sensitive details in it**
 the content of private files, `--v` output, a working exploit or data about your computer. Describe the package version, the general symptom and the
 fixed error message.
 
+## Changing recipients
+
+A transfer through `/provider` names the new recipient and requires an explicit decision about the bounded conversation history and task notes. File access is re-evaluated for the request. Old saved answers whose source permissions cannot be verified are withheld. Named cloud account slots use a validated local alias and the authenticated desktop UID; the panel reads account metadata and quota observations, never tokens.
+
+Local inference uses an approved HTTP request to numeric IPv4 loopback and a bounded port from the policy. Trust the process listening there. A stopped server can leave its port available to another local process. A local server configured to forward traffic can transmit requests off the machine. The controller does not follow HTTP redirects or use proxy environment variables.
+
+The optional desktop widget displays locally available metadata. The controller's private runtime entries contain the chat identifier, working directory, settings and exchange count. They are visible to the same desktop user. No conversation text is stored in those entries.
+
 ## Trust boundaries
 
 | Element | Runs as | What it sees and can do |
@@ -23,6 +31,7 @@ fixed error message.
 | Analysis service | system account `ai-desktop`, with no login and no privileges | A restricted systemd unit, holds the proxy and starts the client. |
 | Claude Code 2.1.312 client | the same account, in Bubblewrap | Its own login directory `/var/lib/ai-desktop/claude`, empty HOME and working directory, no tools (except `WebSearch` in web mode), no direct network. |
 | Proxy | service, outside the client sandbox | Passes only TLS on port 443 to `api.anthropic.com`, `claude.ai`, `platform.claude.com`, to public addresses. |
+| Local model server | your configured loopback service | Receives the approved prompt, history and authorized material. The user who operates the service controls its logging. |
 | Model | at the provider | Returns text and proposals. This is untrusted data. |
 | Commands from `allow` | your user, in a separate sandbox | Read-only file system, hidden `/home`, `/root`, `/run/user`, no network. Host Unix sockets are not isolated. |
 | Commands from `change` | your user, **without a sandbox** | Run on the live system after you type `yes`. |

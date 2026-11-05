@@ -1,10 +1,10 @@
 # AI Desktop
 
-A terminal assistant for diagnostics, configuration and file work on CachyOS and Arch Linux x86_64. You start `ai-desktop ask`, write a plain sentence, and the program itself collects the data your `~/.config/ai-desktop/permissions.toml` file allows and sends it to the model. Every write shows a full diff and waits for your consent.
+A terminal assistant for diagnostics, configuration and file work on CachyOS and Arch Linux x86_64. In a terminal, start `ai-desktop`, write a plain sentence, and the program itself collects the data your `~/.config/ai-desktop/permissions.toml` file allows and sends it to the model. Every write shows a full diff and waits for your consent.
 
 The interface and settings are in English, and Claude answers in the language of your question.
 
-Underneath runs the official Claude Code client in the exact version **2.1.312**, which you download yourself. The client works under a separate system account `ai-desktop`, in a Bubblewrap sandbox, and reaches the network only through a filtering proxy. Codex can be used optionally.
+Underneath runs the official Claude Code client in the exact version **2.1.312**, which you download yourself. The client works under a separate system account `ai-desktop`, in a Bubblewrap sandbox, and reaches the network only through a filtering proxy. Codex uses a separate subscription adapter. For a local model, the controller can send an approved request to a configured loopback server.
 
 **What this is not:**
 
@@ -13,17 +13,33 @@ Underneath runs the official Claude Code client in the exact version **2.1.312**
 - It does not use an API key and does not switch to another service when something fails.
 - It is not certified isolation or a secret scanner. See [SECURITY.md](SECURITY.md).
 
+## Choose where to work
+
+| In a terminal | Result |
+|---|---|
+| `ai-desktop` | Start or resume a conversation. Outside a terminal the default remains offline status. |
+| `ai-desktop agent list` / `ai-desktop agent use local` | Inspect services or choose the default for future conversations. |
+| `ai-desktop agents use reviewer` | Select a role and its Skills. A role cannot expand the access policy. |
+| `/provider codex` inside `ask` | Review the destination and the context the new recipient would receive. Confirm to continue the same conversation there. |
+| `ai-desktop account list` / `ai-desktop usage` | See named accounts and provider-reported quota windows with their observation times. |
+| `ai-desktop panel` / `ai-desktop status --json` | Open the interactive panel or read local metadata for a desktop widget. |
+| `ai-desktop local models` | Explicitly query the model list of your configured local inference server. |
+
+For local inference, start your own trusted OpenAI-compatible server on `127.0.0.1`, enable `local = true` under `[network]` in your existing policy, then choose `ai-desktop agent use local`. The default port is 8080. Cloud accounts and the local service have independent permissions. There is no automatic recipient switch.
+
+See [agent settings, accounts and sessions](docs/AGENT_MANAGEMENT.md), [verified client installation](docs/AGENT_INSTALL.md) and [Niri shortcuts and the DMS widget](docs/DESKTOP.md).
+
 ## Development status
 
 This is a development version, not a 1.0 release.
 
-The current candidate package is **0.1.0-70** (changes: [CHANGELOG.md](CHANGELOG.md)).
+The current candidate package is **0.1.0-71** (changes: [CHANGELOG.md](CHANGELOG.md)).
 
 What is still missing and what has not been checked is described in [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md). Read that file before using this on important data. The plan up to version 1.0: [docs/ROADMAP.md](docs/ROADMAP.md), tasks: [docs/TODO.md](docs/TODO.md).
 
 ## Installation on a laptop (CachyOS / Arch x86_64)
 
-You need a regular user with `sudo`, a terminal and a Claude account (subscription). Steps in `fish`:
+The example below installs and connects Claude for a regular user with a terminal and `sudo`. For Codex, use the verified client installer linked above. Local inference uses your running server and requires no subscription login.
 
 ```fish
 # 1. Dependencies and build tools
@@ -42,7 +58,7 @@ and ./claude-code --version  # must print: 2.1.312 (Claude Code)
 
 # 4. Build and install the package (the version in the file name = pkgrel from PKGBUILD)
 makepkg --cleanbuild
-sudo pacman -U ai-desktop-0.1.0-70-x86_64.pkg.tar.zst
+sudo pacman -U ai-desktop-0.1.0-71-x86_64.pkg.tar.zst
 sudo systemctl daemon-reload
 
 # 5. Log in to Claude (interactive, once)
@@ -62,7 +78,7 @@ ai-desktop ask                # conversation
 
 Notes:
 
-- **Claude client (step 3).** The package does not download it itself. Without the `claude-code` file in `packaging/arch/` only local commands work, and questions to the model are refused. Use of the client is subject to Anthropic's terms. Do not add this file to Git and do not redistribute it.
+- **Claude client (step 3).** The package does not download it itself. Without the `claude-code` file in `packaging/arch/` the Claude adapter is unavailable. Selected Codex and local adapters have their own prerequisites. Use of the client is subject to Anthropic's terms. Do not add this file to Git and do not redistribute it.
 - **Sudo.** The client session is started by a fixed helper with administrator rights, so `ask`, `material`, `project`, `task run`, `login` and `stop` may ask for your `sudo` password. The package adds no sudoers or polkit rules.
 - **Requirements.** Python 3.12 or newer, systemd, working unprivileged namespaces and a regular terminal: without one the program does not ask for consent, it refuses.
 - **Fresh system.** These steps have not yet been repeated on a completely fresh installation.
@@ -192,6 +208,9 @@ One UTF-8 text file up to `file_size`, covered by `files.read`. You ask in a pla
 Local commands that send nothing: `/find TEXT`, `/show A-B`, `/log`, `/exit`. `/ask A-B QUESTION` narrows the question to those lines. The service accepts 4 session starts per minute, so the program waits between steps by itself.
 
 ### `ai-desktop project DIRECTORY`
+
+The project editor receives the authorized conversation and observations behind the proposed edit. Type `/test pytest`, `/test python-unittest`, `/test go-test` or `/test npm-test` to run a fixed suite on an isolated copy of the authorized index. The controller requests approval for the copy and refuses a project that exceeds the supported limits. The test output stays in your terminal. Go and npm need a delegated systemd user scope with verified cgroup v2 limits and the corresponding local toolchain. Recipes never install dependencies.
+
 
 One directory covered by `files.read`. The scan is local and repeated before each question. Limits: 20,000 files, 100,000 entries, depth
 16. Entries from `deny`, links, special files and `.git` are skipped and counted.

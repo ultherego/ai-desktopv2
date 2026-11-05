@@ -1,6 +1,6 @@
 # To do
 
-Status: package `0.1.0-70`. Limitations of the current version are described in [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
+Status: package `0.1.0-71`. Limitations of the current version are described in [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
 
 ## Next up
 Stages and the conditions for completing them are described in [ROADMAP.md](ROADMAP.md).
@@ -13,7 +13,7 @@ Stages and the conditions for completing them are described in [ROADMAP.md](ROAD
 - [x] Dependence on a revoked file does not carry over to independent answers.
 - [x] Matching `change` template limits (policy and contract: 128).
 - [x] An option's value is not taken for a command in templates (`systemctl -H host <word>` is refused).
-- [ ] Skill for a general question without `permissions.toml`.
+- [x] Skill for a general question without `permissions.toml`.
 - [x] Rebuild of the 21 Skills procedures, independent review of content and scenarios, and regressions for passing the full content (`improve/skills-procedures`; evidence in ROADMAP).
 - [ ] Acceptance of the improved Skills procedures in a real conversation on CachyOS after CI of the specific head.
 - [x] Longer wait limit at the highest reasoning level and a message saying that it is about time.
@@ -38,7 +38,7 @@ Stages and the conditions for completing them are described in [ROADMAP.md](ROAD
 
 ## Functional bugs
 - [x] The edit stage in `ask` gets what was settled earlier in the conversation, the memory, command results and Skills.
-- [ ] The same in `project`.
+- [x] The same in `project`.
 - [x] Saving a conversation with many dependent files: turns that do not fit in the source table are redacted instead of the save being refused.
 - [x] Trash: the 129th deletion is refused before it runs.
 - [x] A Skill of the largest allowed size can be assigned to an agent.
@@ -62,7 +62,7 @@ Stages and the conditions for completing them are described in [ROADMAP.md](ROAD
 
 ## Possible improvements
 - [ ] Skills on demand also in `material`, `project` and `task`.
-- [ ] A Skill loaded in a conversation available right away in later questions, without an extra model call.
+- [x] A Skill loaded in a conversation available right away in later questions, without an extra model call.
 - [ ] Discovery command results in the edit request.
 - [ ] Streaming answers.
 - [ ] One client session and one client process for the whole conversation, with a lifetime limit.

@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-71: shared agent sessions and project checks
+
+- Start a conversation with `ai-desktop`. Choose Claude, Codex or an explicitly allowed loopback model and review what will travel when changing provider in the same conversation.
+- List named subscription accounts, inspect their last reported limits and open the offline agent panel or optional Niri/DMS launchers.
+- Bind history filtering, Skill selection and delivery to current permissions. Saved answers with unverifiable sources are withheld on resume.
+- Preserve agreed context for project edits, show which validation ran and offer fixed test recipes on an isolated copy.
+- Require fixed nested command verbs, and verify downloaded clients before an optional private Arch package build.
+
 
 - `permissions.toml`: the template `systemctl -H host <word>` is rejected, because `<word>` could become a command. After an option outside the list of options without a value, the next word is treated as its value. The `change` list can have 128 templates also in the request to the model (it was 24).
 - Rebuilt procedures of 21 Skills: interpreting results, conditions for further steps, recognizing access restrictions and verifying changes. Removed overly broad recipes, among others a full balance as default cleanup and `systemctl revert` as the undo of a single edit.

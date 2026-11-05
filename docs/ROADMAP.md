@@ -44,10 +44,10 @@ Working and merged:
 |---|---|
 | The final answer after a file read gets the command results and loaded Skills | done |
 | The edit stage gets what was settled in the conversation, the task memory, discovery results and Skills | done |
-| The same in `project` | to do |
-| A Skill loaded in a conversation is available in later questions without an extra model call | to do |
+| The same in `project` | in progress (PR #18, host acceptance pending) |
+| A Skill loaded in a conversation is available in later questions without an extra model call | in progress (PR #18, host acceptance pending) |
 | Skills on demand also in `material`, `project` and `task` | to do |
-| A Skill also works without `permissions.toml` when the question is general | to do |
+| A Skill also works without `permissions.toml` when the question is general | in progress (PR #18, host acceptance pending) |
 | Procedures of the 21 Skills: reading interpretation, conditions for use, ending a diagnosis and verifying a change | in progress |
 
 **Complete when:** for "let's settle on the CSV separator, do it" the edit request contains the settled value, as confirmed by a test on the real request generator.
@@ -79,8 +79,8 @@ Working and merged:
 
 | Task | Status |
 |---|---|
-| Project tests (for example `pytest`, `go test`, `npm test`) on an isolated copy, not only seven fixed checks | to do |
-| A clear message about what a given check confirms and what it does not | to do |
+| Project tests (for example `pytest`, `go test`, `npm test`) on an isolated copy, not only seven fixed checks | in progress (PR #18, host acceptance pending) |
+| A clear message about what a given check confirms and what it does not | in progress (PR #18, host acceptance pending) |
 | A longer time limit for `high`, if long messages exceed it | to check |
 
 ## Stage 6: cleanup before release
@@ -104,6 +104,17 @@ Working and merged:
 6. Release checklist ticked for this commit.
 
 ## Progress log
+
+### 2026-11-05 — E3–E6: desktop agents and the authorized change-and-test flow
+
+**Status: READY FOR TEST.** [PR #18](https://github.com/ultherego/ai-desktopv2/pull/18), branch `fix/conversation-project-review`, based on [`4c1e81c`](https://github.com/ultherego/ai-desktopv2/commit/4c1e81c31d9e1b6033e21a444b1fe370224c9ce6) after #15 and #17. Candidate `0.1.0-71`.
+
+- Start chat directly, select Claude/Codex/loopback, switch recipients explicitly in a running or saved conversation, inspect what will be shared, or keep the previous recipient. The local endpoint has its own grant. A policy change invalidates the authorization; old answers with unknown provenance retire from outgoing history.
+- Named cloud slots, offline quota observations, terminal panel and Niri/DMS integration share the same selection. [Installation](AGENT_INSTALL.md), [account and local configuration](AGENT_MANAGEMENT.md) and [desktop setup](DESKTOP.md) describe the entry points. A desktop status query cannot log into an account.
+- Skills obey the owner's wire budget. Setup assigns the diagnostic procedures to an empty diagnostic role; reuse requires a current assignment, matching content and an authorized recipient. Nested commands require literal verbs. Project edits carry the context the user approved, including earlier agreements.
+- Project test recipes exercise isolated copies. The approved policy and snapshot are checked again before reuse. Go and npm additionally require a resource-limited user scope. Test failures or incomplete input prevent a successful result; host acceptance must cover the real toolchain and resource limits.
+- Evidence: source-table migration [`677e803`](https://github.com/ultherego/ai-desktopv2/commit/677e8034fe1b7b52595e16411e932b979297f801) passed [five CI jobs](https://github.com/ultherego/ai-desktopv2/actions/runs/42084707209). Later code is evaluated separately in [the PR checks](https://github.com/ultherego/ai-desktopv2/pull/18/checks). Offline component tests use synthetic accounts, files and HTTP fixtures. Full local verification in the development container is limited by UID 0; local tests did not use real credentials, native inference or the desktop compositor.
+- **Next step:** after the final head passes CI, run the CI and LOCAL gates for that SHA on CachyOS, exercise the desktop widget, and obtain explicit host acceptance before merge. Actual subscription login, provider quota events and the user's own model require separate consent. Automatic account switching and third-party native harnesses are outside the supported recipient set.
 
 ### 2026-11-05 — E3: quality of the Skills procedures
 
