@@ -1,26 +1,41 @@
 ---
 name: arch-zram
-description: Wyjaśnia i diagnozuje pamięć wymiany zram w Arch Linux. Użyj przy pytaniach o zram, zswap, zużycie pamięci wymiany albo hibernację.
+description: Wyjaśnia i diagnozuje zram, zswap oraz wykorzystanie pamięci wymiany w Arch Linux. Użyj przy presji pamięci, nieskutecznej kompresji, błędzie konfiguracji albo pytaniu o hibernację.
 ---
 
-# Zram w Arch Linux
+# Diagnostyka zram i pamięci wymiany
 
-## Procedura
+## Dane wejściowe i dostęp
 
-1. Odczytaj stan: `zramctl`, `swapon --show`, `free -h`.
-2. Sprawdź, czy zswap jest włączony: `/sys/module/zswap/parameters/enabled`.
-3. Ustal objaw: brak pamięci, zacinanie czy tylko pytanie o wartości.
-4. Sprawdź, skąd pochodzi konfiguracja, zanim coś zmienisz: `zram-generator`, reguła udev czy ustawienia dystrybucji.
+Ustal, czy występuje brak pamięci, zacinanie, błąd uruchomienia urządzenia czy jedynie niezrozumiałe wartości. Nie proponuj strojenia bez objawu lub celu. Odczyty wykonuj wyłącznie w dostępnym zakresie polityki; odmowa nie oznacza braku urządzenia.
 
-## Najważniejsze zasady
+## Rozpoznanie
 
-- Włączony zswap nie pozwala skutecznie używać zram, bo działa przed nim jako pamięć podręczna. Wyłącz zswap: `zswap.enabled=0`.
-- **Hibernacja na zram nie jest możliwa**, także z urządzeniem zapasowym. Potrzebna jest zwykła pamięć wymiany.
-- Urządzenie zram nie rezerwuje pamięci z góry: zajmuje ją dopiero po zapisaniu danych. Duży rozmiar nie oznacza utraconej pamięci.
-- Przy zstd można przyjąć ostrożnie współczynnik 1:2, a typowo około 1:3.
+1. Jeśli dozwolone, odczytaj `zramctl`, `swapon --show` i `free -h`. Powiąż urządzenia, priorytety i wykorzystanie; nie zakładaj numeru `zram0`.
+2. Dla wykrytego urządzenia odczytaj dostępne statystyki w `/sys/block/URZADZENIE/mm_stat`. Dokumentacja jądra określa kolejność pól; nie zgaduj jednostek ani nazw na podstawie pozycji bez sprawdzenia wersji.
+3. Stan `/sys/module/zswap/parameters/enabled` rozstrzyga, czy działa dodatkowy cache zswap. Ustal także, gdzie znajduje się rzeczywista pamięć wymiany.
+4. Znajdź źródło konfiguracji: generator systemd, reguła udev lub konfiguracja dystrybucji. Czytaj tylko istniejące, dozwolone pliki; nie nakładaj drugiego mechanizmu zarządzania na pierwszy.
 
-## Konfiguracja
+## Interpretacja
 
-`zram-generator` korzysta z mechanizmów systemd. Ręcznie na czas sesji: `zramctl` i `mkswap`, cofnięcie: `swapoff /dev/zram0`, `modprobe -r zram`. Zmiana stała to zmiana systemu: opisz ją jako plan.
+- Duże `DISKSIZE` oznacza pojemność logiczną, nie pamięć RAM zarezerwowaną w tej wielkości.
+- `orig_data_size` opisuje dane przed kompresją; `compr_data_size` dane skompresowane; `mem_used_total` rzeczywisty koszt wraz z narzutem. Oceniaj pomiar tego samego urządzenia, zamiast zakładać stały współczynnik kompresji.
+- Zajęty swap przy dostępnej pamięci nie dowodzi awarii. Powiąż objaw z powtarzalnym obciążeniem, presją pamięci i ewentualnym zdarzeniem OOM.
+- Zswap przechwytuje strony przed urządzeniem wymiany. Jego współistnienie z zram wymaga oceny narzutu i celu; nie wyłączaj go automatycznie na podstawie samej obecności obu mechanizmów.
+- Hibernacja wymaga trwałego miejsca na obraz. Sam zram nie zachowa go po wyłączeniu zasilania; diagnostyka hibernacji wymaga osobnego sprawdzenia urządzenia i konfiguracji wznowienia.
 
-Źródło: Arch Wiki, <https://wiki.archlinux.org/title/Zram>.
+## Zmiana i sprawdzenie
+
+Zmiana rozmiaru, algorytmu, priorytetu lub aktywacji swapu zmienia stan systemu. Najpierw zachowaj konfigurację i ustal możliwość powrotu. `swapoff` może wymagać znacznej ilości wolnej pamięci i zakończyć się błędem; nie traktuj go jako nieszkodliwego cofnięcia ani nie proponuj masowego wyłączenia swapu przy presji pamięci.
+
+Po osobnej zgodzie porównaj to samo obciążenie, zużycie RAM, koszt kompresji i objaw. Sama aktywność usługi lub poprawny plik konfiguracyjny nie potwierdzają poprawy.
+
+## Wynik
+
+Podaj mechanizm konfiguracji, aktywne urządzenia, interpretację pomiarów i związek z objawem. Gdy nie ma dowodu problemu, zakończ wyjaśnieniem wartości; gdy brakuje obserwacji, wskaż jeden potrzebny pomiar.
+
+## Źródła
+
+- [Jądro: zram, statystyki i dezaktywacja](https://docs.kernel.org/admin-guide/blockdev/zram.html).
+- [Jądro: rola zswap](https://docs.kernel.org/admin-guide/mm/zswap.html).
+- [util-linux: `swapoff`, kody błędów](https://man7.org/linux/man-pages/man8/swapon.8.html).

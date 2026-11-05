@@ -1,55 +1,40 @@
 ---
 name: cachyos-gaming
-description: Diagnozuje uruchamianie i wydajność gier na CachyOS. Użyj przy problemach z grami, Steam, Protonem, Lutris, Heroic, game-performance lub gamemode.
+description: Diagnozuje uruchamianie, awarie i wydajność gier na CachyOS. Użyj przy Steam, Protonie, Lutris lub Heroic; prowadzi porównanie jednej zmiany z wynikiem bazowym.
 ---
 
-# Gry na CachyOS
+# Diagnostyka gry i pomiar zmiany
 
-Najpierw ustal: kartę graficzną i sterownik, grę, wersję Protona, sposób uruchamiania. Sterowniki muszą działać, zanim zaczniesz stroić.
+## Zbierz minimalny kontekst
 
-## Procedura
+Ustal grę, sposób instalacji i uruchamiania, wersję gry i warstwy zgodności, kartę oraz sterownik. Zapytaj o dokładny objaw i ostatnią zmianę, jeśli nie wynika to z rozmowy. Rozróżnij brak uruchomienia, awarię po czasie i gorszą wydajność. Nie zaczynaj od strojenia systemu.
 
-1. Ustal to, co wyżej: kartę i sterownik, grę, wersję Protona, sposób uruchamiania.
-2. Sprawdź system plików biblioteki gier oraz zgodność gry i jej zabezpieczeń.
-3. Włącz log Protona i przeczytaj go, zanim coś zmienisz.
-4. Zmieniaj po jednej rzeczy: najpierw wersję Protona dla tej gry, potem opcje uruchamiania.
+## Wybierz ścieżkę
 
-## Pakiety
+| Obserwacja | Następny krok |
+|---|---|
+| Gra nie uruchamia się | Sprawdź komunikat, wymagania gry i obsługę zabezpieczeń w źródłach gry; porównaj wersję warstwy zgodności. |
+| Kończy się jeden konkretny tytuł | Odczytaj log z tej próby i dopasuj czas błędu; odróżnij istotny błąd od powtarzalnych ostrzeżeń. |
+| Problemy dotyczą wielu gier | Sprawdź wspólny sterownik, zasoby, bibliotekę gier i ostatnią aktualizację; skorzystaj z właściwego wybranego Skilla. |
+| Spada płynność po czasie | Porównaj obciążenie, temperatury i pamięć z momentem wystąpienia objawu. Samo użycie swap nie dowodzi przyczyny. |
+| Objaw występuje tylko z nakładką lub nagrywaniem | Zaplanuj próbę bez jednego dodatku, zachowując pozostałe ustawienia. |
 
-- `cachyos-gaming-meta` i `cachyos-gaming-applications` (Gamescope, GOverlay, MangoHud, Steam, Heroic, Lutris, Faugus). Instalacja także z CachyOS Hello.
+Odczyt plików i logów wymaga dostępu w polityce. Piaskownica poleceń nie widzi zwykle sesji gry; brak urządzenia lub procesu w jej widoku nie dowodzi braku na hoście. Nie czytaj danych konta i nie proś o cały katalog gry lub pełny raport bez potrzeby.
 
-## Proton
+## Próba i porównanie
 
-- **Valve zaleca domyślny Proton jako globalny.** Inną wersję ustawiaj dla gry: Properties, Compatibility.
-- `proton-cachyos` jest częścią `cachyos-gaming-meta`. Odmiany `proton-cachyos-slr` i `proton-cachyos-native`; wiki poleca `slr`, także dla gier z EAC i BattlEye.
-- NTSync jest włączony; wyłączenie: `PROTON_NO_NTSYNC=1`.
-- Zgodność: ProtonDB, Are We Anti-Cheat Yet.
-- Nie uruchamiaj Protona z dysku NTFS: Valve tego nie wspiera. Sprawdź system plików biblioteki gier.
+1. Zapisz stan bazowy: ustawienia grafiki, rozdzielczość, limit FPS, wersję warstwy zgodności, opcje startu oraz odtwarzalną scenę. Wybierz miarę odpowiadającą celowi: awaria, czas uruchomienia, czas klatki, FPS lub pobór mocy.
+2. Dobierz jedną zmianę wynikającą z dowodów. Zachowaj poprzednią wartość i sposób jej przywrócenia. Nie zmieniaj globalnie kilku parametrów ani nie usuwaj prefiksu lub cache jako zwykłego testu.
+3. Po osobnej zgodzie na zmianę wykonaj tę samą próbę w porównywalnych warunkach. Oddziel pierwszy przebieg z kompilacją shaderów od kolejnych; porównaj kilka powtórzeń. Jedna korzystna liczba bez warunków pomiaru nie dowodzi poprawy.
+4. Przy awarii lub pogorszeniu zaproponuj przywrócenie dokładnego stanu bazowego. Nie utrwalaj zmiany na podstawie niepełnego pomiaru.
 
-## Opcje uruchamiania Steam
+Do uzasadnionej próby diagnostycznej Proton udostępnia opcję startu Steam `PROTON_LOG=1 %command%`. Jej ustawienie i utworzenie logu są zmianą; nie udawaj ich wykonania przez aplikację. Przed odczytem wybierz potrzebny fragment, a po próbie przywróć wcześniejsze opcje. Dostępność parametrów sprawdzaj w dokumentacji używanej wersji.
 
-`[zmienne] [nakładki] %command% [argumenty]`, np. `game-performance %command%`. Tylko jedno `%command%`: wszystko po pierwszym idzie do gry.
+## Wynik
 
-## game-performance
+Podaj zakres problemu, dowody, tabelę baza/próba z warunkami pomiaru, stan zastosowania i wynik. Jeśli próba nie odbyła się na żywej grze, nazwij ją niewykonaną. Nie obiecuj wzrostu wydajności na podstawie nazwy pakietu lub planisty.
 
-Skrypt CachyOS: na czas gry przełącza profil zasilania na wydajność oraz aktywnego planistę sched-ext na profil gier. Po wyjściu z gry przywraca stan. Na starych procesorach może nie dawać korzyści.
+## Źródła
 
-**Nie łącz `gamemode` z `ananicy-cpp`.** Wiki zaleca wtedy zatrzymanie `ananicy-cpp`.
-
-## Logi
-
-- `PROTON_LOG=1 %command%` zapisuje `steam-IDAPLIKACJI.log` w katalogu domowym (inny katalog: `PROTON_LOG_DIR`).
-- Lutris: Output debugging info, zmienna `PROTON_LOG=1`.
-- Dziennik może zawierać dane konta: przed udostępnieniem należy go przejrzeć.
-
-## Znane sprawy
-
-- Pamięć shaderów: `~/.config/environment.d/gaming.conf`, AMD: `MESA_SHADER_CACHE_MAX_SIZE=12G`, NVIDIA: `__GL_SHADER_DISK_CACHE_SIZE=12000000000`, potem restart.
-- Kolorowe paski w H264: `steam steam://unlockh264/` raz, potem restart Steam.
-- Zacinanie przy nagrywaniu: `LD_PRELOAD="" %command%` (wyłącza nakładkę Steam).
-- umu-launcher dla Lutris i Heroic: `cachyos/umu-launcher`. Własne DXVK i VKD3D nie są wtedy stosowane.
-- Gamescope jako sesja: `gamescope-session-cachyos`.
-- Jądro czasu rzeczywistego nie poprawia gier.
-- `wine-cachyos` jest nastawiony na gry; dla zwykłych programów wiki radzi `wine` lub `wine-staging`.
-
-Źródło: <https://wiki.cachyos.org/configuration/gaming/>.
+- CachyOS, logi i opcje uruchamiania: <https://wiki.cachyos.org/configuration/gaming/>.
+- Proton, parametry runtime: <https://github.com/ValveSoftware/Proton#runtime-config-options>.

@@ -1,47 +1,42 @@
 ---
 name: cachyos-kernel
-description: Pomaga wybrać i zmienić jądro CachyOS oraz naprawić jego moduły. Użyj przy pytaniach o warianty jądra, Kernel Manager, moduły NVIDIA lub ZFS albo przy błędach po zmianie jądra.
+description: Diagnozuje regresje po zmianie jądra CachyOS i zgodność jego modułów. Użyj przy wyborze wariantu, błędach initramfs, DKMS albo potrzebie porównania z działającym jądrem.
 ---
 
-# Jądra CachyOS
+# Jądro i moduły CachyOS
 
-Najpierw ustal stan: `uname -r` i `pacman -Qs linux-cachyos`. Jądro działające może być inne niż zainstalowane po aktualizacji bez restartu.
+## Ustal punkt odniesienia
 
-## Procedura
+Ustal objaw, ostatnie działające jądro, moment aktualizacji i czy wykonano restart. Odczytaj `uname -r` oraz dozwolone zapytania pakietowe, np. `pacman -Qs linux-cachyos` i `pacman -Qi NAZWA`. Działające jądro może być starsze od zainstalowanego; sama ta różnica przed restartem nie dowodzi awarii.
 
-1. Ustal, czego użytkownik potrzebuje i dlaczego. Bez konkretnej potrzeby zostań przy `linux-cachyos`.
-2. Odczytaj działające i zainstalowane jądra oraz moduły.
-3. Sprawdź ograniczenia wybranego wariantu, np. brak sched-ext.
-4. Zaproponuj zmianę jako plan i zostaw drugie, działające jądro.
+Nie wybieraj wariantu na podstawie samej obietnicy wydajności. Nazwy, dostępność i funkcje pakietów sprawdzaj w aktualnej dokumentacji i repozytoriach, zamiast zakładać niezmienny katalog wariantów.
 
-## Warianty
+## Interpretacja
 
-- `linux-cachyos`: domyślne i zalecane, gdy nie ma powodu wybierać inaczej (1000 Hz, Clang ThinLTO, AutoFDO).
-- `linux-cachyos-bore`: planista BORE.
-- `linux-cachyos-eevdf`: dostrojony planista domyślny.
-- `linux-cachyos-lts`: najnowsze LTS z BORE, mało poprawek. Dobre jako jądro zapasowe.
-- `linux-cachyos-bmq`: planista BMQ. **Bez sched-ext.**
-- `linux-cachyos-hardened`: utwardzone, wyraźnie wolniejsze. **Bez sched-ext.**
-- `linux-cachyos-deckify`: domyślne na urządzeniach przenośnych. Inne jądra nie są tam wspierane.
-- `linux-cachyos-server`: 300 Hz, bez wywłaszczania, EEVDF.
-- `linux-cachyos-rt-bore`: czas rzeczywisty. Wiki wprost: nie poprawia wydajności w grach.
-- `linux-cachyos-rc`: najnowsze z gałęzi głównej, do testów.
+| Obserwacja | Następny krok |
+|---|---|
+| Objaw występuje tylko na nowym jądrze | Porównaj te same warunki na zachowanym działającym jądrze; zbierz odpowiedni dziennik. Zbieżność czasowa jest hipotezą regresji. |
+| `module not found` przy budowie initramfs | Ustal dokładny moduł i jądro, którego dotyczy błąd; sprawdź pliki właściwego pakietu. Nie usuwaj modułu z konfiguracji tylko po to, by ukryć błąd. |
+| Moduł DKMS nie został zbudowany | Sprawdź zgodne nagłówki i konkretny log budowy. Nie zakładaj, że pakiet modułu prekompilowanego pasuje do każdego wariantu. |
+| Błąd ładowania lub podpisu modułu | Oddziel niezgodność wersji, brak modułu i politykę podpisów. Nie wyłączaj Secure Boot jako pierwszej naprawy. |
+| System nie dochodzi do uruchomienia usług | Zastosuj procedurę rozpoznania rozruchu, np. `cachyos-boot-snapshots`, jeśli jest dostępna. |
+| Brak logu albo możliwości porównania | Podaj hipotezę i brakujący dowód; nie deklaruj potwierdzonej regresji. |
 
-Nazwy pakietów towarzyszących mają postać `NAZWA-headers`, `NAZWA-nvidia`, `NAZWA-nvidia-open`, `NAZWA-zfs`, `NAZWA-dbg`.
+Logi jądra odczytuj tylko z właściwego czasu i zakresu udostępnionego przez kontroler. Odmowy nie obchodź przez `sudo` ani swobodną powłokę.
 
-## Moduły
+## Zmiana i test
 
-Jądra CachyOS mają gotowe moduły NVIDIA (zamknięte i otwarte) oraz ZFS, więc pakiety `-dkms` zwykle nie są potrzebne. Błąd `ERROR: module not found: 'nvidia'` przy budowie initramfs oznacza zwykle brak modułów dla któregoś z zainstalowanych jąder. Sprawdź, które jądra są zainstalowane i czy mają moduły.
+Przed instalacją lub usunięciem ustal zależne moduły, nagłówki dla DKMS oraz mechanizm generowania initramfs i wpisów bootloadera. Zachowaj co najmniej jedno sprawdzone jądro i możliwość wyboru go przy rozruchu. Nie usuwaj działającego wariantu podczas próby.
 
-## CachyOS Kernel Manager
+Przedstaw osobny plan z pakietami, zmianami w `/boot`, zgodą i drogą odzyskania. Po wykonaniu sprawdź wynik hooków i dostępność wpisów, a po kontrolowanym restarcie `uname -r`, stan potrzebnych modułów i pierwotny objaw. Sama instalacja pakietu nie dowodzi uruchomienia nowego jądra.
 
-Program graficzny. Instalacja lub usunięcie: zaznacz jądro i naciśnij Execute. Własna kompilacja: Configure, a potem Build kernel; pliki i pamięć podręczna są w `~/.cache/cachyos-km/`. Buduje tylko warianty CachyOS, nie zwykłe jądro Archa. Zarządza też planistami sched-ext i wymaga działającego agenta polkit.
+Cofnięcie wymaga zgodnych plików jądra, initramfs, modułów i konfiguracji. Migawka root może nie obejmować `/boot` lub ESP. Jeśli kontroler nie potrafi bezpiecznie wykonać operacji, zakończ na planie dla użytkownika.
 
-## Zasady zmian
+## Wynik
 
-- Zmiana jądra to zmiana systemu: opisz jako plan i zaproponuj, by zostawić drugie, działające jądro (np. `linux-cachyos-lts`).
-- Instalacja jądra bez `-headers` psuje moduły budowane przez DKMS, jeśli są używane.
-- Po aktualizacji jądra rollback migawki może być niemożliwy: zobacz Skill `cachyos-boot-snapshots`.
-- Parametry jądra zależą od programu rozruchowego: zobacz ten sam Skill.
+Podaj jądro działające i zainstalowane, stan istotnego modułu, dowód diagnozy, wykonany test i jeden następny krok. Nie obiecuj poprawy wydajności bez porównania tego samego obciążenia.
 
-Źródła: <https://wiki.cachyos.org/features/kernel/>, <https://wiki.cachyos.org/features/kernel_manager/>.
+## Źródła
+
+- [Warianty i moduły prekompilowane](https://wiki.cachyos.org/features/kernel/#variants).
+- [Zakres przywracania migawek](https://wiki.cachyos.org/configuration/btrfs_snapshots/).

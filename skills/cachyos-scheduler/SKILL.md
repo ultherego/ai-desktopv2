@@ -1,57 +1,38 @@
 ---
 name: cachyos-scheduler
-description: Diagnozuje i ustawia planistów sched-ext w CachyOS. Użyj przy pytaniach o scx_loader, scxctl, profile planisty albo gdy planista nie działa lub zawiesza system.
+description: Diagnozuje działanie sched-ext i porównuje zmianę planisty na CachyOS. Użyj przy scx_loader, scxctl, awarii planisty lub pomiarze wpływu planowania na wydajność i energię.
 ---
 
-# Sched-ext w CachyOS
+# Sched-ext: stan, diagnoza i próba
 
-Sched-ext pozwala uruchomić planistę BPF zamiast domyślnego w jądrze. Zatrzymanie go przywraca domyślny. Nie działa na `linux-cachyos-bmq` i `linux-cachyos-hardened`.
+## Ustal stan
 
-## Procedura
+1. Ustal cel i objaw: awaria, opóźnienia czy planowany pomiar. Bez konkretnego problemu nie proponuj strojenia.
+2. Odczytaj działające jądro przez `uname -r` oraz wersje dostępnych narzędzi. Nazwa wariantu jądra nie jest wystarczającym dowodem obsługi funkcji.
+3. Jeżeli polityka i widok systemu pozwalają, odczytaj `/sys/kernel/sched_ext/state` i `/sys/kernel/sched_ext/root/ops`. `enabled` wraz z nazwą operacji potwierdza aktywność planisty BPF; `disabled` wskazuje brak aktywnego sched-ext. Brak ścieżki lub odmowa odczytu wymaga rozróżnienia obsługi jądra od ograniczenia dostępu.
+4. Ustal menedżera i jego stan: `systemctl status scx_loader.service --no-pager`, a przy dostępnym kliencie `scxctl get` i `scxctl list`. To przykłady odczytu, wykonywane wyłącznie po dopasowaniu do polityki.
 
-1. Sprawdź, czy jądro obsługuje sched-ext i czy planista jest w ogóle używany.
-2. Odczytaj stan usługi i dziennik, poniżej.
-3. Sprawdź konflikty: `scx.service` razem ze `scx_loader`, `ananicy-cpp`.
-4. Zmianę zaproponuj najpierw jako test na czas sesji, a stałą konfigurację dopiero potem.
+## Interpretuj wynik
 
-## Stan (tylko odczyt)
+- Brak aktywnego planisty może być zamierzony. Nie oznacza, że system jest zepsuty lub nie używa planisty CPU.
+- Aktywna usługa nie dowodzi załadowania planisty. Porównaj stan usługi z wynikiem jądra i logiem z tego samego czasu.
+- Błąd połączenia klienta D-Bus w piaskownicy nie dowodzi awarii usługi na hoście. Nie przenoś odczytu do `change` ani nie rozszerzaj dostępu, aby go obejść.
+- Gdy planista zniknął po błędzie, przeczytaj dostępny fragment dziennika menedżera i jądra. Kernel może odłączyć planistę BPF po błędzie. Ustal powód z logu zamiast zakładać konflikt konkretnego programu.
+- Przy dwóch mechanizmach zarządzania lub samoczynnej zmianie profilu ustal, który steruje stanem i kiedy. Nie wyłączaj usług tylko na podstawie ich obecności.
 
-- `systemctl status scx_loader.service`, `journalctl -u scx_loader.service -b 0`
-- `scxctl get`, `scxctl list`
-- pakiety: `pacman -Q scx-scheds scx-tools`
+## Zmiana z pomiarem
 
-## Sterowanie (wymaga uprawnień administratora albo agenta polkit)
+Zachowaj bazę: jądro, aktywny planista i tryb, menedżer oraz jego konfiguracja. Wersja `scxctl` decyduje o nazwach i parametrach; wybierz dostępny wariant, bez listy stałych numerów profili lub obietnicy poprawy.
 
-```
-scxctl start --sched flash --mode gaming
-scxctl switch --sched bpfland --mode gaming
-scxctl stop
-scxctl restore
-```
+Zaplanuj jedną odwracalną próbę, miarę i identyczne obciążenie dla kilku powtórzeń. Uwzględnij responsywność, stabilność i pobór mocy, gdy są celem. Sterowanie wymaga osobnej zgody i mechanizmu aplikacji, który rzeczywiście ma dostęp; Skill nie nadaje praw administratora ani polkit.
 
-Uruchomienie bezpośrednie do testu: `sudo scx_rusty`, zatrzymanie: Ctrl+C. Graficznie: CachyOS Kernel Manager albo SCX Manager.
+Wycofanie ma przywracać zapamiętany stan. `scxctl restore` przywraca ustawienie domyślne z konfiguracji, które może różnić się od stanu sprzed próby. Przy zawieszeniu lub pogorszeniu zakończ próbę; trwałą konfigurację proponuj dopiero po pomiarze. Nie dodawaj parametrów jądra w ramach zwykłego porównania planistów.
 
-Profile: Auto, Gaming, Power save, Low Latency, Server. Numery trybów scx_loader: 0 domyślny, 1 Gaming, 2 Power Saving, 3 Low Latency, 4 Server.
+## Wynik
 
-## Stała konfiguracja
+Podaj potwierdzony stan jądra i menedżera, przyczynę lub hipotezę z dowodem, bazę i wynik próby oraz stan wycofania. Przy braku logów lub widoczności zakończ na konkretnej luce, bez diagnozy z samego komunikatu dostępu.
 
-Kolejność szukania pliku: `/etc/scx_loader/config.toml`, `/etc/scx_loader.toml`, `/usr/share/scx_loader/config.toml`, `/usr/share/scx_loader.toml`. Kernel Manager zapisuje `/etc/scx_loader.toml`. Najpierw sprawdź, który plik istnieje.
+## Źródła
 
-```toml
-default_sched = "scx_bpfland"
-default_mode = "Gaming"
-```
-
-Włączenie: `sudo systemctl enable --now scx_loader.service`.
-
-## Typowe problemy
-
-- **Nie uruchamiaj razem `scx.service` i `scx_loader`**: `scx_loader` startuje, ale nic nie robi. Własne flagi z `/etc/default/scx` nie przenoszą się same.
-- `ananicy-cpp` może powodować zawieszenia planisty. Wiki zaleca wtedy jego wyłączenie.
-- Awaria planisty: przyczyną może być `ananicy-cpp`, przeciążenie albo błąd. Log: `journalctl -u scx_loader.service -b 0`. Dokładniejszy log przez `RUST_LOG=trace` w `systemctl edit scx_loader.service`.
-- `power-profiles-daemon` CachyOS przełącza profil planisty razem z profilem zasilania, a `game-performance` przełącza na Gaming.
-- `scx_tickless` wymaga parametru jądra `nohz_full` i jest eksperymentalny.
-
-Nie obiecuj wzrostu wydajności: zależy od obciążenia. Do porównań służy `cachyos-benchmarker`.
-
-Źródło: <https://wiki.cachyos.org/configuration/sched-ext/>.
+- Kernel, stan i zachowanie sched-ext: <https://www.kernel.org/doc/html/latest/scheduler/sched-ext.html#switching-to-and-from-sched-ext>.
+- CachyOS, zarządzanie i porównanie: <https://wiki.cachyos.org/configuration/sched-ext/>.
