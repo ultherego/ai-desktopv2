@@ -75,6 +75,17 @@ class ConversationLoopTests(unittest.TestCase):
         self.assertEqual(queue, [], "unused replies")
         return SimpleNamespace(code=code, out=out.getvalue(), sent=sent, histories=histories, prompts=prompts)
 
+    def test_local_project_test_before_the_first_question_keeps_the_same_thread(self):
+        from ai_desktop import project_checks
+        outcome = project_checks.Result(0, "pytest passed on tested snapshot abc123.")
+        stored = FakeConversation()
+        with patch.object(project_checks, "current", return_value=outcome) as runner:
+            result = self.run_ui(["--session", "new"], ["/test pytest", "What passed?", "yes", ""], conversation=stored)
+        runner.assert_called_once()
+        self.assertEqual(result.sent.call_count, 1)
+        self.assertEqual(result.histories[0], [{"question": "/test pytest", "answer": outcome.summary}])
+        self.assertIn(outcome.summary, str(stored.saved["memory"]["entries"]))
+
     def test_prompt_returns_and_history_is_carried_under_one_consent_for_the_conversation(self):
         r = self.run_ui([], ["Chce undervolt do gry, uzywam LACT", "yes", "Jakie sa ustawienia?",
                              "Sprawdz wynik", ""])

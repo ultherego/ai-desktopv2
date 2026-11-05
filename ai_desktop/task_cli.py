@@ -151,8 +151,8 @@ def finish_task(before, source, response, args, reader, *, write_guard=None, con
         print("TASK TEST: " + ("PASS" if result["passed"] else "FAIL") + " check=" + args.test)
         print("Test on a copy: " + ("passed" if result["passed"] else "failed") + " (" + args.test + ").")
     else:
-        print("Check on %d selected file(s): %s (%s)." % (
-            len(source["files"]), "passed" if result["passed"] else "failed", args.test))
+        print("Test on a copy: %s (%s); %d selected file(s)." % (
+            "passed" if result["passed"] else "failed", args.test, len(source["files"])))
         if args.test not in contract.TEST_SUITES:
             print("This checks syntax only; project tests were not run.")
     if not result["passed"]:

@@ -3,7 +3,7 @@ import json
 import re
 import unicodedata
 
-from .task_contract import CHECKS
+from .task_contract import CHECKS, TEST_SUITES
 
 
 MAX_ACCESS_BYTES = 8192
@@ -43,7 +43,7 @@ def _text(value, limit, *, multiline=False):
 def validate_access(value):
     """Copy only configured labels and finite source capabilities, without I/O."""
     if (type(value) is not dict or not {"files", "systemd", "weather"} <= set(value)
-            or set(value) - {"files", "systemd", "weather", "write", "web", "commands", "change_commands"}
+            or set(value) - {"files", "systemd", "weather", "write", "web", "commands", "change_commands", "project_test"}
             or type(value["files"]) is not list or len(value["files"]) > MAX_FILE_SCOPES
             or type(value["systemd"]) is not list or len(value["systemd"]) > 2
             or type(value["weather"]) is not bool
@@ -65,6 +65,10 @@ def validate_access(value):
     result = {"files": files, "systemd": scopes, "weather": value["weather"]}
     if "web" in value:
         result["web"] = value["web"]
+    if "project_test" in value:
+        if value["project_test"] is not True or not result["files"]:
+            raise ValueError("assistant-access")
+        result["project_test"] = True
     if "commands" in value:
         if (type(value["commands"]) is not list or not 1 <= len(value["commands"]) <= 128
                 or any(type(item) is not str for item in value["commands"])
@@ -191,6 +195,14 @@ def parse_plan(raw, access):
                 raise ValueError("assistant-plan")
             check = "text"
             return {"action": "answer", "text": _text(value["text"], MAX_PLAN_BYTES, multiline=True)}
+        if value.get("action") == "project-test":
+            check = "access"
+            if access.get("project_test") is not True:
+                raise ValueError("assistant-plan")
+            check = "shape"
+            if set(value) != {"action", "recipe"} or value["recipe"] not in TEST_SUITES:
+                raise ValueError("assistant-plan")
+            return {"action": "project-test", "recipe": value["recipe"]}
         if value.get("action") == "run":
             from .command_ops import clean_argv
             check = "shape"

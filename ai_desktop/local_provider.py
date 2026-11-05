@@ -67,12 +67,12 @@ def _http(body, port, policy, seconds, *, before_send=None):
         timer.daemon = True
         timer.start()
         try:
+            if before_send is not None:
+                before_send()
             try:
                 policy.recheck()
             except (ValueError, OSError):
                 raise AnalysisDenied("authorization") from None
-            if before_send is not None:
-                before_send()
             connection.request(method, path, body=body, headers={"Content-Type": "application/json",
                                "Accept": "application/json", "Connection": "close"})
             with connection.getresponse() as response:

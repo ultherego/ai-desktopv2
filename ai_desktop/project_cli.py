@@ -524,49 +524,8 @@ class ProjectSession(Session):
                                    else "change NOT saved (rejected, failed test or error)")
 
     def test_project(self, recipe):
-        from . import task_sandbox
-        from .analysis_contract import terminal_text
-        from .run_controls import require_changes
-        if recipe not in task_contract.TEST_SUITES:
-            print("Available offline suites: " + ", ".join(task_contract.TEST_SUITES))
-            return
-        try:
-            require_changes()
-            if not self._refresh():
-                return
-            entries = self.project.test_selection()
-            skipped = self._skipped_total()
-            print("Offline %s on a temporary copy of %d indexed file(s); %d entries excluded from the index." %
-                  (recipe, len(entries), skipped))
-            print("Project: " + _safe(self.project.root))
-            print("Network, user HOME and host writes are blocked. Test output stays in this terminal.")
-            if not confirm("project-test", reader=self.reader):
-                print("Test cancelled.")
-                return
-            files = self.project.test_copy(entries)
-            executable = [entry.path for entry in entries if entry.identity[2] & 0o100]
-            self.policy.recheck()
-            result = task_sandbox.run_copy(files, recipe, executable=executable)
-        except EOFError:
-            return
-        except AnalysisDenied:
-            print("This profile cannot execute project tests.")
-            return
-        except (OSError, ValueError) as exc:
-            reasons = {"TEST_SIZE": "the complete index must fit the file count, per-file and total read limits",
-                       "TEST_CHANGED": "the indexed project changed during the copy",
-                       "TEST_FORMAT": "the index includes an unsupported name, binary or protected content"}
-            print("Test refused: " + reasons.get(getattr(exc, "code", None), "the policy, files or sandbox are unavailable") + ".")
-            return
-        print("Untrusted local test output:")
-        print(terminal_text(result["output"]))
-        state = "passed" if result["passed"] else "failed or could not complete"
-        if recipe == "npm-test" and result["passed"]:
-            state = "script exited 0 (test count unknown)"
-        outcome = "%s %s on the isolated copy of %d indexed file(s), %d entries excluded." % (
-            recipe, state, len(entries), skipped)
-        print(outcome)
-        return outcome
+        from . import project_checks
+        return project_checks.run(self.project, recipe, self.reader).summary or None
 
     def _expand_pastes(self, text):
         """The edit request carries the pasted text itself (the marker alone would tell the model nothing)."""

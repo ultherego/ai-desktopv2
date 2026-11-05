@@ -121,6 +121,10 @@ def capture_access():
     if selected is not None and selected["access"] == "read-only":
         # A read-only profile gets neither files to edit nor commands that change the live system.
         access = {key: value for key, value in access.items() if key not in ("write", "change_commands")}
+    else:
+        from .project_checks import current_directory
+        if current_directory(policy) is not None:
+            access = {**access, "project_test": True}  # capability only; cwd stays local
     return AccessSnapshot(policy, sources, validate_access(access),
                           "claude" if selected is None else selected["provider"])
 
@@ -235,11 +239,12 @@ def _run_command(snapshot, ledger, plan, permit, args, reader):
     shown = lambda words: terminal_text(" ".join(words))
 
     def add(words, role, status, code=None, output="", cut=False):
-        ledger.add_run({"op": "run", "argv": list(words), "status": status, "exit": code, "output": output,
-                        "truncated": cut, "role": role})
+        observed = ledger.add_run({"op": "run", "argv": list(words), "status": status, "exit": code,
+                                   "output": output, "truncated": cut, "role": role})
         outcome = _OUTCOME.get(status, "failed")
         conversation_state.note_action("%s %s: %s%s" % (_LABEL[role], " ".join(words), outcome,
                                                        "" if code is None else ", code %d" % code))
+        return observed
 
     def spend():
         try:
@@ -276,7 +281,7 @@ def _run_command(snapshot, ledger, plan, permit, args, reader):
             change_ran.append(True)
         # The command has already run on the live system: its result is recorded and shown before consent can stop the
         # question. A lapsed consent stops what comes next, it does not erase what happened.
-        add(words, role, step["status"], step["exit"], step["output"], step["truncated"])
+        step = add(words, role, step["status"], step["exit"], step["output"], step["truncated"])
         print(_finished(_LABEL[role], step))
         if args.details:
             print(terminal_text(step["output"]))
@@ -309,7 +314,7 @@ def _run_command(snapshot, ledger, plan, permit, args, reader):
             extra["command"] = lambda program, words: command_ops.sandbox_command(program, words, share_processes=True)
         step = command_ops.execute(path, argv, output_limit=room, timeout=policy.limits().command_timeout, **extra)
         permit.check()
-        add(argv, "read", step["status"], step["exit"], step["output"], step["truncated"])
+        step = add(argv, "read", step["status"], step["exit"], step["output"], step["truncated"])
         print(_read_line(shown(argv), step))
         if args.details:
             print(terminal_text(step["output"]))
@@ -476,7 +481,7 @@ def _run_once(question, args, reader, request, *, snapshot, phase=None, conversa
                 permit.check()
                 progress("plan")
                 following = _plan(reply, snapshot.access)
-                if following["action"] not in ("list", "find", "run", "skill", "read", "answer", "edit", "delete"):
+                if following["action"] not in ("list", "find", "run", "skill", "read", "answer", "edit", "delete", "project-test"):
                     raise PlanError("action")
                 return following
 
@@ -559,6 +564,13 @@ def _run_once(question, args, reader, request, *, snapshot, phase=None, conversa
                         _deny(snapshot.policy, problem.code, "File read refused",
                               "The file contents were not sent to Claude.")
                     plan = next_plan()
+            if plan["action"] == "project-test":
+                from . import project_checks
+                result = project_checks.current(plan["recipe"], reader, policy=snapshot.policy, permit=permit)
+                if result.summary:
+                    conversation_state.note_sources(result.sources)
+                    conversation_state.note_action(result.summary)
+                return result
             if plan["action"] == "answer":
                 return plan["text"]
             if plan["action"] == "web":

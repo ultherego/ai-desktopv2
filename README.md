@@ -146,7 +146,9 @@ The fields below are optional. Add them in the given section when you want to ch
 
 By default the model runs nothing. `allow` is a list of exact templates, without a shell. `<unit>` means one systemd unit name, `<int>` a number up to 99999, and `<word>` one simple word. Templates starting with a shell, an interpreter, `sudo`, a network client or a writing program (`rm`, `tee`, `git`, `find`, `sed` and similar) are rejected when the policy is loaded.
 
-**Commands from `allow` run without asking, and their output goes to the model.** Remove from the list what you do not want to share, including from the template, which contains among others `journalctl`, `ps aux` and `docker ps`. `deny` does not filter command output.
+For Docker, Btrfs and nmcli, give the complete command path before a placeholder, for example `docker container inspect <word>`. Spell out unknown subcommands and plugin arguments literally. Host Unix sockets may still be reachable, so review the operation itself before adding it to `allow`.
+
+**Commands from `allow` run without asking, and their output goes to the model.** Remove from the list what you do not want to share, including any extra `journalctl`, `ps aux` or `docker ps` rules you add. `deny` does not filter command output.
 
 Commands from `allow` run in a sandbox: read-only file system, hidden `/home`, `/root` and `/run/user`, no network and no input. It does not isolate host Unix sockets, so only list commands that change nothing. Some programs will not see the host state (e.g. `ip`, `wpctl`, `glxinfo`).
 
@@ -187,7 +189,9 @@ How consents work:
 
 After an applied change the model takes the next step by itself or finishes the answer, at most 5 automatic steps. Each further write again shows the diff and asks. A refusal or error hands the turn back to you. Type `continue` to go on after the limit.
 
-The check on the copy comes from a list: `python-unittest`, `python-syntax`, `json`, `toml`, `bash-syntax`, `fish-syntax`, `text`. The `text` check only confirms valid UTF-8 text: **syntax and behaviour are not checked**. No check proves the project is correct.
+In a normal conversation, ask to run the current project's tests or type `/test pytest`, `/test python-unittest`, `/test go-test` or `/test npm-test`. Start AI Desktop in a project already covered by a recursive `files.read` rule and use a profile that permits execution. Before each run the controller shows the current directory, a snapshot identifier and the number of indexed and excluded files. It asks before running the fixed recipe on a temporary copy. Raw test output stays in the terminal. The conversation remembers the result for that snapshot. Go and npm require a systemd user manager with delegated CPU, memory and PID controllers and run without downloading dependencies.
+
+The check on the copy comes from a list: `python-unittest`, `pytest`, `go-test`, `npm-test`, `python-syntax`, `json`, `toml`, `bash-syntax`, `fish-syntax`, `text`. The `text` check only confirms valid UTF-8 text: **syntax and behaviour are not checked**. No check proves the project is correct.
 
 A conversation remembers the last 32 exchanges (up to 128 KiB in total, the oldest drop out first) and a short task memory. A long history uses up the service limit, because it goes with every question. If you revoke access to a file, the answers that depend on it disappear from memory before the next question. A timeout or service limit ends the conversation, and unsaved history is lost.
 
@@ -265,7 +269,7 @@ You can add them on your own system if you consciously want to. A program not in
 
 The packaged Skills lead from a symptom through the needed reads and interpretation of results to an established cause or a clearly stated lack of data. They take the sandbox restrictions into account: lack of access to the session or network is not proof of a host failure. A proposed fix requires a separate plan, consent and a check of the result; loading a procedure runs nothing.
 
-A Skill is an instruction for the model of up to 96 KiB, not a permission. An agent can have any number of Skills, but together with its role up to 104 KiB: the whole instruction goes to the Claude client as one argument, and Linux limits that to 128 KiB. In `ask` only the names and descriptions of the assigned Skills go with each question. The content goes only when the model asks for it, and the program shows that with a `Skill NAME` line. In `material`, `project` and `task` the content of the assigned Skills goes with each request. A Skill should describe how to do something, not what your computer looks like: the model reads the facts itself when needed. Files and commands are decided by `permissions.toml`. The package contains only general Skills; what concerns your computer you keep on your side:
+A Skill is an instruction for the model of up to 96 KiB, not a permission. An agent can have any number of Skills, but together with its role up to 104 KiB: the whole instruction goes to the Claude client as one argument, and Linux limits that to 128 KiB. In `ask`, the initial catalog contains names and descriptions. The program shows `Skill NAME` when the model requests a procedure. On subsequent turns it can include a recently used procedure once its assignment, content, recipient and current byte budget have been checked. In `material`, `project` and `task` the content of the assigned Skills goes with each request. A Skill should describe how to do something, not what your computer looks like: the model reads the facts itself when needed. Files and commands are decided by `permissions.toml`. The package contains only general Skills; what concerns your computer you keep on your side:
 
 ```fish
 ai-desktop skills new my-system      # creates ~/.config/ai-desktop/skills/my-system/SKILL.md

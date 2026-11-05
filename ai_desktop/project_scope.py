@@ -94,7 +94,7 @@ def _is_key_file(path):
 
 
 class Project:
-    def __init__(self, policy, root):
+    def __init__(self, policy, root, *, scan_limit=None):
         if type(policy) is not permissions.Policy:
             raise ProjectError("PROJECT_POLICY")
         try:
@@ -104,6 +104,7 @@ class Project:
         if canonical == "/" or not policy.allows(canonical + "/_") or policy.excludes(canonical + "/_"):
             raise ProjectError("PROJECT_ROOT")
         self.policy, self.root = policy, canonical
+        self.scan_limit = scan_limit
         self.project_id = secrets.token_hex(8)
         self.files = ()
         self._by_path = {}
@@ -135,7 +136,7 @@ class Project:
                         for entry in entries:
                             names.append(entry.name)
                             state["scanned"] += 1
-                            if state["scanned"] > MAX_SCAN_ENTRIES:
+                            if state["scanned"] > min(MAX_SCAN_ENTRIES, self.scan_limit or MAX_SCAN_ENTRIES):
                                 mark("entries", stop=True)
                                 return
                             if len(names) > MAX_DIR_ENTRIES:

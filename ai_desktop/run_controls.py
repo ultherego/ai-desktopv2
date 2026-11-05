@@ -58,7 +58,7 @@ def failure_hint(reason, fallback, *, config=execution.UNSET, diagnostic=None):
         provider, name = selected["provider"], selected["account"]
         return ("Check the account with ai-desktop account list. For its first login, run "
                 "ai-desktop account login %s %s. If its connected login has expired, use a new name with "
-                "ai-desktop account add %s NEW-NAME --login, then ai-desktop account use %s NEW-NAME."
+                "ai-desktop account add %s new-name --login, then ai-desktop account use %s new-name."
                 % (provider, name, provider, provider))
     if selected is not None and selected["provider"] == "local":
         if reason == "authorization":

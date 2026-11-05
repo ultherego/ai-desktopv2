@@ -91,6 +91,14 @@ Typing the whole word `yes` is required after seeing all three commands. The cha
 
 What this means: after `yes` the command has the user's full permissions. Placeholders in the template (for example `<unit>`) are chosen by the model. The test and undo may not restore the state. Consent applies to the content shown, not to its effects.
 
+### Project suites and scope checks
+
+Python checks run against authorized copies with a private network, no host sockets and a syscall filter. Go and npm can run children. The controller creates a new user scope and reads the effective cgroup v2 PID, CPU, memory and swap ceilings before running Bubblewrap. An unavailable manager or controller aborts the suite. A regular project cannot name its own host command or remove a limit. An npm test can decide to return success without running assertions; the controller reports the script result accordingly.
+
+### Conversation recipients
+
+A provider, account slot and local port, where applicable, are part of the recipient identity. A saved thread can be transferred through the controller after checking its current policy and obtaining a new decision. A local server receives only the approved request. Numeric loopback constrains the connection destination; whoever can serve that port controls how its contents are processed. Account status and desktop widgets consume observations without exporting, interpreting or polling OAuth secrets.
+
 ## 5. Threats
 
 | ID | Attack or failure | Required behavior |

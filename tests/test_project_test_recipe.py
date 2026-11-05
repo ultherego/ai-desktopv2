@@ -10,7 +10,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from ai_desktop import permissions, project_cli, project_scope, project_step, task_cgroup, task_sandbox
+from ai_desktop import assistant_flow, permissions, project_checks, project_cli, project_scope, project_step, task_cgroup, task_sandbox
 
 
 class ProjectTestRecipeTests(unittest.TestCase):
@@ -39,6 +39,30 @@ class ProjectTestRecipeTests(unittest.TestCase):
         self.enterContext(patch("sys.stdout.isatty", return_value=True))
         self.runner = self.enterContext(patch.object(task_sandbox, "run_copy", return_value={
             "passed": True, "output": "SYNTHETIC-LOCAL-ONLY", "exit_code": 0}))
+
+    def test_natural_ask_proposes_recipe_without_cwd_and_never_uploads_test_output(self):
+        self.config.write_text(self.policy.replace("claude = false", "claude = true"))
+        wire = []
+        def model(_text, _args, _reader, **kwargs):
+            wire.append(kwargs["access"])
+            return '{"action":"project-test","recipe":"pytest"}'
+        args = SimpleNamespace(no_context=False, preview=False, details=False, systemd=None, systemd_state=None, weather=None)
+        with contextlib.chdir(self.root):
+            result = assistant_flow.run("Run the tests here.", args, lambda _: "yes", model)
+        self.assertEqual(result.code, 0)
+        self.assertEqual(len(wire), 1)
+        self.assertIs(wire[0]["project_test"], True)
+        self.assertNotIn(str(self.root), json.dumps(wire))
+        self.assertNotIn("SYNTHETIC-LOCAL-ONLY", json.dumps(wire) + result.summary)
+        self.assertEqual(result.sources, (str(self.testfile),))
+
+    def test_cwd_without_an_explicit_recursive_scope_and_denied_subdirectory_are_never_scanned(self):
+        for cwd in (self.home, self.root / "private"):
+            with self.subTest(cwd=cwd), contextlib.chdir(cwd):
+                self.assertNotIn("project_test", assistant_flow.capture_access().access)
+                with patch.object(project_scope.Project, "scan", side_effect=AssertionError("forbidden cwd scan")):
+                    self.assertEqual(project_checks.current("pytest", lambda _: "yes").code, 2)
+                self.runner.assert_not_called()
 
     def test_test_recipe_copies_exact_authorized_bytes_and_only_remembers_the_outcome(self):
         status = self.session.test_project("pytest")

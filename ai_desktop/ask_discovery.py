@@ -72,6 +72,8 @@ class DiscoveryLedger:
 
     def snapshot(self):
         document = validate_discovery(self.document())
+        if document_bytes(document) > self.limits.discovery_bytes:
+            raise ValueError("discovery_bytes")
         return directory_context.DiscoverySnapshot(self.policy, document, self.guards)
 
     def _budget(self):
@@ -142,7 +144,13 @@ class DiscoveryLedger:
             self.hints += "\n" + text
 
     def add_run(self, step):
+        # Test and undo must finish after an approved live change. Keep their status even if command
+        # output cannot fit on the wire. snapshot() refuses a transfer if the statuses alone overflow.
         self.steps.append(step)
+        if step["output"] and document_bytes(self.document()) > self.limits.discovery_bytes:
+            step["output"] = ""
+            step["truncated"] = True
+        return step
 
     def run(self, plan, permit):
         """Execute one validated list/find plan. Raises ValueError with a finite code on any local refusal."""

@@ -19,6 +19,7 @@ COMMANDS = (
     ("/provider", "switch the recipient of this conversation"),
     ("/settings", "show the current settings"),
     ("/permissions", "show what the program can access"),
+    ("/test", "run an offline suite in the current authorized project"),
     ("/exit", "end the conversation"),
 )
 # The older Polish command names keep working; they are simply no longer listed.
@@ -87,7 +88,7 @@ class Controls:
         except (profiles.ProfileError, OSError, ValueError, KeyError):
             return None
 
-    def handle(self, line, conversation=None, *, talk=None, consent=None, reader=input):
+    def handle(self, line, conversation=None, *, talk=None, consent=None, reader=input, run_test=None):
         """False: `line` is an ordinary question. True: handled here. EXIT: the owner ends the conversation."""
         if line[:1].isspace():
             return False                     # a leading space is the documented way to send such a word as a question
@@ -109,6 +110,11 @@ class Controls:
             return EXIT
         elif name == "/settings":
             self._settings()
+        elif name == "/test":
+            if run_test is not None:
+                run_test(value)
+            else:
+                print("Use /test RECIPE in an interactive conversation.")
         elif name == "/permissions":
             self._permissions()
         elif name == "/model":

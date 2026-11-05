@@ -98,5 +98,5 @@ class LocalHandoffTests(unittest.TestCase):
             config = {**agent_profiles.resolve(provider=provider), "account": "work"}
             hint = run_controls.failure_hint("auth-required", "Run ai-desktop login", config=config)
             self.assertIn("ai-desktop account login %s work" % provider, hint)
-            self.assertIn("ai-desktop account use %s NEW-NAME" % provider, hint)
+            self.assertIn("ai-desktop account use %s new-name" % provider, hint)
             self.assertNotIn("ai-desktop login", hint)

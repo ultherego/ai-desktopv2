@@ -8,7 +8,7 @@ import sys
 
 from .run_controls import recipient, failure_hint, wait_message
 from .execution import UNSET
-from . import ask_commands, conversation_memory, conversation_state
+from . import ask_commands, conversation_memory, conversation_state, project_checks
 from .conversation_sessions import SessionError
 from .assistant_contract import PlanError, PLAN_CHECKS
 from .analysis_cli import HINTS
@@ -312,8 +312,22 @@ def main(argv=None, *, reader=input):
         if args.session not in (None, "new"):
             conversation = load_session(args, "ask", execution_config=current())
             talk = conversation_state.load(conversation.state())
+        def local_test(recipe):
+            nonlocal conversation
+            if args.preview or args.no_context:
+                print("Project tests require local context and cannot run in preview.")
+                return
+            result = project_checks.current(recipe, reader)
+            if result.summary:
+                if conversation is None and args.session == "new":
+                    conversation = load_session(args, "ask", execution_config=current())
+                with conversation_state.recording() as recorded:
+                    conversation_state.note_sources(result.sources)
+                    conversation_state.note_action(result.summary)
+                _remember(talk, conversation, "/test " + recipe, result.summary, None, recorded, phase, args)
+
         def control(line):
-            result = controls.handle(line, conversation, talk=talk, consent=consent, reader=reader)
+            result = controls.handle(line, conversation, talk=talk, consent=consent, reader=reader, run_test=local_test)
             if result is True and args.presence is not None:
                 args.presence.update(talk.number, conversation.session_id if conversation is not None else None)
             return result
@@ -412,7 +426,13 @@ def main(argv=None, *, reader=input):
                 answer, code = None, 2
             if finished:
                 code = 0
-                if type(answer) is ask_edit.CompletedTask:
+                if isinstance(answer, project_checks.Result):
+                    code = answer.code
+                    if answer.summary:
+                        _remember(talk, conversation, question, answer.summary, None, sources, phase, args)
+                    if not interactive:
+                        return code
+                elif type(answer) is ask_edit.CompletedTask:
                     note = "[Change task finished; result %d. See the task log for the write and the test.]" % answer.code
                     code = answer.code
                     _remember(talk, conversation, question, note, None, sources, phase, args)
