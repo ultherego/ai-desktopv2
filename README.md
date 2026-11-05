@@ -222,9 +222,9 @@ One directory covered by `files.read`. The scan is local and repeated before eac
 - **Reading.** One consent per question. The model asks for names, a content search and line reads, at most 8 requests and 2 MiB of data. File names, matches and fragments are sent. With a large project you approve further stages (up to 5) one by one.
 - **Changes.** This mode is not read-only: after a request for a change the model proposes files, and from there the same flow as in `ask` applies (consent to send, test on a copy, diff, separate consent to write, undo). This needs a `files.write` entry with the directory and subdirectories covering the project, e.g. `~/Projects/**`. Restrictions: 8 files, 5 path levels, 64 KiB per file.
 - **Deletion.** A list of files, `[y/n]`, the task trash and a printed restore command.
-- `project` does not run commands and does not use the Internet.
+- Project suites can run on the approved copy. The project mode has no general-purpose command runner or web search.
 
-Local commands: `/files [DIR]`, `/search TEXT`, `/refresh`, `/log`, `/exit`. Large pastes (up to 32 KiB) appear as a placeholder and go to the model as data. Enter sends, and Alt+Enter breaks the line. Two Ctrl+C within 3 seconds end the session.
+Local commands: `/files [DIR]`, `/search TEXT`, `/refresh`, `/log`, `/test RECIPE`, `/exit`. Large pastes (up to 32 KiB) appear as a placeholder and go to the model as data. Enter sends, and Alt+Enter breaks the line. Two Ctrl+C within 3 seconds end the session.
 
 ### `ai-desktop task`
 

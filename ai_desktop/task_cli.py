@@ -155,6 +155,8 @@ def finish_task(before, source, response, args, reader, *, write_guard=None, con
             "passed" if result["passed"] else "failed", args.test, len(source["files"])))
         if args.test not in contract.TEST_SUITES:
             print("This checks syntax only; project tests were not run.")
+    if args.test == "npm-test" and result["passed"]:
+        print("The npm test script exited successfully. Its assertion count is unknown.")
     if not result["passed"]:
         print("TASK: REFUSED reason=test; project unchanged" if args.details
               else "The changes were not saved. Fix the task or the test and try again.")
