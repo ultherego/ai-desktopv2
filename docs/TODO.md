@@ -3,6 +3,15 @@
 Stan: pakiet `0.1.0-70`. Ograniczenia obecnej wersji opisuje [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
 
 ## Najbliżej
+Etapy i warunki ich ukończenia opisuje [ROADMAP.md](ROADMAP.md).
+- [ ] `task rollback`: nie nadpisywać ani nie usuwać nowszego zapisu edytora.
+- [ ] Długie polecenie zmiany: etap edycji odrzuca instrukcję powyżej 2 KiB, choć `ask` przyjmuje 128 KiB.
+- [ ] Spacja przed `/` jest usuwana, więc słowa z `/` nie da się wysłać jako pytania.
+- [ ] Końcowa odpowiedź po odczycie pliku dostaje wyniki poleceń i wczytane Skille.
+- [ ] Wynik wykonanej zmiany zostaje w pamięci mimo błędu usługi.
+- [ ] Zależność od cofniętego pliku nie przechodzi na niezależne odpowiedzi.
+- [ ] Zgodne limity szablonów `change` (polityka 128, kontrakt 24).
+- [ ] Skill przy pytaniu ogólnym bez `permissions.toml`.
 - [x] Dłuższy limit oczekiwania przy najwyższym rozumowaniu i komunikat mówiący, że chodzi o czas.
 - [x] Lista `task rollback` i `task status` od najnowszych wpisów, z datą. Dziś kolejność wynika ze skrótu planu, więc łatwo wybrać nie to zadanie.
 - [x] Jasny błąd, gdy `--workspace` wskazuje plik zamiast katalogu.
