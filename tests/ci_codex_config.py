@@ -3,7 +3,8 @@
 The trusted parent downloads a digest-pinned asset into a private temporary
 directory. The native process sees an empty home/work and no network, token,
 profile or proxy. The offline SIWC turn must stop at the network boundary,
-and native account/read must report the empty profile as signed out.
+and native account/read must report the empty profile as signed out. A separate
+private namespace provides fake native credentials and a fixture usage response.
 Normal verification never executes this opt-in driver.
 """
 import json
@@ -38,6 +39,9 @@ class StartupDenied(ValueError):
         self.reason = reason if reason in {"preflight", "pin", "initialize", "protocol", "exit", "timeout", "limit", "turn", "native-account"} else "preflight"
         message = "CI CODEX CONFIG: FAIL reason=" + self.reason
         if type(check) is str and (check in ("empty-line", "non-json", "unexpected-record", "extra-startup-notification")
+                                   or self.reason == "native-account" and check in {"unexpected-result", "refusal-network",
+                                       "refusal-timeout", "refusal-result", "refusal-client", "refusal-auth-required",
+                                       "refusal-authorization", "refusal-auth-method"}
                                    or self.reason == "turn" and re.fullmatch(r"(?:refusal=[a-z-]{1,24} )?codex-[a-z-]{1,40}", check)):
             message += " check=" + check
         # Only closed structural categories/counts can cross this boundary.
@@ -253,6 +257,24 @@ def offline_native_account(argv):
     raise StartupDenied("native-account")
 
 
+def fixture_native_quota(binary, directory):
+    """Exercise genuine v0.166.0 account and quota RPCs against a synthetic, loopback-only backend."""
+    argv = command(binary, directory, native_account=True)
+    pos = argv.index("--chdir")
+    argv[pos:pos] = ["--ro-bind", str(ROOT / "tests/ci_codex_quota_backend.py"), "/opt/quota-backend.py"]
+    pos = argv.index("--chdir") + 2
+    argv[pos:pos] = ["/usr/bin/python3", "-I", "-B", "/opt/quota-backend.py"]
+    try:
+        result = codex_protocol._exchange(argv, native.AccountProtocol("read"),
+                                          env={"PATH": "/usr/bin", "LANG": "C.UTF-8"}, timeout=25)
+    except AnalysisDenied as exc:
+        raise StartupDenied("native-account", check="refusal-" + exc.reason) from None
+    expected = {"plan": "plus", "windows": {"five_hour": {"percent": 31, "reset": 2000000000},
+                                             "seven_day": {"percent": 47, "reset": 2000500000}}}
+    if result != expected:
+        raise StartupDenied("native-account", check="unexpected-result")
+
+
 def run():
     require_ci()
     with tempfile.TemporaryDirectory(prefix="aid-codex-config-") as temporary:
@@ -265,6 +287,7 @@ def run():
         (directory / "group").write_text("client:x:%d:\n" % os.getgid())
         initialize_only(command(binary, directory))
         offline_native_account(command(binary, directory, native_account=True))
+        fixture_native_quota(binary, directory)
         offline_turn(turn_command(binary, directory))
 
 
@@ -280,7 +303,7 @@ def main(argv=None):
     except (asset.AssetDenied, OSError, ValueError, subprocess.SubprocessError):
         print("CI CODEX CONFIG: FAIL reason=preflight")
         return 2
-    print("CI CODEX CONFIG: PASS pinned=0.166.0 strict-config=PASS initialize=PASS network=OFF auth=NONE native-account=signed-out turn=PASS(offline, stops at network) inference=NOT_RUN")
+    print("CI CODEX CONFIG: PASS pinned=0.166.0 strict-config=PASS initialize=PASS network=OFF auth=NONE native-account=signed-out native-quota=31%/47%(loopback-fixture) turn=PASS(offline, stops at network) inference=NOT_RUN")
     return 0
 
 

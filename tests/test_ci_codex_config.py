@@ -205,6 +205,24 @@ assert sys.stdin.read() == ""
         self.assertIn("synthetic", check.FAKE_TOKEN)
         self.assertIn("--unshare-net", turn)                                         # still no network
 
+    def test_native_quota_backend_runs_in_an_isolated_namespace_and_requires_real_numeric_output(self):
+        directory, binary = Path("/fixture"), Path("/fixture/pinned-codex")
+        answer = {"plan": "plus", "windows": {"five_hour": {"percent": 31, "reset": 2000000000},
+                                              "seven_day": {"percent": 47, "reset": 2000500000}}}
+        with patch.object(check.codex_protocol, "_exchange", return_value=answer) as run:
+            check.fixture_native_quota(binary, directory)
+        command, protocol = run.call_args.args
+        self.assertEqual(protocol.action, "read")
+        self.assertIn("--unshare-net", command)
+        self.assertNotIn("--share-net", command)
+        self.assertNotIn("/run/egress.sock", command)
+        self.assertNotIn("ACCESS_TOKEN", command)
+        self.assertIn("/opt/quota-backend.py", command)
+        self.assertEqual(command[command.index("--chdir") + 2:command.index("--strict-config")],
+                         ["/usr/bin/python3", "-I", "-B", "/opt/quota-backend.py", "/opt/codex"])
+        with patch.object(check.codex_protocol, "_exchange", return_value={}), self.assertRaises(check.StartupDenied):
+            check.fixture_native_quota(binary, directory)
+
     def test_clean_exit_without_initialize_is_not_success(self):
         with self.assertRaises(check.StartupDenied):
             check.initialize_only(self.fixture("pass"), timeout=2)
@@ -219,9 +237,11 @@ assert sys.stdin.read() == ""
             return root / "packaging" / "arch" / "codex"
         with patch.object(check, "require_ci"), patch.object(check.asset, "prepare", side_effect=prepare), \
                 patch.object(check, "initialize_only") as initialize, patch.object(check, "offline_turn") as turn, \
-                patch.object(check, "offline_native_account") as native:
+                patch.object(check, "offline_native_account") as native, \
+                patch.object(check, "fixture_native_quota") as quota:
             check.run()
         initialize.assert_called_once()
+        quota.assert_called_once_with(seen[0] / "packaging/arch/codex", seen[0])
         native.assert_called_once()
         self.assertIn('cli_auth_credentials_store="file"', native.call_args.args[0])
         self.assertIn("--unshare-net", native.call_args.args[0])
