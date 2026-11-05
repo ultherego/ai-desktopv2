@@ -21,7 +21,7 @@ _KINDS = {"request": (b"Q", MAX_PACKET_LARGE), "response": (b"R", MAX_RESPONSE_B
 
 def _settings(kind, timeout):
     if (type(kind) is not str or kind not in _KINDS or type(timeout) not in (int, float)
-            or not math.isfinite(timeout) or not 0 < timeout <= 300):
+            or not math.isfinite(timeout) or not 0 < timeout <= 1200):
         raise AnalysisDenied("input")
     return _KINDS[kind]
 

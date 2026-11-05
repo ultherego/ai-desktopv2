@@ -24,7 +24,9 @@ from .execution import CLAUDE_EFFORTS, CODEX_EFFORTS, EFFORTS, MODELS, efforts_f
 MAX_BYTES = 65536
 MAX_PROFILES = 24
 MAX_INSTRUCTIONS = 4096
-MAX_EXECUTION_INSTRUCTIONS = 8192
+# The whole system prompt is one argv string for the Claude client, and Linux caps one string at 128 KiB (MAX_ARG_STRLEN).
+# This is what remains after the application's own prompt, with a margin. tests/test_user_skills.py guards the sum.
+MAX_EXECUTION_INSTRUCTIONS = 104 * 1024
 ACCESSES = ("read-only", "changes")
 SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 _PROFILE_KEYS = frozenset(("provider", "model", "effort", "instructions", "access", "skills"))
@@ -74,7 +76,7 @@ class Profile:
                 or not model_allowed(self.provider, self.model)
                 or type(self.effort) is not str or self.effort not in efforts_for(self.provider)
                 or type(self.access) is not str or self.access not in ACCESSES
-                or type(self.skills) is not tuple or len(self.skills) > 4):
+                or type(self.skills) is not tuple):
             raise ProfileError("profile")
         _text(self.instructions, MAX_INSTRUCTIONS)
         for name in self.skills:

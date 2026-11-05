@@ -39,7 +39,7 @@ def _profile_flags(parser, *, create=False):
     parser.add_argument("--instructions", help="Własne instrukcje roli, do 4096 B")
     parser.add_argument("--access", choices=profiles.ACCESSES, help="read-only blokuje zmiany plików")
     skill = parser.add_mutually_exclusive_group()
-    skill.add_argument("--skill", action="append", help="Skill dołączony do roli; można podać do czterech")
+    skill.add_argument("--skill", action="append", help="Skill dołączony do roli; można podać wiele razy")
     skill.add_argument("--no-skills", action="store_true", help="Usuń przypisane Skills")
 
 
@@ -291,9 +291,6 @@ class _SettingsMenu:
                 profiles.instructions_for(draft)
                 return draft
             if action == 0:
-                if len(draft.skills) >= 4:
-                    print("Profil może mieć najwyżej cztery Skills.")
-                    continue
                 name = self.pick("Dodaj Skill", tuple(name for name in names if name not in draft.skills))
                 if name is not None:
                     candidate = replace(draft, skills=draft.skills + (name,))

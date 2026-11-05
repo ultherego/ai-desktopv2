@@ -231,7 +231,7 @@ class AskCliTests(unittest.TestCase):
         cases = [([], {"uid": 0}), ([], {"tty": False}),
                  (["--question", "Pytanie", "--no-context", "--weather", "Warszawa"], {}),
                  (["--question", "Pytanie", "--no-context", "--systemd"], {}),
-                 ([], {"answers": ("x\x1b",)}), ([], {"answers": ("x" * 2049,)})]
+                 ([], {"answers": ("x\x1b",)}), ([], {"answers": ("x" * (128 * 1024 + 1),)})]
         for argv, kwargs in cases:
             with self.subTest(argv=argv, kwargs=kwargs):
                 r = self.run_ui(argv, **kwargs)

@@ -112,9 +112,10 @@ def _manage(store):
 def select_thread(store, execution_config):
     """Start of `ask`: ('new', None), ('resume', id) or None (cancelled). Only threads of this agent are offered."""
     from . import execution
+    from .conversation_sessions import same_agent
     wanted = execution.validate(execution_config)
     while True:
-        values = [value for value in _values(store) if value["kind"] == "ask" and value["execution"] == wanted]
+        values = [value for value in _values(store) if value["kind"] == "ask" and same_agent(value["execution"], wanted)]
         if not values:
             return "new", None
         recent = values[:7]

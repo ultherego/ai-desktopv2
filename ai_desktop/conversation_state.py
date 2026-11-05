@@ -10,7 +10,7 @@ from contextlib import contextmanager
 from contextvars import ContextVar
 
 from . import conversation_memory as memory
-from .execution import HISTORY_ANSWER_BYTES, HISTORY_QUESTION_BYTES, MAX_HISTORY
+from .execution import HISTORY_ANSWER_BYTES, HISTORY_QUESTION_BYTES, HISTORY_TOTAL_BYTES, MAX_HISTORY
 
 MAX_TURNS = 64                 # finished turns kept for revalidation; only the last MAX_HISTORY are sent verbatim
 MAX_SOURCES = 8                # files remembered per turn (more are summarised as "too many": the turn is then tainted by all)
@@ -80,7 +80,16 @@ class Conversation:
 
     # -- what a request carries ---------------------------------------------------------------------------------
     def history(self):
-        return [turn.pair() for turn in self.turns[-MAX_HISTORY:]]
+        """The newest turns that fit one request. The newest always stays: one turn fits the limit on its own."""
+        kept, total = [], 0
+        for turn in reversed(self.turns[-MAX_HISTORY:]):
+            pair = turn.pair()
+            total += len(pair["question"].encode("utf-8")) + len(pair["answer"].encode("utf-8"))
+            if kept and total > HISTORY_TOTAL_BYTES:
+                break
+            kept.append(pair)
+        kept.reverse()
+        return kept
 
     def task_memory(self):
         return memory.validate(self.memory)

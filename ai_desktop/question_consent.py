@@ -7,7 +7,7 @@ from contextlib import contextmanager
 import json
 import time
 
-from .analysis_contract import (AnalysisConsent, AnalysisDenied, CONSENT_CEILING, consent_seconds, canonical,
+from .analysis_contract import (MAX_MESSAGE_BYTES, AnalysisConsent, AnalysisDenied, CONSENT_CEILING, consent_seconds, canonical,
                                 validate_context, validate_question)
 from .assistant_contract import validate_access, file_selections, selected_file_ids
 from .execution import current as current_execution, current_history
@@ -37,7 +37,7 @@ class ConversationConsent:
 
 class QuestionConsent:
     def __init__(self, question, snapshot, *, clock=None, plan_ready=False):
-        validate_question(question)
+        validate_question(question, MAX_MESSAGE_BYTES)
         if not question.strip():
             raise AnalysisDenied("consent")
         self._question = question
@@ -77,6 +77,11 @@ class QuestionConsent:
 
     def _validate(self):
         try:
+            if not self._closed and self._clock() > self._expires:
+                self.close()
+                denied = AnalysisDenied("consent")
+                denied.expired = True
+                raise denied
             if (self._closed or self._clock() > self._expires
                     or canonical(current_execution()) != self._execution
                     or self._snapshot.policy is not self._policy

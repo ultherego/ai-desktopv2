@@ -162,8 +162,7 @@ class SystemAccountPackagingTests(unittest.TestCase):
             self.assertFalse(list(staged_root.rglob("__pycache__")),
                              "Packaged -B must prevent cache writes to staged code")
             self.assertTrue((package_root / "usr/lib/ai-desktop/ai_desktop/cli.py").is_file())
-            skill_names = {"cachyos-diagnostics", "code-development", "code-review",
-                           "concise-assistant", "project-analysis"}
+            skill_names = {path.name for path in (ROOT / "skills").iterdir()}
             self.assertEqual({p.name for p in (staged_root / "skills").iterdir()}, skill_names)
             for name in skill_names:
                 source = ROOT / "skills" / name / "SKILL.md"

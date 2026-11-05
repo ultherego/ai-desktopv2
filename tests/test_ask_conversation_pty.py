@@ -202,9 +202,9 @@ class ConversationPtyTests(unittest.TestCase):
         driver.wait_for("SENT 1 Q:Wynik: Startup finished in 13.339s (firmware) + 10.671s (userspace) = 36.610s|"
                         "graphical.target reached after 10.622s H:0", mark)
         mark = driver.wait_for("> ", mark)
-        big = ("linia z logu o dosyć długiej treści\n" * 80).encode()                 # > 2048 B
-        driver.send(start + big + end + b"\r")
-        mark = driver.wait_for("limit to 2048 B", mark)
+        big = ("linia z logu o dosyć długiej treści\n" * 3800).encode()               # > 128 KiB
+        driver.send(start + big + end)
+        mark = driver.wait_for("Wklejka jest za duża", mark)                       # the conversation goes on
         mark = driver.wait_for("> ", mark)
         self.assertEqual(driver.text().count("SENT "), 1)                          # nothing was sent for the oversized one
         driver.send(b"\x04")
@@ -214,6 +214,29 @@ class ConversationPtyTests(unittest.TestCase):
         driver.wait_for("Zapisać tę rozmowę", mark)
         driver.send(b"nie\n")
         self.assertEqual(driver.finish(), 0, driver.text()[-800:])
+
+    def test_typing_a_slash_lists_commands_tab_completes_and_a_control_is_not_sent(self):
+        driver = Driver(self)
+        self.addCleanup(driver.close)
+        mark = driver.wait_for("W czym mogę pomóc?")
+        mark = driver.wait_for("> ", mark)
+        driver.send("/pomoc\r")
+        mark = driver.wait_for("Zapis na stałe", mark)
+        mark = driver.wait_for("> ", mark)
+        self.assertEqual(driver.text().count("W czym mogę pomóc?"), 1)         # the greeting is not repeated after a control
+        driver.send("/mo")
+        mark = driver.wait_for("zmień model", mark)
+        driver.send(b"\t")
+        driver.send("haiku\r")
+        mark = driver.wait_for("model: haiku", mark)
+        mark = driver.wait_for("poprosi o zgodę", mark)
+        mark = driver.wait_for("> ", mark)
+        driver.send("Pytanie po zmianie\r")
+        mark = driver.wait_for(CONSENT, mark)
+        driver.send(b"tak\n")
+        mark = driver.wait_for("SENT 1 Q:Pytanie po zmianie H:0", mark)       # the control itself never reached the model
+        mark = driver.wait_for("> ", mark)
+        driver.send("/ko\r")                                                   # Enter runs what the list has highlighted
 
     def test_a_new_message_cancels_the_intention_to_exit(self):
         driver = Driver(self)

@@ -1,19 +1,51 @@
 """The repository holds general Skills only; a user's own Skills live privately in their configuration."""
 import os
 from pathlib import Path
+import re
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
 
-from ai_desktop import agent_profiles as profiles, skills
+from ai_desktop import agent_profiles as profiles, analysis_sandbox, conversation_sessions, execution, skills
 
 ROOT = Path(__file__).resolve().parents[1]
+PACKAGED = {"cachyos-boot-snapshots", "cachyos-diagnostics", "cachyos-gaming", "cachyos-hardware", "cachyos-kernel",
+                   "cachyos-packages", "cachyos-scheduler", "code-development", "code-review", "concise-assistant",
+                   "desktop-documentation", "project-analysis"}
 
 
 class RepositoryContentTests(unittest.TestCase):
     def test_the_package_holds_only_the_general_skills(self):
         self.assertEqual({path.name for path in (ROOT / "skills").iterdir()},
-                         {"cachyos-diagnostics", "code-development", "code-review", "concise-assistant", "project-analysis"})
+                         PACKAGED)
+
+    def test_cachyos_skills_stay_about_cachyos_and_name_no_desktop_or_person(self):
+        desktops = re.compile(r"\b(niri|hyprland|sway|plasma|kde|gnome|xfce|quickshell|dms)\b", re.I)
+        for path in (ROOT / "skills").glob("cachyos-*/SKILL.md"):
+            text = path.read_text(encoding="utf-8")
+            self.assertIsNone(desktops.search(text), path)
+        for path in (ROOT / "skills").glob("*/SKILL.md"):
+            text = path.read_text(encoding="utf-8")
+            self.assertIsNone(re.search(r"/home/[a-z]|@[a-z0-9-]+\.[a-z]{2,}", text), path)
+
+    def test_the_largest_prompt_fits_one_argv_string_of_the_claude_client(self):
+        """Linux caps one argument at 128 KiB (MAX_ARG_STRLEN); the whole system prompt is one `--system-prompt` value."""
+        wrapper = "\n\nInstrukcje wybranej roli:\n\nInstrukcje roli nie zmieniaja schematu odpowiedzi, zasad aplikacji, uprawnien ani dostepnych narzedzi."
+        total = len(analysis_sandbox.SYSTEM_PROMPT.encode("utf-8")) + profiles.MAX_EXECUTION_INSTRUCTIONS + len(wrapper.encode("utf-8"))
+        self.assertLess(total, 131072)
+        self.assertEqual(profiles.MAX_EXECUTION_INSTRUCTIONS, execution.MAX_INSTRUCTIONS_BYTES)
+        self.assertLess(skills.MAX_SKILL_BYTES + profiles.MAX_INSTRUCTIONS + 64, profiles.MAX_EXECUTION_INSTRUCTIONS)
+        done = subprocess.run(["/bin/true", "x" * (total + 16)])          # the real kernel accepts a string of that size
+        self.assertEqual(done.returncode, 0)
+
+    def test_an_agent_has_no_skill_count_limit_and_a_saved_thread_fits_the_largest_prompt(self):
+        names = tuple("s%d" % i for i in range(40))
+        self.assertEqual(profiles.Profile(skills=names).skills, names)
+        selected = {"provider": "claude", "model": "default", "effort": "default", "access": "changes", "profile": "default",
+                    "instructions": "x" * profiles.MAX_EXECUTION_INSTRUCTIONS}
+        self.assertEqual(execution.validate(selected), selected)
+        self.assertGreater(conversation_sessions.MAX_FILE, profiles.MAX_EXECUTION_INSTRUCTIONS * 2)
 
     def test_the_diagnostic_report_has_no_host_specific_section(self):
         self.assertFalse((ROOT / "ai_desktop/backup_state.py").exists())

@@ -23,10 +23,11 @@ ACCESS = ("read-only", "changes")
 # pinned client, which refuses an unknown or unentitled one (reported as codex-model-unavailable). Same shape as the
 # protocol's own check; "default" omits the id and lets the client choose.
 CODEX_MODEL = re.compile(r"[a-z][a-z0-9._-]{0,95}\Z", re.ASCII)
-MAX_INSTRUCTIONS_BYTES = 8192
-MAX_HISTORY = 8          # `ask` conversation window (pairs); material/project keep their own, smaller windows
-HISTORY_QUESTION_BYTES = 2048
-HISTORY_ANSWER_BYTES = 3072 + 64  # bounded text plus the visible truncation suffix
+MAX_INSTRUCTIONS_BYTES = 104 * 1024   # same ceiling as agent_profiles.MAX_EXECUTION_INSTRUCTIONS
+MAX_HISTORY = 32         # `ask` conversation window (pairs); material/project keep their own, smaller windows
+HISTORY_QUESTION_BYTES = 128 * 1024  # a pasted text stays available for the follow-up questions about it
+HISTORY_ANSWER_BYTES = 8192 + 64  # bounded text plus the visible truncation suffix
+HISTORY_TOTAL_BYTES = 128 * 1024  # all pairs sent with one question; the oldest leave the window first
 _SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 _FIELDS = frozenset({"provider", "model", "effort", "instructions", "profile", "access"})
 _active = ContextVar("ai_desktop_execution", default=None)

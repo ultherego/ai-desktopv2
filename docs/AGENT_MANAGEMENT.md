@@ -29,7 +29,7 @@ Usługa jest wspólna dla wszystkich agentów. Po zmianie usługi agent wraca do
 
 ## Agenci
 
-Agent to zapisana rola: usługa, model, poziom, dostęp (`changes` lub `read-only`), instrukcje do 4 KiB i do czterech Skilli. Limit to 24 profile. Agent `read-only` nie zapisuje, nie usuwa i nie dostaje
+Agent to zapisana rola: usługa, model, poziom, dostęp (`changes` lub `read-only`), instrukcje do 4 KiB i dowolną liczbę Skilli (razem do 104 KiB). Limit to 24 profile. Agent `read-only` nie zapisuje, nie usuwa i nie dostaje
 poleceń z listy `change`.
 
 ```fish
@@ -70,7 +70,7 @@ ai-desktop skills menu            # przypisania aktywnego agenta
 ai-desktop skills new NAZWA       # ~/.config/ai-desktop/skills/NAZWA/SKILL.md
 ```
 
-Skill to instrukcja do 8 KiB, bez narzędzi, skryptów i dodatkowych plików. Pakiet zawiera pięć ogólnych Skilli. Własny Skill leży poza repozytorium i pakietem, a o tej samej nazwie ma pierwszeństwo przed ogólnym.
+Skill to instrukcja do 96 KiB, bez narzędzi, skryptów i dodatkowych plików. Pakiet zawiera ogólne Skille dla CachyOS (`cachyos-*`), programowania i analizy oraz `desktop-documentation`, który kieruje do dokumentacji pulpitu; Skille CachyOS celowo nie opisują pulpitów i kompozytorów. Własny Skill leży poza repozytorium i pakietem, a o tej samej nazwie ma pierwszeństwo przed ogólnym.
 Nazwa to małe litery, cyfry i myślniki. Nie wpisuj sekretów: treść przypisanego Skilla trafia do modelu. Ścieżka wpisana w Skillu lub instrukcji agenta liczy się jak podana przez Ciebie, więc model może ją przeczytać bez rozpoznania; polityka i `deny` nadal decydują.
 
 Zmiana przypisanych Skilli może wymagać nowej rozmowy, bo zapisana rozmowa jest związana z konfiguracją agenta.
@@ -83,7 +83,7 @@ Uruchom `ai-desktop ask` raz i pracuj dalej: po odpowiedzi wraca `>`. Strzałki 
 
 **Pamięć ma dwie warstwy:**
 
-1. Ostatnie 8 wymian (pytanie do 2 KiB, odpowiedź do 3 KiB z widocznym ucięciem).
+1. Ostatnie 32 wymiany, razem do 128 KiB (pytanie do 128 KiB, odpowiedź do 8 KiB z widocznym ucięciem).
 2. Pamięć zadania: do 40 wpisów (po 400 B, razem 10 KiB) z celem, kryterium, próbami, wartościami, korektami i decyzjami. Model proponuje aktualizacje w odpowiedzi, a przy braku limitu najpierw wypadają najstarsze wpisy niechronione. Program sam dopisuje fakty: co uruchomił i z jakim kodem, co zastosował, co odrzucono.
 
 Pamięć nie daje uprawnień. Przy cofnięciu dostępu do pliku zależne od niego odpowiedzi i wpisy modelu są usuwane przed następnym pytaniem, a program o tym informuje. Program nie pamięta tur starszych niż 8, poza tym co trafiło do pamięci zadania.

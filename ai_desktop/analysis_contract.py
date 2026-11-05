@@ -271,7 +271,7 @@ MAX_ANSWER_PACKET = 32768
 # One model call. Slow reasoning (xhigh / max) gets a longer budget; every layer derives its limit from this one table:
 # the client waits REQUEST + SERVICE_MARGIN, the per-request unit and the session helper outlive that (see packaging).
 REQUEST_SECONDS = 110
-REQUEST_SECONDS_LONG = 260
+REQUEST_SECONDS_LONG = 900     # high reasoning can legitimately think for many minutes
 LONG_EFFORTS = frozenset(("xhigh", "max"))
 SERVICE_MARGIN = 40
 # The privileged session helper stays open while the client holds the pipe, i.e. for a whole request: the longest
@@ -294,7 +294,8 @@ def request_effort(raw):
         return None
 MAX_TEXT = 16384
 MAX_PROPOSAL_TEXT = 320 * 1024
-MAX_QUESTION_BYTES = 2048
+MAX_QUESTION_BYTES = 2048       # a one-shot or material/project question
+MAX_MESSAGE_BYTES = 128 * 1024  # one `ask` message with what was pasted into it; it travels on stdin, not in argv
 MAX_CONTEXT_BYTES = 384 * 1024
 def consent_seconds(effort):
     """How long one approved step may stay valid: one model call, its service wait and a margin (180 s for the default)."""
@@ -302,7 +303,7 @@ def consent_seconds(effort):
 
 
 TTL = consent_seconds(None)
-CONSENT_CEILING = 1800        # a whole question never stays approved longer than this, however often it is renewed
+CONSENT_CEILING = 3600        # a whole question never stays approved longer than this, however often it is renewed
 REASONS = frozenset({"consent", "input", "endpoint", "runtime", "identity", "busy",
                      "sandbox", "auth-required", "auth-method", "version", "client",
                      "timeout", "output-limit", "result", "internal", "cancelled",
@@ -344,8 +345,8 @@ def result_text_limit(mode):
     return MAX_PROPOSAL_TEXT if mode == "workspace" else MAX_TEXT
 
 
-def validate_question(question):
-    if (type(question) is not str or len(question.encode("utf-8")) > MAX_QUESTION_BYTES
+def validate_question(question, limit=MAX_QUESTION_BYTES):
+    if (type(question) is not str or len(question.encode("utf-8")) > limit
             or any(c not in "\n\t" and unicodedata.category(c) in ("Cc", "Cf", "Cs") for c in question)):
         raise ValueError("invalid question")
     return question
@@ -393,7 +394,7 @@ def validate_context(context):
 
 def application_input(report, question="", task=None, context=None, access=None, *, web=False, material=None, project=None,
                       execution=UNSET, discovery=None):
-    question = validate_question(question)
+    question = validate_question(question, MAX_MESSAGE_BYTES)
     selected = current_execution() if execution is UNSET else validate_execution(execution)
     if type(web) is not bool:
         raise ValueError("invalid web capability")

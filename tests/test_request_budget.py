@@ -28,16 +28,16 @@ class BudgetTests(unittest.TestCase):
 
     def test_every_waiting_layer_outlives_the_longest_call(self):
         waits = contract.REQUEST_SECONDS_LONG + contract.SERVICE_MARGIN
-        self.assertLessEqual(waits, 300)
+        self.assertLessEqual(waits, 1200)
         unit = int(re.search(r"^RuntimeMaxSec=(\d+)$", (ROOT / "packaging/systemd/ai-desktop-analysis@.service").read_text(),
                              re.M).group(1))
         session = int(re.search(r"RuntimeMaxSec=(\d+)", " ".join(analysis_session_admin.session_command(1000, "n" * 8))).group(1))
         self.assertGreater(unit, waits)                         # the per-request unit is not killed under the client
         self.assertGreater(session, unit)                       # the session helper outlives the unit
-        self.assertLessEqual(waits, 300)                        # the framing cap
+        self.assertLessEqual(waits, 1200)                       # the framing cap
         analysis_framing._settings("response", waits)           # accepted (raises AnalysisDenied otherwise)
         with self.assertRaises(contract.AnalysisDenied):
-            analysis_framing._settings("response", 301)
+            analysis_framing._settings("response", 1201)
 
 
 if __name__ == "__main__":
@@ -53,7 +53,7 @@ class ClientLimitsTests(unittest.TestCase):
             api = int(analysis_sandbox.client_environment("analyze", effort)["API_TIMEOUT_MS"]) / 1000
             self.assertLess(api, contract.request_seconds(effort), effort)
             self.assertGreaterEqual(api, 90, effort)             # never lower than the old fixed value
-        self.assertEqual(analysis_sandbox.client_environment("analyze", "max")["API_TIMEOUT_MS"], "240000")
+        self.assertEqual(analysis_sandbox.client_environment("analyze", "max")["API_TIMEOUT_MS"], "880000")
         self.assertEqual(analysis_sandbox.client_environment("analyze")["API_TIMEOUT_MS"], "90000")
 
     def test_the_bridge_and_proxies_keep_a_stream_open_longer_than_the_call(self):
@@ -62,10 +62,22 @@ class ClientLimitsTests(unittest.TestCase):
         for effort in (None, "high", "xhigh", "max"):
             seconds = contract.request_seconds(effort) + 10
             self.assertGreater(seconds, contract.request_seconds(effort))
-            self.assertLessEqual(seconds, 300)                                         # ConnectProxy accepts up to 300
+            self.assertLessEqual(seconds, 1200)                                        # ConnectProxy accepts up to 1200
 
 
 class SessionHelperTests(unittest.TestCase):
+    def test_every_layer_lets_the_longest_request_finish(self):
+        from ai_desktop import e2_connect_proxy
+        longest = contract.REQUEST_SECONDS_LONG
+        self.assertGreaterEqual(longest, 900)
+        unit = (ROOT / "packaging/systemd/ai-desktop-analysis@.service").read_text()
+        self.assertGreater(int(re.search(r"RuntimeMaxSec=(\d+)", unit).group(1)), longest + contract.SERVICE_MARGIN)
+        self.assertGreater(contract.consent_seconds("max"), longest + contract.SERVICE_MARGIN)
+        self.assertGreater(contract.CONSENT_CEILING, contract.consent_seconds("max"))
+        source = (ROOT / "ai_desktop/e2_connect_proxy.py").read_text()
+        self.assertGreater(int(re.search(r"stream_seconds <= (\d+)", source).group(1)), longest + 60)
+        self.assertTrue(e2_connect_proxy)
+
     def test_the_session_helper_waits_longer_than_the_longest_request_and_its_unit_outlives_the_wait(self):
         from ai_desktop import material_cli
         longest = contract.REQUEST_SECONDS_LONG + contract.SERVICE_MARGIN

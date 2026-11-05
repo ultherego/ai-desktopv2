@@ -153,7 +153,7 @@ ai-desktop ask --question "Dlaczego jednostka nie startuje?"
 ai-desktop ask --question "Czym jest inode?" --no-context
 ```
 
-Bez `--question` to jedna rozmowa: po każdej odpowiedzi wraca `>`. Pusta linia lub dwa Ctrl-D kończą rozmowę, a program pyta, czy ją zapisać. Ctrl-C podczas oczekiwania przerywa tylko bieżącą turę. Pytanie ma do 2 KiB.
+Bez `--question` to jedna rozmowa: po każdej odpowiedzi wraca `>`. Pusta linia lub dwa Ctrl-D kończą rozmowę, a program pyta, czy ją zapisać. Ctrl-C podczas oczekiwania przerywa tylko bieżącą turę. Wiadomość ma do 128 KiB razem z wklejkami (duża wklejka pojawia się jako znacznik).
 
 Jak działają zgody:
 
@@ -168,9 +168,11 @@ Po zastosowanej zmianie model sam podejmuje następny krok albo kończy odpowied
 
 Sprawdzenie na kopii pochodzi z listy: `python-unittest`, `python-syntax`, `json`, `toml`, `bash-syntax`, `fish-syntax`, `text`. Check `text` potwierdza tylko poprawny tekst UTF-8: **składnia i działanie nie są sprawdzane**. Żaden check nie dowodzi poprawności projektu.
 
-Rozmowa pamięta ostatnie 8 wymian i krótką pamięć zadania. Jeśli cofniesz dostęp do pliku, zależne od niego odpowiedzi znikają z pamięci przed kolejnym pytaniem. Limit czasu lub limit usługi kończy rozmowę, a niezapisana historia przepada.
+Rozmowa pamięta ostatnie 32 wymiany (razem do 128 KiB, najstarsze wypadają pierwsze) i krótką pamięć zadania. Długa historia zużywa limit usługi, bo idzie z każdym pytaniem. Jeśli cofniesz dostęp do pliku, zależne od niego odpowiedzi znikają z pamięci przed kolejnym pytaniem. Limit czasu lub limit usługi kończy rozmowę, a niezapisana historia przepada.
 
 Wyszukiwanie internetowe włączasz przez `web = true`. Jest to osobne żądanie: tylko Twoje pytanie, bez plików i danych lokalnych. Pogoda (`weather = true`) ujawnia nazwę miejscowości i Twój adres IP serwisowi Open-Meteo, a wynik idzie do modelu.
+
+Podczas rozmowy możesz wpisać polecenie zaczynające się od `/`. Po wpisaniu `/` pod wierszem pojawia się lista, strzałki wybierają, Tab uzupełnia. Polecenia działają lokalnie, nic nie wysyłają i nie kasują rozmowy: `/pomoc`, `/model`, `/sila`, `/skills`, `/agent`, `/ustawienia`, `/uprawnienia`, `/koniec`. Po zmianie modelu lub Skilli program raz jeszcze pyta o zgodę na wysyłkę. `/skills` działa w tej rozmowie; na stałe służy `ai-desktop agents`. Pytanie zaczynające się od ścieżki, np. `/etc/fstab co to?`, idzie do modelu normalnie. Aby wysłać pojedyncze słowo z `/`, zacznij od spacji.
 
 ### `ai-desktop material PLIK`
 
@@ -237,7 +239,7 @@ Możesz dopisać je u siebie, jeśli świadomie tego chcesz. Program niezainstal
 
 ## Własne Skille
 
-Skill to instrukcja dla modelu do 8 KiB, nie uprawnienie. O plikach i poleceniach decyduje `permissions.toml`. Pakiet zawiera tylko ogólne Skille; to, co dotyczy Twojego komputera, trzymasz u siebie:
+Skill to instrukcja dla modelu do 96 KiB, nie uprawnienie. Agent może mieć dowolnie wiele Skilli, ale razem z rolą do 104 KiB: cała instrukcja idzie do klienta Claude jako jeden argument, a Linux ogranicza go do 128 KiB. Przypisane Skille są wysyłane przy każdym pytaniu i zużywają limit usługi, więc przypisuj tylko potrzebne. O plikach i poleceniach decyduje `permissions.toml`. Pakiet zawiera tylko ogólne Skille; to, co dotyczy Twojego komputera, trzymasz u siebie:
 
 ```fish
 ai-desktop skills new moj-system      # tworzy ~/.config/ai-desktop/skills/moj-system/SKILL.md
@@ -250,7 +252,7 @@ Własny Skill o nazwie ogólnego ma pierwszeństwo. **Nie wpisuj do niego sekret
 
 ## Agenci i modele
 
-Agent to zapisany zestaw: usługa, model, poziom rozumowania, dostęp (`changes` lub `read-only`), instrukcje i do czterech Skilli. Agent nie dodaje uprawnień. Agent `read-only` nie zapisuje, nie usuwa i nie dostaje poleceń `change`.
+Agent to zapisany zestaw: usługa, model, poziom rozumowania, dostęp (`changes` lub `read-only`), instrukcje i Skille. Agent nie dodaje uprawnień. Agent `read-only` nie zapisuje, nie usuwa i nie dostaje poleceń `change`.
 
 ```fish
 ai-desktop settings                                 # menu ustawień
@@ -328,7 +330,7 @@ Do dostawcy trafia: Twoje pytanie, instrukcje programu i agenta (z przypisanymi 
 | `doctor` pisze „Klient Claude: brak” | W pakiecie nie ma pliku `claude-code`. Dodaj go według kroku 3 instalacji i zbuduj pakiet ponownie. |
 | `status`: `auth=unchecked` | To normalne: `status` i `doctor` nie sprawdzają logowania ani sieci. |
 | Prośba o logowanie | `ai-desktop login`, potem nowe pytanie. |
-| Limit usługi, błąd sieci, przekroczony czas | Nic nie jest ponawiane samo. Odczekaj i zadaj pytanie ponownie. Czas oczekiwania to 110 s, a dla `xhigh` i `max` 260 s. |
+| Limit usługi, błąd sieci, przekroczony czas | Nic nie jest ponawiane samo. Odczekaj i zadaj pytanie ponownie. Czas oczekiwania to 110 s, a dla `xhigh` i `max` 15 minut. |
 | Sesja zajęta lub niepotwierdzone zatrzymanie | `ai-desktop status`, potem `ai-desktop stop` (zatrzymuje tylko Twoją sesję). |
 | `Niepoprawny permissions.toml` | Komunikat wskazuje klucz. Sprawdź też prawa `0600`. |
 | `Claude jest zablokowany` | Ustaw `claude = true` w `[network]`. |

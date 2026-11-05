@@ -8,14 +8,14 @@ import sys
 
 from .run_controls import recipient, failure_hint, wait_message
 from .execution import UNSET
-from . import conversation_memory, conversation_state, permissions
+from . import ask_commands, conversation_memory, conversation_state, permissions
 from .assistant_contract import PlanError, PLAN_CHECKS
 from .analysis_cli import HINTS
 from .terminal_style import paint, rule
 from .analysis_contract import SERVICE_MARGIN, request_seconds, terminal_text
 from .analysis_contract import (AnalysisConsent, AnalysisDenied, ContextBudgetExceeded,
                                 InputBudgetExceeded, MAX_CONTEXT_BYTES, MAX_PACKET,
-                                MAX_QUESTION_BYTES, validate_question)
+                                MAX_MESSAGE_BYTES, validate_question)
 from .analysis_service import send_once
 from .analysis_session import installation_ready, managed_session
 from .analysis_terminal import render_answer
@@ -166,7 +166,7 @@ def _offer_save(talk, phase):
 def _continuation(question):
     """The next step of one task after an approved write; it is the program's text, carrying the user's own task once."""
     task = question[len(CONTINUE_PREFIX):] if question.startswith(CONTINUE_PREFIX) else question
-    room = 2048 - len(CONTINUE_PREFIX.encode("utf-8"))
+    room = MAX_MESSAGE_BYTES - len(CONTINUE_PREFIX.encode("utf-8"))
     return CONTINUE_PREFIX + task.encode("utf-8")[:room].decode("utf-8", "ignore")
 
 
@@ -188,7 +188,9 @@ def _explain_denied(exc, args, state):
     if args.details or web_diagnostic(exc.diagnostic) is not None:
         print(str(exc))
     if exc.reason == "consent":
-        print("Zgoda wygasła lub warunki dostępu uległy zmianie. Pytanie zostało zatrzymane.")
+        print("Minął czas na to pytanie: model myślał dłużej, niż pozwala limit. Pytanie zostało zatrzymane. Zadaj je ponownie "
+              "albo użyj niższego poziomu (/sila)." if getattr(exc, "expired", False)
+              else "Zgoda wygasła lub warunki dostępu uległy zmianie. Pytanie zostało zatrzymane.")
     elif exc.reason == "web-no-results":
         print("Nie uzyskano potwierdzonych wyników wyszukiwania. Pytanie zakończono bez odpowiedzi.")
     else:
@@ -215,14 +217,22 @@ def _read_message(session, followup):
     while True:
         # A bare LF still submits (an unbracketed paste must never smuggle a following answer into the message);
         # only a bracketed paste becomes an attachment.
-        text = read_question(max_bytes=MAX_QUESTION_BYTES, followup=followup, session=session, attach=True, lf_breaks=False)
+        try:
+            text = read_question(max_bytes=MAX_MESSAGE_BYTES, followup=followup, session=session, attach=True, lf_breaks=False)
+        except QuestionInputError as refused:
+            if refused.args != ("question paste",):
+                raise
+            print("Wklejka jest za duża: wiadomość może mieć razem %d KiB. Skróć ją albo użyj ai-desktop material PLIK."
+                  % (MAX_MESSAGE_BYTES // 1024))
+            followup = True
+            continue
         for number, block in session.take_pastes(text):
             text = text.replace(paste_token(number, block), block.strip("\n"))
         size = len(text.encode("utf-8"))
-        if size <= MAX_QUESTION_BYTES:
+        if size <= MAX_MESSAGE_BYTES:
             return text
         print("Wiadomość po wklejeniu ma %d B, a limit to %d B. Skróć wklejony fragment (np. head -n 20) i wklej ponownie."
-              % (size, MAX_QUESTION_BYTES))
+              % (size, MAX_MESSAGE_BYTES))
         followup = True
 
 
@@ -273,6 +283,9 @@ def main(argv=None, *, reader=input):
             raise AnalysisDenied("consent")
         question = args.question
         prompt_session = PromptSession()
+        prompt_session.commands = ask_commands.COMMANDS
+        prompt_session.paste_bytes = MAX_MESSAGE_BYTES
+        controls = ask_commands.Controls()
         if args.preview and args.session:
             print("Podgląd nie zapisuje ani nie wznawia rozmowy. Usuń --session albo --preview.")
             return 2
@@ -286,13 +299,20 @@ def main(argv=None, *, reader=input):
             if chosen[0] == "resume":
                 args.session = chosen[1]
         if question is None:
+            greeted = False                    # the greeting is shown once, not again after each local command
             while True:
-                question = (_read_message(prompt_session, False) if reader is input else reader(QUESTION_PROMPT))
-                validate_question(question)
+                question = (_read_message(prompt_session, greeted) if reader is input else reader(QUESTION_PROMPT))
+                greeted = True
+                validate_question(question, MAX_MESSAGE_BYTES)
+                local = controls.handle(question)
+                if local == ask_commands.EXIT:
+                    return 0
+                if local:
+                    continue
                 if question.strip():
                     break
                 print("Wpisz pytanie.")
-        validate_question(question)
+        validate_question(question, MAX_MESSAGE_BYTES)
         if not question.strip():
             print("Nie wpisano pytania. Uruchom ai-desktop ask, aby spróbować ponownie.")
             return 2
@@ -411,7 +431,12 @@ def main(argv=None, *, reader=input):
                     print()
                     return leave(code)
                 idle = 0
-                validate_question(question)
+                validate_question(question, MAX_MESSAGE_BYTES)
+                local = controls.handle(question, conversation)
+                if local == ask_commands.EXIT:
+                    return leave(code)
+                if local:
+                    continue
                 break
             if not question.strip():
                 return leave(code)
@@ -448,7 +473,7 @@ def main(argv=None, *, reader=input):
             print("Wysłanych danych nie można wycofać; pytanie nie zostanie ponowione automatycznie.")
         return 2
     except QuestionInputError:
-        print(f"Nie odczytano pytania. Użyj jednej linii zwykłego tekstu do {MAX_QUESTION_BYTES} bajtów.")
+        print(f"Nie odczytano pytania. Użyj jednej linii zwykłego tekstu do {MAX_MESSAGE_BYTES} bajtów.")
         return 2
     except (OSError, ValueError, TypeError, KeyError) as exc:
         if args.details:

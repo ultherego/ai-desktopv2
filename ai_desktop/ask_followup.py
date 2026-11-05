@@ -6,7 +6,7 @@ gets fresh transfer consent and still needs a separately approved tested diff.
 """
 import json
 
-from .analysis_contract import MAX_QUESTION_BYTES, validate_question
+from .analysis_contract import MAX_MESSAGE_BYTES, validate_question
 from .permissions import _absolute
 from .question_input import FOLLOWUP_PROMPT, QuestionInputError, read_question
 from .task_contract import path as validate_path
@@ -17,7 +17,7 @@ CANCEL = frozenset({"anuluj", "anuluj.", "nie", "stop", "cancel", "wyjdź", "wyj
 
 def clarify(question, path, *, workspace, reader=input):
     """Ask once, then return a bounded next question or explicit cancellation."""
-    validate_question(question)
+    validate_question(question, MAX_MESSAGE_BYTES)
     validate_path(path)
     _absolute(workspace)
     # JSON quoting preserves a selected name as data, not a suggested command.
@@ -27,7 +27,7 @@ def clarify(question, path, *, workspace, reader=input):
               ". Nie odczytano jej treści z samego powodu kolizji.\n"
               "Doprecyzowanie użytkownika (przy podmianie wybierz istniejący plik do odczytu i edycji; "
               "przy nowej nazwie wybierz nowy cel, bez nadpisywania starego):\n")
-    remaining = MAX_QUESTION_BYTES - len(prefix.encode("utf-8"))
+    remaining = MAX_MESSAGE_BYTES - len(prefix.encode("utf-8"))
     if remaining < 1:
         raise QuestionInputError("follow-up question limit")
     # Show the checked location locally; preserve the relative-only prefix
@@ -45,6 +45,6 @@ def clarify(question, path, *, workspace, reader=input):
     if not reply.strip() or reply.strip().casefold() in CANCEL:
         return None
     revised = prefix + reply.strip()
-    validate_question(revised)
+    validate_question(revised, MAX_MESSAGE_BYTES)
     print("Przygotuję nowy plan według tej odpowiedzi.")
     return revised

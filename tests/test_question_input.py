@@ -10,6 +10,7 @@ import struct
 import subprocess
 import sys
 import termios
+import threading
 import tempfile
 import time
 import unittest
@@ -34,6 +35,55 @@ def setUpModule():
 
 def tearDownModule():
     _COLOUR.stop()
+
+
+class RefusedPasteTests(unittest.TestCase):
+    def pipe(self, payload):
+        read_end, write_end = os.pipe()
+        self.addCleanup(os.close, read_end)
+        os.write(write_end, payload)
+        return read_end, write_end
+
+    def leftover(self, fd):
+        return os.read(fd, 65536) if select.select([fd], [], [], 0)[0] else b""
+
+    def test_nothing_of_an_oversized_paste_reaches_the_next_prompt(self):
+        fd, write_end = self.pipe(b"x" * 500 + b"\ndruga linia\n" + editor._PASTE_END + b"nowe")
+        self.addCleanup(os.close, write_end)
+        with self.assertRaisesRegex(editor.QuestionInputError, "question paste"):
+            editor._paste(fd, 100, newlines=True)
+        self.assertEqual(self.leftover(fd), b"")
+
+    def test_a_forbidden_byte_inside_a_paste_also_throws_away_the_rest(self):
+        fd, write_end = self.pipe(b"ok\x07reszta\n" + editor._PASTE_END)
+        self.addCleanup(os.close, write_end)
+        with self.assertRaises(editor.QuestionInputError):
+            editor._paste(fd, 100, newlines=True)
+        self.assertEqual(self.leftover(fd), b"")
+
+    def test_a_paste_without_an_end_marker_cannot_hang_the_prompt(self):
+        fd, write_end = self.pipe(b"x" * 500)
+        self.addCleanup(os.close, write_end)
+        started = time.monotonic()
+        with self.assertRaises(editor.QuestionInputError):
+            editor._paste(fd, 100, newlines=True)
+        self.assertLess(time.monotonic() - started, 5)
+
+    def test_an_end_marker_split_between_reads_is_still_found(self):
+        marker = editor._PASTE_END
+        read_end, write_end = os.pipe()
+        self.addCleanup(os.close, read_end)
+        self.addCleanup(os.close, write_end)
+        def later():
+            os.write(write_end, b"y" * 200 + marker[:3])
+            time.sleep(0.05)
+            os.write(write_end, marker[3:])
+        worker = threading.Thread(target=later)
+        worker.start()
+        started = time.monotonic()
+        editor._discard_paste(read_end, idle=2)
+        worker.join()
+        self.assertLess(time.monotonic() - started, 1.5)                 # ended at the marker, not at the idle limit
 
 
 class QuestionLineTests(unittest.TestCase):
@@ -65,7 +115,7 @@ class QuestionLineTests(unittest.TestCase):
 
     def test_invalid_limit_refuses_before_terminal_access(self):
         with patch.object(editor.sys.stdin, "isatty") as tty:
-            for maximum in (0, -1, 2049, True, "2048", None):
+            for maximum in (0, -1, (128 * 1024 + 1), True, "2048", None):
                 with self.subTest(maximum=maximum), self.assertRaises(editor.QuestionInputError):
                     editor.read_question(max_bytes=maximum)
             tty.assert_not_called()
@@ -112,7 +162,7 @@ if {audit_probe!r}:
                  (os.path.join(personal_roots[1], '.history'), os.O_RDONLY),
                  (os.path.join(personal_roots[1], 'personal.txt'), os.O_RDONLY),
                  ({str(ROOT / 'ai_desktop' / 'personal.json')!r}, os.O_RDONLY),
-                 ({str(ROOT / 'ai_desktop' / 'question_input.py')!r}, os.O_WRONLY)]
+                 ({str(ROOT / 'ai_desktop' / 'editor.py')!r}, os.O_WRONLY)]
     for path, flags in forbidden:
         try:
             audit('open', (path, 'r' if flags == os.O_RDONLY else 'w', flags))

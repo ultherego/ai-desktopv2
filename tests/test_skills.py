@@ -25,7 +25,7 @@ class SkillTests(unittest.TestCase):
 
     def test_project_skill(self):
         description, text = inspect_skill(ROOT, "cachyos-diagnostics")
-        self.assertIn("Linux", description)
+        self.assertIn("CachyOS", description)
         self.assertIn("tylko odczyt", text)
 
     def test_packaged_preset_skills_validate_and_fit_full_instruction_budget(self):
@@ -34,7 +34,7 @@ class SkillTests(unittest.TestCase):
             with self.subTest(name=name):
                 description, text = inspect_skill(ROOT, name)
                 self.assertTrue(description)
-                self.assertLessEqual(len(text.encode("utf-8")), 900)
+                self.assertLessEqual(len(text.encode("utf-8")), 4096)
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
             for name in names:
