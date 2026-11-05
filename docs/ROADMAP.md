@@ -40,8 +40,8 @@ Działa i jest scalone:
 
 | Zadanie | Stan |
 |---|---|
-| Końcowa odpowiedź po odczycie pliku dostaje wyniki poleceń i wczytane Skille | do zrobienia |
-| Etap edycji dostaje ustalenia z rozmowy, pamięć zadania, wyniki rozpoznania i Skille | do zrobienia |
+| Końcowa odpowiedź po odczycie pliku dostaje wyniki poleceń i wczytane Skille | w toku |
+| Etap edycji dostaje ustalenia z rozmowy, pamięć zadania, wyniki rozpoznania i Skille | w toku |
 | To samo w `project` | do zrobienia |
 | Skill wczytany w rozmowie jest dostępny w kolejnych pytaniach bez dodatkowego wywołania modelu | do zrobienia |
 | Skille na żądanie także w `material`, `project` i `task` | do zrobienia |

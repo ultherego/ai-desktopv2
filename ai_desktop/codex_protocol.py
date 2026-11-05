@@ -324,11 +324,14 @@ def _validated_input(raw):
         elif mode == "workspace":
             allowed |= {"task"}
             args, kwargs = (None,), {"task": data["task"]}
+            if "discovery" in data:
+                allowed.add("discovery")
+                kwargs["discovery"] = data["discovery"]
         elif mode in ("question", "assistant", "material", "project"):
             field = {"question": "context", "assistant": "access"}.get(mode, mode)
             allowed |= {"question", field}
             args, kwargs = (None, data["question"]), {field: data[field]}
-            if mode == "assistant" and "discovery" in data:
+            if mode in ("assistant", "question") and "discovery" in data:
                 allowed.add("discovery")
                 kwargs["discovery"] = data["discovery"]
         else:

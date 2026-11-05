@@ -14,7 +14,8 @@ from .run_controls import recipient, recipient_config, wait_message
 from .execution import current as current_execution
 from . import ask_context, ask_discovery, ask_edit, conversation_state, file_context, permissions, ask_followup
 from .assistant_contract import PlanError, parse_plan, validate_access, _constant as _no_constant, _unique as _unique_keys
-from .analysis_contract import AnalysisDenied, terminal_text
+from .analysis_contract import (AnalysisDenied, ContextBudgetExceeded, InputBudgetExceeded, application_input,
+                                terminal_text)
 from .question_consent import QuestionConsent
 from .terminal_consent import confirm
 from .terminal_style import card, paint, size_label, symbol
@@ -381,6 +382,20 @@ def _budget_stop(policy, name):
 MAX_SKILL_ROUNDS = 3
 
 
+def _observed(carried, **payload):
+    """What this task collected earlier, for its last request. It fits in nearly every case; if it does not, the request
+    still goes, and the owner is told what the model will not see instead of the whole answer being refused."""
+    document = carried.get("document")
+    if document is None:
+        return {}
+    try:
+        application_input(None, discovery=document, **payload)
+    except (ContextBudgetExceeded, InputBudgetExceeded):
+        print(paint("Wyniki wcześniejszych kroków nie mieszczą się w żądaniu: model ich nie zobaczy w tym etapie.", "muted"))
+        return {}
+    return {"discovery": document}
+
+
 def _run_once(question, args, reader, request, *, phase=None, conversation_consent=None, skills=None):
     """One plan and answer, optionally preceded by bounded discovery. Without a conversation grant it asks every time."""
     def progress(value):
@@ -437,6 +452,8 @@ def _run_once(question, args, reader, request, *, phase=None, conversation_conse
                 ledger = ask_discovery.DiscoveryLedger(snapshot.policy, question,
                                                        (current_execution() or {}).get("instructions", ""))
 
+            carried = {}
+
             def next_plan():
                 """One more planner round that carries the cumulative local observations (same single approval)."""
                 try:
@@ -444,6 +461,7 @@ def _run_once(question, args, reader, request, *, phase=None, conversation_conse
                 except ValueError:
                     _budget_stop(snapshot.policy, "discovery_bytes")
                 document = permit.bind_discovery(snapshot.policy, pending)
+                carried["document"] = document
                 progress("plan-request")
                 reply = request(question, args, reader, access=snapshot.access, discovery=document,
                                 check=permit.check, question_consent=permit)
@@ -547,7 +565,7 @@ def _run_once(question, args, reader, request, *, phase=None, conversation_conse
                 prepared = ask_edit.prepare(plan, snapshot, args, reader, question_consent=permit)
                 progress("edit-request")
                 response = request(question, args, reader, task=prepared.source, write_grant=prepared.write_grant,
-                                   check=permit.check, question_consent=permit)
+                                   check=permit.check, question_consent=permit, **_observed(carried, task=prepared.source))
                 permit.check()
                 # Transfer permission is finished. The subsequent test/review
                 # uses the captured write guard and a separate TaskPlan TTL.
@@ -558,7 +576,8 @@ def _run_once(question, args, reader, request, *, phase=None, conversation_conse
                 progress("collect")
                 context = collect(plan, snapshot, args, reader, question_consent=permit)
             progress("answer-request")
-            answer = request(question, args, reader, context=context, check=permit.check, question_consent=permit)
+            answer = request(question, args, reader, context=context, check=permit.check, question_consent=permit,
+                             **_observed(carried, question=question, context=context))
         permit.check()
         return answer
     finally:

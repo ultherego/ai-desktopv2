@@ -403,20 +403,20 @@ class ConversationControlsTests(unittest.TestCase):
             with self.subTest(bad=repr(bad)[:60]), self.assertRaisesRegex(ValueError, "conversation"):
                 execution.validate_history(bad)
 
-    def test_history_roundtrip_is_bound_only_to_assistant_and_question(self):
+    def test_history_roundtrip_is_bound_to_assistant_question_and_an_edit(self):
         history = [{"question": "q", "answer": "a"}]
         with execution.using_history(history):
-            for kwargs in (dict(context=[]), dict(access={"files": [], "systemd": [], "weather": False})):
-                source = dict(report=None, question="synthetic", **kwargs)
+            edit = {"instruction": "zrob to", "files": [{"path": "file.txt", "content": "x", "writable": True}]}
+            for source in (dict(report=None, question="synthetic", context=[]),
+                           dict(report=None, question="synthetic", access={"files": [], "systemd": [], "weather": False}),
+                           dict(report=None, task=edit)):
                 gate = contract.AnalysisConsent(**source)
                 approval = gate.authorize(**source, sha256=gate.sha256, nonce=gate.nonce)
                 parsed, _ = contract.parse_request(approval.payload.encode())
                 self.assertEqual(json.loads(parsed)["conversation"], history)
                 body, _ = child.native_input("analyze", parsed.encode())
                 self.assertEqual(json.loads(body)["conversation"], history)
-            for source in (dict(report=report_fixture()), dict(report=None, question="synthetic", web=True),
-                           dict(report=None, task={"instruction": "synthetic", "files": [
-                               {"path": "file.txt", "content": "x", "writable": True}]})):
+            for source in (dict(report=report_fixture()), dict(report=None, question="synthetic", web=True)):
                 payload = contract.application_input(**source)
                 self.assertNotIn("conversation", json.loads(payload))
                 parsed, _ = contract.parse_request(payload.encode())

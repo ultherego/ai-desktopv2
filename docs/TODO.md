@@ -7,7 +7,7 @@ Etapy i warunki ich ukończenia opisuje [ROADMAP.md](ROADMAP.md).
 - [x] `task rollback`: nie nadpisywać ani nie usuwać nowszego zapisu edytora.
 - [x] Długie polecenie zmiany: etap edycji odrzuca instrukcję powyżej 2 KiB, choć `ask` przyjmuje 128 KiB.
 - [x] Spacja przed `/` jest usuwana, więc słowa z `/` nie da się wysłać jako pytania.
-- [ ] Końcowa odpowiedź po odczycie pliku dostaje wyniki poleceń i wczytane Skille.
+- [x] Końcowa odpowiedź po odczycie pliku dostaje wyniki poleceń i wczytane Skille.
 - [ ] Wynik wykonanej zmiany zostaje w pamięci mimo błędu usługi.
 - [ ] Zależność od cofniętego pliku nie przechodzi na niezależne odpowiedzi.
 - [ ] Zgodne limity szablonów `change` (polityka 128, kontrakt 24).
@@ -34,7 +34,8 @@ Etapy i warunki ich ukończenia opisuje [ROADMAP.md](ROADMAP.md).
 - [ ] Niezależny przegląd bezpieczeństwa przed wersją 1.0.
 
 ## Błędy funkcjonalne
-- [ ] Etap edycji (`ask_edit`, `project`) nie dostaje wcześniejszych ustaleń rozmowy, tylko samo „zrób to".
+- [x] Etap edycji w `ask` dostaje wcześniejsze ustalenia rozmowy, pamięć, wyniki poleceń i Skille.
+- [ ] To samo w `project`.
 - [ ] Zapis rozmowy odmawia przy 33 zależnych plikach (limit 32), a odczyt dopuszcza 64.
 - [x] Kosz: 129. usunięcie jest odrzucane przed wykonaniem.
 - [x] Skill o największym dopuszczalnym rozmiarze można przypisać do agenta.
