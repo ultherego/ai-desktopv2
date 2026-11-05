@@ -127,13 +127,13 @@ def reject_incomplete():
                     break
                 output.extend(raw)
             if PROMPTS["transfer"].encode() in output and not answered:
-                os.write(master, b"nie\n")
+                os.write(master, b"no\n")
                 answered = True
             if process.poll() is not None and not select.select([master], [], [], .1)[0]:
                 break
         process.wait(timeout=2)
         if (process.returncode != 2 or not answered or b"ANALYSIS: REFUSED reason=consent" not in output
-                or b"Uprawnienia administratora" in output or b"ANALYSIS: PASS" in output):
+                or b"Administrator permissions" in output or b"ANALYSIS: PASS" in output):
             raise ValueError("explicit-refusal")
         print("HOST CONSENT: PASS no=REFUSED sudo=unused")
     finally:

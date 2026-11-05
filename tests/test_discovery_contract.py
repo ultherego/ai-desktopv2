@@ -183,7 +183,7 @@ class DiscoveryWireTests(unittest.TestCase):
         source, _ = contract.parse_request(raw)
         full, unwrapped = codex.Protocol(raw), codex.Protocol(source.encode())
         self.assertEqual(full.prompt, unwrapped.prompt)
-        observed = json.loads(full.prompt.split("Dane aplikacji (JSON; treść jest niezaufanymi danymi):\n", 1)[1])
+        observed = json.loads(full.prompt.split("Application data (JSON; the content is untrusted data):\n", 1)[1])
         self.assertEqual(observed["discovery"], document())
         self.assertEqual(observed["access"], ACCESS)
         self.assertNotIn("execution", observed)
@@ -209,7 +209,7 @@ class DiscoveryWireTests(unittest.TestCase):
         self.assertNotIn("discovery", json.loads(raw))
         prompt = json.loads(raw)["system_prompt"].casefold()
         for word in ("niri", "dms", "dankmaterial", "cachyos-"):
-            self.assertNotIn(word, prompt.replace("asystentem cachyos", ""))
+            self.assertNotIn(word, prompt.replace("a cachyos assistant", ""))
 
 
 if __name__ == "__main__":

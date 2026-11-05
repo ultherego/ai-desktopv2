@@ -31,7 +31,7 @@ class TaskCliTests(unittest.TestCase):
             if prompt == PROMPTS["write"] and mutate:
                 (self.root / "calc.py").write_text("user edit\n")
             approved = approve_send if prompt == PROMPTS["transfer"] else approve_write
-            return "tak" if approved else "nie"
+            return "yes" if approved else "no"
         with contextlib.redirect_stdout(out), patch.object(cli.sys.stdin, "isatty", return_value=True), \
                 patch.object(cli.sys.stdout, "isatty", return_value=True), \
                 patch.object(cli, "installation_ready"), patch.object(cli, "managed_session", return_value=contextlib.nullcontext()) as runtime, \
@@ -46,9 +46,9 @@ class TaskCliTests(unittest.TestCase):
         self.assertEqual((self.root / "calc.py").read_text(), "new\n")
         send.assert_called_once(); check.assert_called_once(); runtime.assert_called_once()
         runtime.assert_called_once_with(quiet=True)
-        self.assertIn("=== Zmiany do zapisania ===\n```diff\n", output)
-        self.assertNotIn("Test na kopii: zaliczony", output)
-        self.assertIn("Zapisano zmiany.", output)
+        self.assertIn("=== Changes to save ===\n```diff\n", output)
+        self.assertNotIn("Test on a copy: passed", output)
+        self.assertIn("Changes saved.", output)
         self.assertEqual(self.prompts, [PROMPTS["transfer"], PROMPTS["write"]])
         self.assertNotRegex(output, r"[a-f0-9]{64}")
         record = workspace.status(str(self.root))[0]
@@ -65,15 +65,15 @@ class TaskCliTests(unittest.TestCase):
                             patch.object(cli, "send_once") as send:
                         code = cli.main(args + ["--workspace", str(self.root / "calc.py")] + (["--details"] if details else []))
                     self.assertEqual(code, 2)
-                    self.assertIn("workspace-not-directory" if details else "a to jest plik", out.getvalue())
+                    self.assertIn("workspace-not-directory" if details else "but this is a file", out.getvalue())
                     send.assert_not_called()
 
     def test_unchanged_proposal_has_its_own_message_and_changes_nothing(self):
         self.proposal = json.dumps({"summary": "same", "files": [{"path": "calc.py", "content": "old\n"}]})
         result, output, send, check, _ = self.invoke()
         self.assertEqual(result, 2)
-        self.assertIn("Nie zaproponowano zmiany: plik ma już taką treść. Nic nie zapisano.\n", output)
-        self.assertNotIn("Nie ukończono zadania", output)
+        self.assertIn("No change was proposed: the file already has this content. Nothing was saved.\n", output)
+        self.assertNotIn("The task was not finished", output)
         self.assertEqual(self.prompts, [PROMPTS["transfer"]])  # no write question
         check.assert_not_called()
         self.assertEqual((self.root / "calc.py").read_text(), "old\n")
@@ -84,16 +84,16 @@ class TaskCliTests(unittest.TestCase):
         self.args = self.args + ["--v"]
         result, output, _, check, _ = self.invoke()
         self.assertEqual(result, 2)
-        self.assertIn("Nie zaproponowano zmiany: plik ma już taką treść. Nic nie zapisano.", output)
-        self.assertIn("TASK: REFUSED reason=unchanged; projekt niezmieniony", output)
+        self.assertIn("No change was proposed: the file already has this content. Nothing was saved.", output)
+        self.assertIn("TASK: REFUSED reason=unchanged; project unchanged", output)
         check.assert_not_called()
 
     def test_forbidden_path_still_gets_the_generic_message(self):
         self.proposal = json.dumps({"summary": "x", "files": [{"path": "other.py", "content": "new\n"}]})
         result, output, _, check, _ = self.invoke()
         self.assertEqual(result, 2)
-        self.assertNotIn("Nie zaproponowano zmiany", output)
-        self.assertIn("Nie ukończono zadania.", output)
+        self.assertNotIn("No change was proposed", output)
+        self.assertIn("The task was not finished.", output)
         check.assert_not_called()
 
     def test_refused_transfer_does_not_start_model_or_test(self):
@@ -169,16 +169,16 @@ class TaskCliTests(unittest.TestCase):
 
     def test_rollback_single_task_uses_short_consent_without_plan_argument(self):
         self.assertEqual(self.invoke()[0], 0)
-        code, output, prompts = self.undo(["TAK"])
+        code, output, prompts = self.undo(["YES"])
         self.assertEqual(code, 0, output)
         self.assertEqual(prompts, [PROMPTS["rollback"]])
         self.assertEqual((self.root / "calc.py").read_text(), "old\n")
-        self.assertIn("Przywróć oryginał: calc.py", output)
+        self.assertIn("Restore original: calc.py", output)
         self.assertNotRegex(output, r"[a-f0-9]{64}")
 
     def test_rollback_reprompts_invalid_answers_and_refuses_no_eof_interrupt_without_writes(self):
         self.assertEqual(self.invoke()[0], 0)
-        for answers in (["", "nie"], ["?", "nie"], ["n"], ["nie"], ["COFNI", "nie"], [EOFError()], [KeyboardInterrupt()]):
+        for answers in (["", "no"], ["?", "no"], ["n"], ["no"], ["COFNI", "no"], ["nie", "no"], ["tak", "no"], [EOFError()], [KeyboardInterrupt()]):
             with self.subTest(answers=answers):
                 code, _, _ = self.undo(answers)
                 self.assertEqual(code, 2)
@@ -193,12 +193,12 @@ class TaskCliTests(unittest.TestCase):
         self.assertEqual(self.invoke()[0], 0)
         records = cli.newest_first(workspace.recovery_records(str(self.root)))
         selected = next(i for i, record in enumerate(records, 1) if record["files"][0]["path"] == "second.py")
-        for answer in ("", "tak", "0", "3", "-1", "01"):
-            code, _, prompts = self.undo([answer, "nie"])
+        for answer in ("", "yes", "0", "3", "-1", "01"):
+            code, _, prompts = self.undo([answer, "no"])
             self.assertEqual(code, 2)
             self.assertEqual(len(prompts), 2)
             self.assertEqual((self.root / "second.py").read_text(), "changed\n")
-        code, output, prompts = self.undo([str(selected), "tak"])
+        code, output, prompts = self.undo([str(selected), "yes"])
         self.assertEqual(code, 0, output)
         self.assertEqual(prompts[-1], PROMPTS["rollback"])
         self.assertEqual((self.root / "second.py").read_text(), "other\n")
@@ -206,7 +206,7 @@ class TaskCliTests(unittest.TestCase):
 
     def test_repeated_invalid_write_answers_keep_original_until_explicit_yes(self):
         out = io.StringIO()
-        answers = iter(["Tak", "", "?", "yes", "T"])
+        answers = iter(["Yes", "", "?", "tak", "Y"])
         def reader(prompt):
             self.assertEqual((self.root / "calc.py").read_text(), "old\n")
             return next(answers)
@@ -223,7 +223,7 @@ class TaskCliTests(unittest.TestCase):
     def test_expired_rollback_consent_is_refused_before_executor(self):
         self.assertEqual(self.invoke()[0], 0)
         with patch.object(cli.time, "monotonic", side_effect=[0, 181]), patch.object(workspace, "rollback") as rollback:
-            self.assertEqual(self.undo(["tak"])[0], 2)
+            self.assertEqual(self.undo(["yes"])[0], 2)
         rollback.assert_not_called()
 
     def test_rollback_changed_journal_after_preview_refuses_without_writes(self):
@@ -234,14 +234,14 @@ class TaskCliTests(unittest.TestCase):
             data = json.loads(journal.read_text())
             data["status"] = "conflict"
             journal.write_text(json.dumps(data))
-        self.assertEqual(self.undo(["tak"], before_answer=change)[0], 2)
+        self.assertEqual(self.undo(["yes"], before_answer=change)[0], 2)
         self.assertEqual((self.root / "calc.py").read_text(), "new\n")
         self.assertEqual(json.loads(journal.read_text())["status"], "conflict")
 
     def test_no_pending_rollback_does_not_request_consent(self):
         self.assertEqual(self.undo([])[0], 0)
         self.assertEqual(self.invoke()[0], 0)
-        self.assertEqual(self.undo(["tak"])[0], 0)
+        self.assertEqual(self.undo(["yes"])[0], 0)
         code, _, prompts = self.undo([])
         self.assertEqual(code, 0)
         self.assertEqual(prompts, [])
@@ -283,7 +283,7 @@ class TaskPresentationTests(unittest.TestCase):
         def reader(prompt):
             prompts.append(prompt)
             previews.append(output.getvalue())
-            return "tak" if (approve_send if prompt == PROMPTS["transfer"] else approve_write) else "nie"
+            return "yes" if (approve_send if prompt == PROMPTS["transfer"] else approve_write) else "no"
         with contextlib.redirect_stdout(output), patch.object(cli.sys.stdin, "isatty", return_value=True), \
                 patch.object(cli, "selection", return_value=(before, source)), \
                 patch.object(cli.workspace, "_can_apply"), \
@@ -304,22 +304,22 @@ class TaskPresentationTests(unittest.TestCase):
         self.assertEqual(code, 0, output)
         self.assertEqual(prompts, [PROMPTS["transfer"], PROMPTS["write"]])
         self.assertIn("Popraw dodawanie", previews[0])
-        self.assertIn("calc.py — edycja", previews[0])
-        self.assertIn("new.txt — utworzenie", previews[0])
-        self.assertIn("test_calc.py — tylko odczyt", previews[0])
-        self.assertIn("Do Claude:", previews[0])
+        self.assertIn("calc.py — edit", previews[0])
+        self.assertIn("new.txt — create", previews[0])
+        self.assertIn("test_calc.py — read-only", previews[0])
+        self.assertIn("To Claude:", previews[0])
         self.assertNotIn("PRIVATE_TEST_CONTEXT", output)
         self.assertNotIn("OLD_CONTENT", previews[0])
         self.assertIn("-OLD_CONTENT", previews[1])
         self.assertIn("+NEW_CONTENT", previews[1])
-        self.assertIn("+new first\n+new last\n\\ Brak znaku nowej linii na końcu pliku", previews[1])
-        self.assertIn("=== Zmiany do zapisania ===\n```diff\n", previews[1])
+        self.assertIn("+new first\n+new last\n\\ No newline at end of file", previews[1])
+        self.assertIn("=== Changes to save ===\n```diff\n", previews[1])
         self.assertTrue(previews[1].endswith("\n```\n\n"))
-        self.assertIn("Zapisano zmiany.", output)
+        self.assertIn("Changes saved.", output)
         self.assertIn("ai-desktop task rollback --workspace /tmp/project", output)
-        for technical in ("TASK:", "TASK TEST:", "SESSION:", "Nowa tresc JSON", "SYNTHETIC TEST LOG",
-                          "Sprawdzam zmiany na odizolowanej kopii", "Test na kopii:",
-                          "Test obejmuje tylko wybrane pliki", "Zapis obejmie tylko pokazane zmiany"):
+        for technical in ("TASK:", "TASK TEST:", "SESSION:", "New content as JSON", "SYNTHETIC TEST LOG",
+                          "Checking the changes on an isolated copy", "Test on a copy:",
+                          "The test covers only the selected files", "Only the changes shown will be saved"):
             self.assertNotIn(technical, output)
         self.assertNotRegex(output, r"[a-f0-9]{64}")
         runtime.assert_called_once_with(quiet=True)
@@ -336,7 +336,7 @@ class TaskPresentationTests(unittest.TestCase):
         prompts = []
         def reader(prompt):
             prompts.append(prompt)
-            return "nie"
+            return "no"
         with contextlib.redirect_stdout(output), patch.object(cli.sys.stdin, "isatty", return_value=True), \
                 patch.object(cli.sys.stdout, "isatty", return_value=True), patch.object(cli.workspace, "unchanged"), \
                 patch.object(cli.task_sandbox, "run", return_value={"passed": True, "output": "text checked"}), \
@@ -344,8 +344,8 @@ class TaskPresentationTests(unittest.TestCase):
             code = cli.finish_task(before, source, json.dumps(proposed), args, reader)
         self.assertEqual(code, 2)
         self.assertEqual(prompts, [PROMPTS["write"]])
-        self.assertIn("Nie sprawdzono składni ani działania", output.getvalue())
-        self.assertNotIn("Test na kopii: zaliczony", output.getvalue())
+        self.assertIn("The syntax and behavior of this configuration or program were not checked", output.getvalue())
+        self.assertNotIn("Test on a copy: passed", output.getvalue())
         apply.assert_not_called()
 
     def test_policy_is_rechecked_after_diff_and_not_only_before_test(self):
@@ -358,7 +358,7 @@ class TaskPresentationTests(unittest.TestCase):
                 patch.object(cli.task_sandbox, "run", return_value={"passed": True, "output": "ok"}) as check, \
                 patch.object(cli.workspace, "apply") as apply:
             with self.assertRaises(ValueError):
-                cli.finish_task(before, source, json.dumps(proposed), args, lambda _: "tak", write_guard=guard)
+                cli.finish_task(before, source, json.dumps(proposed), args, lambda _: "yes", write_guard=guard)
         self.assertEqual(guard.call_count, 3)
         check.assert_called_once()
         apply.assert_not_called()
@@ -368,7 +368,7 @@ class TaskPresentationTests(unittest.TestCase):
         args = cli.build_parser().parse_args(["run", "fix", "--workspace", "/tmp/project",
             "--file", "calc.py", "--test", "python-syntax"])
         guard = Mock(side_effect=[None, ValueError("policy changed")])
-        reader = Mock(return_value="tak")
+        reader = Mock(return_value="yes")
         out = io.StringIO()
         with contextlib.redirect_stdout(out), patch.object(cli.workspace, "unchanged") as unchanged, \
                 patch.object(cli.task_sandbox, "run", return_value={"passed": True, "output": "ok"}) as check, \
@@ -379,22 +379,22 @@ class TaskPresentationTests(unittest.TestCase):
         unchanged.assert_called_once_with(before)
         reader.assert_not_called()
         apply.assert_not_called()
-        self.assertNotIn("=== Zmiany do zapisania ===", out.getvalue())
+        self.assertNotIn("=== Changes to save ===", out.getvalue())
 
     def test_details_retains_exact_payload_diagnostic_output_and_markers(self):
         code, output, _, _, _, runtime, _, _, _, _ = self.run_presentation(details=True)
         self.assertEqual(code, 0, output)
         runtime.assert_called_once_with()
-        for technical in ("=== WYBRANE DANE DO CLAUDE ===", "PRIVATE_TEST_CONTEXT", "=== INSTRUKCJA APLIKACJI ===",
-                          "=== ZASADY I ODBIORCA ===", "SESSION: STOPPED", "TASK TEST: PASS check=python-syntax",
-                          "TASK: PASS test=python-syntax", "Nowa tresc JSON:", "SYNTHETIC TEST LOG",
-                          "Sprawdzam zmiany na odizolowanej kopii", "Test na kopii: zaliczony",
-                          "Test obejmuje tylko wybrane pliki", "Zapis obejmie tylko pokazane zmiany"):
+        for technical in ("=== SELECTED DATA FOR CLAUDE ===", "PRIVATE_TEST_CONTEXT", "=== APPLICATION INSTRUCTIONS ===",
+                          "=== RULES AND RECIPIENT ===", "SESSION: STOPPED", "TASK TEST: PASS check=python-syntax",
+                          "TASK: PASS test=python-syntax", "New content as JSON:", "SYNTHETIC TEST LOG",
+                          "Checking the changes on an isolated copy", "Test on a copy: passed",
+                          "The test covers only the selected files", "Only the changes shown will be saved"):
             self.assertIn(technical, output)
         self.assertRegex(output, r"SHA256: [a-f0-9]{64}")
         self.assertLess(output.index("SESSION: STOPPED"), output.index("TASK TEST: PASS"))
-        self.assertIn("=== Zmiany do zapisania ===\n```diff\n", output)
-        self.assertIn('Nowa tresc JSON: new.txt\n```json\n"new first\\nnew last"\n```', output)
+        self.assertIn("=== Changes to save ===\n```diff\n", output)
+        self.assertIn('New content as JSON: new.txt\n```json\n"new first\\nnew last"\n```', output)
 
     def test_verbose_aliases_share_the_same_diagnostic_mode(self):
         for flag in ("--v", "--verbose", "-v", "--details"):
@@ -410,9 +410,9 @@ class TaskPresentationTests(unittest.TestCase):
         code, output, prompts, _, _, _, _, _, apply, _ = self.run_presentation(passed=False)
         self.assertEqual(code, 2)
         self.assertEqual(prompts, [PROMPTS["transfer"]])
-        self.assertIn("Test na kopii: niezaliczony", output)
+        self.assertIn("Test on a copy: failed", output)
         self.assertIn("SYNTHETIC TEST LOG", output)
-        self.assertIn("Nie zapisano zmian", output)
+        self.assertIn("The changes were not saved", output)
         apply.assert_not_called()
 
     def test_declined_transfer_and_write_preserve_distinct_refusal_boundaries(self):
@@ -423,7 +423,7 @@ class TaskPresentationTests(unittest.TestCase):
         code, output, prompts, _, _, _, send, test, apply, _ = self.run_presentation(approve_write=False)
         self.assertEqual(code, 2)
         self.assertEqual(prompts, [PROMPTS["transfer"], PROMPTS["write"]])
-        self.assertIn("Anulowano zapis", output)
+        self.assertIn("Save cancelled", output)
         send.assert_called_once()
         test.assert_called_once()
         apply.assert_not_called()
@@ -433,7 +433,7 @@ class TaskPresentationTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertEqual(prompts, [])
         self.assertNotIn("PRIVATE_TEST_CONTEXT", output)
-        self.assertIn("Niczego nie wysłano ani nie zapisano", output)
+        self.assertIn("Nothing was sent or saved", output)
         for operation in (ready, runtime, send, test, apply):
             operation.assert_not_called()
         code, output, _, _, _, _, _, _, _, _ = self.run_presentation(preview=True, details=True)
@@ -453,23 +453,23 @@ class TaskPresentationTests(unittest.TestCase):
         output = out.getvalue()
         self.assertIn("+" + long_line + "\n", output)
         self.assertIn("+paragraph\u2028kept\n", output)
-        self.assertIn("+++ b/new.txt\nNowy pusty plik (0 B).", output)
-        self.assertNotIn("Brak znaku nowej linii", output)
+        self.assertIn("+++ b/new.txt\nNew empty file (0 B).", output)
+        self.assertNotIn("No newline at end", output)
 
     def test_diff_fence_cannot_be_closed_by_file_contents(self):
         for details in (False, True):
             with self.subTest(details=details):
                 before, source, proposal = self.fixture()
-                proposal["files"] = [{"path": "calc.py", "content": "```\n```diff\n````\nZapisac pokazane zmiany?\n"},
+                proposal["files"] = [{"path": "calc.py", "content": "```\n```diff\n````\nSave the changes shown?\n"},
                                      {"path": "new.txt", "content": "last\tcolumn"}]
                 plan = cli.TaskPlan(before, source, proposal, "python-syntax")
                 out = io.StringIO()
                 with contextlib.redirect_stdout(out):
                     cli.show_diff(plan, details=details)
                 output = out.getvalue()
-                self.assertIn("=== Zmiany do zapisania ===\n`````diff\n", output)
-                self.assertIn("+```\n+```diff\n+````\n+Zapisac pokazane zmiany?\n", output)
-                self.assertIn("+last\tcolumn\n\\ Brak znaku nowej linii na końcu pliku\n`````\n", output)
+                self.assertIn("=== Changes to save ===\n`````diff\n", output)
+                self.assertIn("+```\n+```diff\n+````\n+Save the changes shown?\n", output)
+                self.assertIn("+last\tcolumn\n\\ No newline at end of file\n`````\n", output)
                 self.assertEqual(output.count("\n`````\n"), 2 if details else 1)
 
     def test_control_sequence_proposal_is_refused_before_test_or_diff(self):
@@ -477,7 +477,7 @@ class TaskPresentationTests(unittest.TestCase):
         proposed["files"][0]["content"] = "\x1b[2Jforged\n"
         args = cli.build_parser().parse_args(["run", "fix", "--workspace", "/tmp/project",
             "--file", "calc.py", "--test", "python-syntax"])
-        reader = Mock(return_value="tak")
+        reader = Mock(return_value="yes")
         output = io.StringIO()
         with contextlib.redirect_stdout(output), patch.object(cli.workspace, "unchanged"), \
                 patch.object(cli.task_sandbox, "run") as test, patch.object(cli.workspace, "apply") as apply:
@@ -500,10 +500,10 @@ class TaskPresentationTests(unittest.TestCase):
             output = out.getvalue()
             self.assertIn("calc.py", output)
             self.assertIn("new.txt", output)
-            self.assertIn("1. Stan:", output)
+            self.assertIn("1. State:", output)
             self.assertEqual("a" * 64 in output, details)
             self.assertEqual("b" * 64 in output, details)
-            self.assertIn("applied" if details else "zapisano", output)
+            self.assertIn("applied" if details else "saved", output)
 
     def test_rollback_preserves_digest_expiry_and_visible_effects_in_both_modes(self):
         for details in (False, True):
@@ -513,16 +513,16 @@ class TaskPresentationTests(unittest.TestCase):
             out.isatty = lambda: True
             def reader(prompt):
                 prompts.append(prompt)
-                self.assertIn("Przywróć oryginał: calc.py", out.getvalue())
-                self.assertIn("Usuń utworzony plik: new.txt", out.getvalue())
-                return "tak"
+                self.assertIn("Restore original: calc.py", out.getvalue())
+                self.assertIn("Delete created file: new.txt", out.getvalue())
+                return "yes"
             with contextlib.redirect_stdout(out), patch.object(cli.sys.stdin, "isatty", return_value=True), \
                     patch.object(cli.time, "monotonic", side_effect=[0, 1]), \
                     patch.object(workspace, "rollback", return_value=True) as rollback:
                 self.assertEqual(cli.rollback_task(args, [self.record()], reader), 0)
             rollback.assert_called_once_with("/tmp/project", "a" * 64, expected_journal="b" * 64)
             self.assertEqual(prompts, [PROMPTS["rollback"]])
-            self.assertIn("TASK ROLLBACK: PASS" if details else "Cofnięto zmiany.", out.getvalue())
+            self.assertIn("TASK ROLLBACK: PASS" if details else "Changes undone.", out.getvalue())
             self.assertEqual("a" * 64 in out.getvalue(), details)
             with contextlib.redirect_stdout(io.StringIO()), patch.object(cli, "confirm", return_value=True), \
                     patch.object(cli.time, "monotonic", side_effect=[0, 181]), \
@@ -561,8 +561,8 @@ class TaskPresentationTests(unittest.TestCase):
             cli.show_record(new, 1)
             cli.show_record(undated, 2)
         first, second = out.getvalue().splitlines()[0], [l for l in out.getvalue().splitlines() if l.startswith("2.")][0]
-        self.assertRegex(first, r"^1\. \d{4}-\d{2}-\d{2} \d{2}:\d{2} · Stan: zapisano$")
-        self.assertEqual(second, "2. Stan: zapisano")
+        self.assertRegex(first, r"^1\. \d{4}-\d{2}-\d{2} \d{2}:\d{2} · State: saved$")
+        self.assertEqual(second, "2. State: saved")
         with contextlib.redirect_stdout(io.StringIO()), patch.object(cli.os, "getuid", return_value=1000), \
                 patch.object(cli.os, "geteuid", return_value=1000), \
                 patch.object(workspace, "recovery_records", return_value=[old]), \
@@ -577,7 +577,7 @@ class TaskPresentationTests(unittest.TestCase):
                       files=[{"path": "second.py", "action": "restore"}])
         out = io.StringIO()
         out.isatty = lambda: True
-        reader = Mock(side_effect=["", "bad", "2", "t"])
+        reader = Mock(side_effect=["", "bad", "2", "y"])
         with contextlib.redirect_stdout(out), patch.object(cli.sys.stdin, "isatty", return_value=True), \
                 patch.object(cli.time, "monotonic", return_value=0), \
                 patch.object(workspace, "rollback", return_value=False) as rollback:
@@ -585,8 +585,8 @@ class TaskPresentationTests(unittest.TestCase):
         rollback.assert_called_once_with("/tmp/project", "c" * 64, expected_journal="d" * 64)
         self.assertEqual(reader.call_count, 4)
         self.assertEqual(reader.call_args.args, (PROMPTS["rollback"],))
-        self.assertIn("Nie cofnięto", out.getvalue())
-        self.assertIn("Dziennik zachowano", out.getvalue())
+        self.assertIn("Not undone", out.getvalue())
+        self.assertIn("The journal was kept", out.getvalue())
         self.assertNotRegex(out.getvalue(), r"[a-f0-9]{64}")
 
     def test_full_history_refuses_before_model_and_has_actionable_finite_hint(self):
@@ -605,5 +605,5 @@ class TaskPresentationTests(unittest.TestCase):
         send.assert_not_called()
         session.assert_not_called()
         confirm.assert_not_called()
-        self.assertIn("limit 128", out.getvalue())
-        self.assertIn("historia i cofanie pozostają dostępne", out.getvalue())
+        self.assertIn("limit of 128", out.getvalue())
+        self.assertIn("history and undo are still available", out.getvalue())

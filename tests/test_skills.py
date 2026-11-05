@@ -28,7 +28,7 @@ class SkillTests(unittest.TestCase):
     def test_project_skill(self):
         description, text = inspect_skill(ROOT, "cachyos-diagnostics")
         self.assertIn("CachyOS", description)
-        self.assertIn("tylko odczyt", text)
+        self.assertIn("read-only", text)
 
     def test_packaged_preset_skills_validate_and_fit_full_instruction_budget(self):
         names = tuple(agent_profiles.PRESET_SKILLS.values())

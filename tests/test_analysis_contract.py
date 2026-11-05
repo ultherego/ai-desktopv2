@@ -171,11 +171,11 @@ class AnalysisContractTests(unittest.TestCase):
                 with self.assertRaises(contract.AnalysisDenied):
                     contract.parse_request(contract.canonical(changed).encode())
                 prompt_name = "WEB_SYSTEM_PROMPT" if source.get("web") else "SYSTEM_PROMPT"
-                with patch.object(contract, prompt_name, getattr(contract, prompt_name) + " Inny styl."):
+                with patch.object(contract, prompt_name, getattr(contract, prompt_name) + " Other style."):
                     self.assertNotEqual(contract.digest(contract.application_input(**source)), gate.sha256)
                     with self.assertRaises(contract.AnalysisDenied):
                         gate.authorize(**source, sha256=gate.sha256, nonce=gate.nonce)
-        for rule in ("1-3 zdania", "bez wstepu", "Nie ucinaj komend, kodu ani diffu", "bezpieczenstwa"):
+        for rule in ("1-3 sentences", "no introduction", "Do not truncate commands, code or diffs", "security"):
             self.assertIn(rule, contract.RESPONSE_STYLE)
 
     def test_expired_changed_wrong_nonce_and_replayed_consent_are_closed(self):
@@ -225,3 +225,21 @@ class AnalysisContractTests(unittest.TestCase):
         with self.assertRaisesRegex(contract.AnalysisDenied, "reason=auth-required$"):
             contract.read_result(contract.result_packet("a" * 64, reason="auth-required"), "a" * 64)
         self.assertEqual(contract.AnalysisDenied([]).reason, "internal")
+
+
+class AnswerLanguageTests(unittest.TestCase):
+    """The interface is English, but the model answers in the language of the user's own message."""
+
+    def test_every_prompt_follows_the_language_of_the_users_message(self):
+        for prompt in (contract.SYSTEM_PROMPT, contract.WEB_SYSTEM_PROMPT):
+            with self.subTest(prompt=prompt[:30]):
+                self.assertIn("in the language of the user's own message", prompt)
+                self.assertNotIn("po polsku", prompt)
+                self.assertNotRegex(prompt, r"(?i)\b(answer|reply|respond|write)\b[^.]* in (polish|english)\b")
+
+    def test_a_message_from_the_application_does_not_set_the_language(self):
+        from ai_desktop.ask_cli import CONTINUE_PREFIX
+        self.assertTrue(CONTINUE_PREFIX.startswith("Continue the task"))
+        self.assertIn("starting with Continue the task, does not set the language", contract.SYSTEM_PROMPT)
+        self.assertIn("A question starting with Continue the task comes from the application", contract.SYSTEM_PROMPT)
+

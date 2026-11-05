@@ -186,8 +186,8 @@ class AssistantContractTests(unittest.TestCase):
 
     def test_prompt_describes_narrowing_without_claiming_a_new_grant(self):
         prompt = analysis_contract.SYSTEM_PROMPT
-        for marker in ('{\"id\":\"f0\",\"path\":\"katalog/plik.txt\"}', 'files=[]',
-                       "NIE ZGADUJ", "bez tworzenia katalogow", "nigdy"):
+        for marker in ('{\"id\":\"f0\",\"path\":\"directory/file.txt\"}', 'files=[]',
+                       "DO NOT GUESS", "without creating directories", "never"):
             self.assertIn(marker, prompt)
 
     def test_read_plan_requires_exact_keys_nonempty_selection_and_unique_scopes(self):

@@ -161,7 +161,7 @@ class OneShotWorkerTests(unittest.TestCase):
         stream = io.StringIO()
         forwarded = []
         def confirm(prompt):
-            return "UDOSTEPNIJ " + prompt.split("UDOSTEPNIJ ", 1)[1].split(" ", 1)[0]
+            return "SHARE " + prompt.split("SHARE ", 1)[1].split(" ", 1)[0]
         with (patch.object(e2_handoff_cli.diagnose, "collect", return_value=report),
               patch.object(e2_handoff_cli.e2_worker_once, "send_once",
                            side_effect=lambda t, a: forwarded.append((t, a)) or a.sha256),
@@ -169,7 +169,7 @@ class OneShotWorkerTests(unittest.TestCase):
             self.assertEqual(e2_handoff_cli.desktop_main(session(), reader=confirm), 0)
         self.assertEqual(len(forwarded), 1)
         self.assertIn("HANDOFF: PASS sha256=", stream.getvalue())
-        for response in ("", "UDOSTEPNIJ", "UDOSTEPNIJ 0", "TAK"):
+        for response in ("", "SHARE", "SHARE 0", "YES", "TAK"):
             with self.subTest(response=response), patch.object(
                     e2_handoff_cli.diagnose, "collect", return_value=report), patch.object(
                     e2_handoff_cli.e2_worker_once, "send_once") as sent, contextlib.redirect_stdout(io.StringIO()):

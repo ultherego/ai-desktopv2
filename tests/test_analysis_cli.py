@@ -34,7 +34,7 @@ class AnalysisCliTests(unittest.TestCase):
             self.assertEqual(cli.main(["analyze", "--preview", "--details"]), 0)
         collect.assert_called_once_with()
         send.assert_not_called()
-        self.assertIn("nie jest kopia calego ruchu TLS", out.getvalue())
+        self.assertIn("is not a copy of all TLS traffic", out.getvalue())
         self.assertIn(AnalysisConsent(report_fixture()).sha256, out.getvalue())
 
     def test_root_and_pipe_refuse_before_collection_or_transport(self):
@@ -59,12 +59,12 @@ from ai_desktop import analysis_cli, cli, agent_profiles
 default_profile = {'provider': 'claude', 'model': 'default', 'effort': 'default', 'instructions': '', 'profile': 'default', 'access': 'changes'}
 def send(approval):
     print('SYNTHETIC_TRANSFER:' + approval.sha256, flush=True)
-    return 'Syntetyczny wynik bez zmian'
+    return 'Synthetic result without changes'
 with patch.object(agent_profiles, 'resolve', return_value=default_profile), patch.object(analysis_cli.os, 'getuid', return_value=1000), patch.object(analysis_cli.os, 'geteuid', return_value=1000), patch.object(analysis_cli.diagnose, 'collect', return_value=report_fixture()), patch.object(analysis_cli, 'installation_ready'), patch.object(analysis_cli, 'managed_session', return_value=nullcontext()), patch.object(analysis_cli, 'send_once', side_effect=send):
     raise SystemExit(cli.main(['analyze']))
 """
-        for answers, approve in (((b"", b"?", b"yes", b"ANALIZUJ", b"N"), False),
-                                 ((b"T",), True), ((b"", b"Tak"), True)):
+        for answers, approve in (((b"", b"?", b"tak", b"ANALIZUJ", b"N"), False),
+                                 ((b"Y",), True), ((b"", b"Yes"), True)):
             master, slave = pty.openpty()
             process = subprocess.Popen([sys.executable, "-B", "-c", script], cwd=ROOT,
                                        stdin=slave, stdout=slave, stderr=slave, close_fds=True)
@@ -94,7 +94,7 @@ with patch.object(agent_profiles, 'resolve', return_value=default_profile), patc
                 self.assertEqual(process.returncode, 0 if approve else 2)
                 self.assertEqual(output.count(b"SYNTHETIC_TRANSFER:"), 1 if approve else 0)
                 if approve:
-                    self.assertIn(b"Syntetyczny wynik bez zmian", output)
+                    self.assertIn(b"Synthetic result without changes", output)
                     self.assertIn(("SYNTHETIC_TRANSFER:" + AnalysisConsent(report_fixture()).sha256).encode(), output)
                 self.assertNotIn(b"skopiuj", output)
             finally:
@@ -135,12 +135,12 @@ class ConciseAnalysisTests(unittest.TestCase):
         def reader(prompt):
             self.assertEqual(prompt, PROMPTS["transfer"])
             output = self.output.getvalue()
-            self.assertEqual(json.loads(output.split("Raport do analizy:\n", 1)[1].split("\nPytanie:\n", 1)[0]), self.report)
+            self.assertEqual(json.loads(output.split("Report to analyze:\n", 1)[1].split("\nQuestion:\n", 1)[0]), self.report)
             self.assertIn(question, output)
-            self.assertIn("Do Claude trafią powyższe dane", output)
+            self.assertIn("Claude will receive the data above", output)
             self.session.assert_not_called()
             self.send.assert_not_called()
-            return "tak"
+            return "yes"
         def render(value, **kwargs):
             self.assertEqual(self.events, ["start", "send", "cleanup"])
             return value
@@ -154,15 +154,15 @@ class ConciseAnalysisTests(unittest.TestCase):
         output = self.output.getvalue()
         self.assertIn("SYNTHETIC ANSWER", output)
         self.assertEqual(output.count(analysis_cli.ANSWER_SEPARATOR), 2)
-        for technical in ("ANALYSIS:", "SESSION:", "SHA256", "INSTRUKCJA APLIKACJI",
-                          "ZASADY I ODBIORCA", analysis_cli.SYSTEM_PROMPT, analysis_cli.CLIENT_CONTEXT):
+        for technical in ("ANALYSIS:", "SESSION:", "SHA256", "APPLICATION INSTRUCTIONS",
+                          "RULES AND RECIPIENT", analysis_cli.SYSTEM_PROMPT, analysis_cli.CLIENT_CONTEXT):
             self.assertNotIn(technical, output)
 
     def test_details_retains_full_diagnostic_preview_and_markers(self):
-        self.assertEqual(analysis_cli.main(details=True, reader=lambda _: "t"), 0)
+        self.assertEqual(analysis_cli.main(details=True, reader=lambda _: "y"), 0)
         self.session.assert_called_once_with()
         output = self.output.getvalue()
-        for expected in ("=== RAPORT DO ANALIZY ===", "=== TWOJE PYTANIE ===", analysis_cli.SYSTEM_PROMPT,
+        for expected in ("=== REPORT TO ANALYZE ===", "=== YOUR QUESTION ===", analysis_cli.SYSTEM_PROMPT,
                          analysis_cli.CLIENT_CONTEXT, analysis_cli.CLIENT_VERSION, analysis_cli.POLICY,
                          "ANALYSIS: PASS sha256=" + AnalysisConsent(self.report).sha256, "SESSION: STOPPED"):
             self.assertIn(expected, output)
@@ -178,15 +178,15 @@ class ConciseAnalysisTests(unittest.TestCase):
         self.send.assert_not_called()
         confirm.assert_not_called()
         output = self.output.getvalue()
-        self.assertEqual(json.loads(output.split("Raport do analizy:\n", 1)[1].split("\nPytanie:\n", 1)[0]), self.report)
+        self.assertEqual(json.loads(output.split("Report to analyze:\n", 1)[1].split("\nQuestion:\n", 1)[0]), self.report)
         self.assertIn("Dlaczego?", output)
-        self.assertIn("Podgląd offline — niczego nie wysłano.", output)
+        self.assertIn("Offline preview — nothing was sent.", output)
         self.assertNotIn("PASS", output)
         self.assertNotIn("SHA256", output)
         self.assertNotIn(analysis_cli.SYSTEM_PROMPT, output)
 
     def test_short_refusal_or_eof_never_start_session(self):
-        for answer in ("nie", EOFError(), KeyboardInterrupt(), OSError("PRIVATE")):
+        for answer in ("no", EOFError(), KeyboardInterrupt(), OSError("PRIVATE")):
             def reader(_):
                 if isinstance(answer, BaseException):
                     raise answer
@@ -194,7 +194,7 @@ class ConciseAnalysisTests(unittest.TestCase):
             self.output.seek(0)
             self.output.truncate(0)
             self.assertEqual(analysis_cli.main(reader=reader), 2)
-            expected = "Nie udało się przygotować analizy." if isinstance(answer, OSError) else "Anulowano."
+            expected = "Could not prepare the analysis." if isinstance(answer, OSError) else "Cancelled."
             self.assertIn(expected, self.output.getvalue())
             self.assertNotIn("ANALYSIS:", self.output.getvalue())
             self.assertNotIn("PRIVATE", self.output.getvalue())
@@ -206,7 +206,7 @@ class ConciseAnalysisTests(unittest.TestCase):
         with patch.object(analysis_cli, "fresh_input", return_value="Dlaczego?") as fresh, \
                 patch.object(analysis_cli, "confirm", return_value=True):
             self.assertEqual(analysis_cli.main(ask=True), 0)
-        fresh.assert_called_once_with("Pytanie o raport (Enter = ogolna analiza): ",
+        fresh.assert_called_once_with("Question about the report (Enter = general analysis): ",
                                       max_bytes=analysis_cli.MAX_QUESTION_BYTES)
         self.assertEqual(json.loads(self.send.call_args.args[0].payload)["question"], "Dlaczego?")
 
@@ -218,7 +218,7 @@ class ConciseAnalysisTests(unittest.TestCase):
             raise AnalysisDenied("cleanup")
         self.session.side_effect = failed
         with patch.object(analysis_cli, "render_answer") as render:
-            self.assertEqual(analysis_cli.main(reader=lambda _: "t"), 2)
+            self.assertEqual(analysis_cli.main(reader=lambda _: "y"), 2)
         render.assert_not_called()
         self.assertIn("ai-desktop stop", self.output.getvalue())
         self.assertNotIn("SYNTHETIC ANSWER", self.output.getvalue())
@@ -230,12 +230,12 @@ class ConciseAnalysisTests(unittest.TestCase):
             self.output.seek(0)
             self.output.truncate(0)
             self.send.reset_mock()
-            self.assertEqual(analysis_cli.main(reader=lambda _: "t"), 2)
+            self.assertEqual(analysis_cli.main(reader=lambda _: "y"), 2)
             self.send.assert_called_once()
             self.assertNotIn("PRIVATE", self.output.getvalue())
             self.assertNotIn("ANALYSIS:", self.output.getvalue())
             if isinstance(failure, KeyboardInterrupt):
-                self.assertIn("Wysłanych danych nie można wycofać", self.output.getvalue())
+                self.assertIn("Data already sent cannot be taken back", self.output.getvalue())
 
     def test_short_flow_rechecks_expiry_after_session_setup(self):
         clock = [0]
@@ -249,7 +249,7 @@ class ConciseAnalysisTests(unittest.TestCase):
                 self.events.append("cleanup")
         self.session.side_effect = session
         with patch.object(analysis_cli, "AnalysisConsent", return_value=gate):
-            self.assertEqual(analysis_cli.main(reader=lambda _: "t"), 2)
+            self.assertEqual(analysis_cli.main(reader=lambda _: "y"), 2)
         self.session.assert_called_once_with(quiet=True)
         self.send.assert_not_called()
         self.assertEqual(self.events, ["cleanup"])

@@ -209,13 +209,12 @@ def daily_pty(action, *, expected=0, refusal=False, interrupt=None, reason=None,
                 if asking and transfers:
                     raise ValueError("ask-repeated-consent")
                 transfers += 1
-                os.write(master, b"nie\n" if refusal else b"tak\n")
+                os.write(master, b"no\n" if refusal else b"yes\n")
                 answered = True
             if any(PROMPTS[action].encode() in output for action in ("write", "rollback")) and not wrote:
-                os.write(master, b"nie\n" if write_refusal else b"tak\n")
+                os.write(master, b"no\n" if write_refusal else b"yes\n")
                 wrote = True
-            if interrupt and not interrupted and any(marker in output for marker in
-                    (b"Analiza trwa;", "Czekam na odpowiedź".encode())):
+            if interrupt and not interrupted and b"Waiting for " in output:
                 marker = subprocess.run(["sudo", "-n", "/usr/bin/test", "-e",
                                          "/var/lib/ai-desktop/claude/fixture-hanging"],
                                         check=False, capture_output=True, timeout=5)
@@ -236,17 +235,18 @@ def daily_pty(action, *, expected=0, refusal=False, interrupt=None, reason=None,
             # This is synthetic CI output only, and only our fixed diagnostics.
             for line in output.splitlines():
                 if line.startswith((b"ANALYSIS:", b"ASK:", b"SESSION:", b"SESSION1 ", b"STATUS:", b"TASK",
-                                    b"Odmowa", b"Nie uda", b"Wyczerpano", b"Wynik lokalny", b"Tre\xc5\x9b\xc4\x87 plik")):
+                                    b"Refused", b"File read refused", b"Directory listing refused", b"Not sent",
+                                    b"Could not", b"The limit of", b"The local result", b"The file contents")):
                     print(line.decode("ascii", "replace")[:120])
             for line in [l for l in output.splitlines() if l.strip()][-6:]:
                 print("CI TAIL: " + line.decode("ascii", "replace")[:140])        # synthetic CI output only
-            print("CI UI: consent=" + str(answered) + " sudo=" + str(b"Uprawnienia administratora" in output)
-                  + " transfer=" + str(b"Analiza trwa;" in output) + " exit=" + str(process.returncode))
+            print("CI UI: consent=" + str(answered) + " sudo=" + str(b"Administrator permissions" in output)
+                  + " transfer=" + str(b"Waiting for " in output) + " exit=" + str(process.returncode))
             raise ValueError("daily-pty")
         if analyzing:
             if "--details" in action and (expected == 0) != (b"ANALYSIS: PASS" in output):
                 raise ValueError("daily-result")
-            if refusal and b"Uprawnienia administratora" in output:
+            if refusal and b"Administrator permissions" in output:
                 raise ValueError("sudo-before-consent")
         daily_clean(os.geteuid())
         return bytes(output)
@@ -259,9 +259,9 @@ def daily_pty(action, *, expected=0, refusal=False, interrupt=None, reason=None,
 
 def compact_analysis(output, question):
     """A concise result must retain the exact report/question and consent."""
-    required = (b"Raport do analizy:", b'"kernel": "7.3.0-4-cachyos"', b"Pytanie:",
+    required = (b"Report to analyze:", b'"kernel": "0.0.0-synthetic"', b"Question:",
                 question.encode(), b"SYNTHETIC ANALYSIS: isolation=PASS proxy-denial=PASS profile=PASS")
-    forbidden = (b"INSTRUKCJA APLIKACJI", b"ZASADY I ODBIORCA", b"ANALYSIS: PASS",
+    forbidden = (b"APPLICATION INSTRUCTIONS", b"RULES AND RECIPIENT", b"ANALYSIS: PASS",
                  b"SESSION: STOPPED", b"SHA256", b"\x1b[31m")
     if (any(item not in output for item in required) or any(item in output for item in forbidden)
             or output.count(PROMPTS["transfer"].encode()) != 1
@@ -272,14 +272,14 @@ def compact_analysis(output, question):
 def compact_task(output, *, rollback=False):
     """A short task exposes the full fenced diff and separate decisions."""
     if rollback:
-        required = ("Cofnięto zmiany.".encode(), PROMPTS["rollback"].encode())
+        required = (b"Changes undone.", PROMPTS["rollback"].encode())
     else:
-        required = (b"=== Zmiany do zapisania ===", b"```diff\n", b"\n```\n", b"--- a/calc.py",
+        required = (b"=== Changes to save ===", b"```diff\n", b"\n```\n", b"--- a/calc.py",
                     b"+++ b/calc.py", b"-    return a - b", b"+    return a + b",
-                    b"Zapisano zmiany.", PROMPTS["transfer"].encode(), PROMPTS["write"].encode())
-    forbidden = (b"INSTRUKCJA APLIKACJI", b"ZASADY I ODBIORCA", b"Nowa tresc JSON:",
+                    b"Changes saved.", PROMPTS["transfer"].encode(), PROMPTS["write"].encode())
+    forbidden = (b"APPLICATION INSTRUCTIONS", b"RULES AND RECIPIENT", b"New content as JSON:",
                  b"TASK:", b"TASK TEST:", b"TASK ROLLBACK:", b"SESSION: STOPPED", b"SHA256",
-                 b"Sprawdzam zmiany", b"Test na kopii: zaliczony", b"Test obejmuje", b"Zapis obejmie")
+                 b"Checking the changes", b"Test on a copy: passed", b"The test covers", b"Only the changes shown will be saved")
     output = output.replace(b"\r\n", b"\n")
     if (any(item not in output for item in required) or any(item in output for item in forbidden)
             or re.search(rb"\b[0-9a-f]{64}\b", output)):
@@ -297,7 +297,7 @@ def ask_cycle(temp, fixture):
     """Installed ask and bounded systemd inventory; no external providers."""
     action = ["ask", "--question", "SYNTHETIC: general question"]
     output = daily_pty(action, expected=2, refusal=True)
-    if any(marker in output for marker in (b"SYNTHETIC ASK:", b"Uprawnienia administratora",
+    if any(marker in output for marker in (b"SYNTHETIC ASK:", b"Administrator permissions",
                ASK_SEND_MARKER.encode(), ASK_SESSION_MARKER.encode(), FILE_READ_MARKER.encode(), SYSTEMD_READ_MARKER.encode())):
         raise ValueError("ask-refusal")
     for scenario, reason in (("expired", "auth-required"), ("network-failure", "client"),
@@ -325,9 +325,9 @@ def ask_cycle(temp, fixture):
             or output.count(ASK_SESSION_MARKER.encode()) != 1
             or FILE_READ_MARKER.encode() in output or SYSTEMD_READ_MARKER.encode() in output):
         raise ValueError("ask-result")
-    if any(marker in output for marker in (b"INSTRUKCJA APLIKACJI", b"ZASADY I ODBIORCA",
-                                          b"TWOJE PYTANIE", b"ASK: PASS", b"SESSION: STOPPED",
-                                          "Dostępy:".encode(), b"Do Claude:",
+    if any(marker in output for marker in (b"APPLICATION INSTRUCTIONS", b"RULES AND RECIPIENT",
+                                          b"YOUR QUESTION", b"ASK: PASS", b"SESSION: STOPPED",
+                                          b"Access:", b"To Claude:",
                                           b"SHA256", b"SYNTHETIC-PRIVATE", b"\x1b[31m")):
         raise ValueError("ask-output")
     systemd_action = ["ask", "--question", "SYNTHETIC: systemd question"]
@@ -342,7 +342,7 @@ def ask_cycle(temp, fixture):
             or output.count(SYSTEMD_READ_MARKER.encode()) != 1
             or output.count(ASK_SEND_MARKER.encode()) != 2
             or output.count(ASK_SESSION_MARKER.encode()) != 2
-            or "Dostępy:".encode() in output or "Odczyt systemd".encode() in output):
+            or b"Access:" in output or b"Systemd read" in output):
         raise ValueError("ask-systemd-context")
     print("CI ASK: PASS upfront-refusal=PASS question=PASS no-config-sources=NONE compact=PASS systemd=PASS question-consent=ONE preview-no-read=PASS auth=PASS rate=PASS unavailable=PASS recovery=PASS cleanup=PASS native=false upstream=false")
 
@@ -364,7 +364,7 @@ def file_cycle(temp, fixture):
             or output.count(FILE_READ_MARKER.encode()) != 1
             or output.count(ASK_SEND_MARKER.encode()) != 3        # planner, discovery list, final answer: one approval
             or output.count(ASK_SESSION_MARKER.encode()) != 3
-            or any(marker in output for marker in ("Dostępy:".encode(), b"Odczyt lokalny", b"Do pytania:", b"Do Claude:"))
+            or any(marker in output for marker in (b"Access:", b"Local read", b"For the question:", b"To Claude:"))
             or file_fixture.DENIED_CONTENTS.strip().encode() in output):
         raise ValueError("ask-files-context")
     file_fixture.check_unchanged(fixture)
@@ -400,7 +400,7 @@ def task_cycle():
         if (path / "calc.py").read_text() != original or task_workspace.status(root):
             raise ValueError("task-send-refusal")
         diagnostic = daily_pty(args + ["--details"], expected=2, write_refusal=True)
-        if b"TASK TEST: PASS check=python-unittest" not in diagnostic or b"Nowa tresc JSON:" not in diagnostic:
+        if b"TASK TEST: PASS check=python-unittest" not in diagnostic or b"New content as JSON:" not in diagnostic:
             raise ValueError("task-diagnostics")
         if (path / "calc.py").read_text() != original or task_workspace.status(root):
             raise ValueError("task-write-refusal")
@@ -432,7 +432,7 @@ def large_task_cycle():
             (path / name).write_text('{"context": true}\n')
             args.extend(["--context", name])
         output = daily_pty(args)
-        if "Zapisano zmiany.".encode() not in output:
+        if b"Changes saved." not in output:
             raise ValueError("large-apply-output")
         expected = original.replace('"enabled": false', '"enabled": true')
         if ((path / "settings.json").read_text() != expected
@@ -621,10 +621,10 @@ def login_pty(*, accepted, details=True):
                 break
         process.wait(timeout=2)
         success = (b"LOGIN: PASS auth=claude.ai" if details else
-                   "Zalogowano. Aktywna usługa: Claude.".encode("utf-8"))
+                   "Logged in. Active service: Claude.".encode("utf-8"))
         if (not answered or (details and unit is None) or process.returncode != (0 if accepted else 2)
                 or (accepted and success not in output)
-                or (not accepted and "Zalogowano.".encode("utf-8") in output)
+                or (not accepted and "Logged in.".encode("utf-8") in output)
                 or (not accepted and b"LOGIN: REFUSED stage=auth-status reason=auth-method" not in output)):
             # Synthetic fixture only, but still expose only fixed diagnostic lines.
             for match in re.findall(rb"(?:LOGIN|CLIENT): REFUSED stage=[a-z-]+ reason=[a-z-]+", output):

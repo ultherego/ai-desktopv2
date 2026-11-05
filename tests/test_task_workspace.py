@@ -33,7 +33,7 @@ class TaskWorkspaceTests(unittest.TestCase):
         return plan
 
     def apply(self, plan):
-        workspace.apply(plan, plan.authorize("ZAPISZ " + plan.sha256))
+        workspace.apply(plan, plan.authorize("SAVE " + plan.sha256))
 
     def windows_plan(self, data):
         (self.root / "data.csv").write_bytes(data)
@@ -225,7 +225,7 @@ def crash(src_dir,src,dst_dir,dst):
     real(src_dir,src,dst_dir,dst)
     if dst=='calc.py': os._exit(77)      # killed right after the swap: the original still sits under the stage name
 w.rename_exchange=crash
-w.apply(plan,plan.authorize('ZAPISZ '+plan.sha256))
+w.apply(plan,plan.authorize('SAVE '+plan.sha256))
 '''
         done = subprocess.run([sys.executable, "-B", "-c", script, str(self.root)], capture_output=True)
         self.assertEqual(done.returncode, 77, done.stderr)
@@ -239,10 +239,10 @@ w.apply(plan,plan.authorize('ZAPISZ '+plan.sha256))
         now = [0]; plan = self.plan(clock=lambda: now[0])
         with self.assertRaises(ValueError):
             workspace.apply(plan, Authorization(plan.sha256, "fake"))
-        plan = self.plan(clock=lambda: now[0]); auth = plan.authorize("ZAPISZ " + plan.sha256)
+        plan = self.plan(clock=lambda: now[0]); auth = plan.authorize("SAVE " + plan.sha256)
         now[0] = 181
         with self.assertRaises(ValueError): workspace.apply(plan, auth)
-        plan = self.plan(); auth = plan.authorize("ZAPISZ " + plan.sha256)
+        plan = self.plan(); auth = plan.authorize("SAVE " + plan.sha256)
         workspace.apply(plan, auth)
         with self.assertRaises(ValueError): workspace.apply(plan, auth)
 
@@ -271,7 +271,7 @@ w.apply(plan,plan.authorize('ZAPISZ '+plan.sha256))
 
     def test_diff_binds_exact_newline_and_context_mutation(self):
         plan = self.plan()
-        self.assertIn('Nowa tresc JSON: "new\\n"', plan.diff())
+        self.assertIn('New content as JSON: "new\\n"', plan.diff())
         data = plan.data(); data["proposal"]["files"][0]["content"] = "evil"
         self.apply(plan)
         self.assertEqual((self.root / "calc.py").read_text(), "new\n")
@@ -445,7 +445,7 @@ class TaskHomeWorkspaceTests(unittest.TestCase):
             {"path": name, "content": "SYNTHETIC REPLACEMENT\n"} for name in names] + [
             {"path": created, "content": "print('hello')\n"}]}
         plan = TaskPlan(before, source, replacement, "text")
-        workspace.apply(plan, plan.authorize("ZAPISZ " + plan.sha256))
+        workspace.apply(plan, plan.authorize("SAVE " + plan.sha256))
         for name in names:
             self.assertEqual((self.root / name).read_text(), "SYNTHETIC REPLACEMENT\n")
         self.assertEqual((self.root / created).read_text(), "print('hello')\n")

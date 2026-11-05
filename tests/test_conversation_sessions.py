@@ -73,7 +73,7 @@ class ConversationTests(unittest.TestCase):
         record = self.store.read(value.session_id)
         self.assertEqual(len(record["history"]), 4)
         self.assertEqual(record["history"][0]["question"], "Pytanie 2")
-        self.assertIn("[skrócono]", record["history"][0]["answer"])
+        self.assertIn("[shortened]", record["history"][0]["answer"])
         self.assertLessEqual(len(record["history"][0]["answer"].encode()), 8192 + 64)
         self.assertLessEqual(len(value.history[0]["answer"].encode()), 1536 + 64)
         altered = value.history
@@ -232,7 +232,7 @@ class ConversationTests(unittest.TestCase):
         with redirect_stdout(output):
             self.assertEqual(session_cli.main(["list"], store=self.store), 0)
             self.assertEqual(session_cli.main(["show", value.session_id], store=self.store), 0)
-        self.assertIn("[aktywna]", output.getvalue())
+        self.assertIn("[active]", output.getvalue())
         self.assertIn("Moje pytanie", output.getvalue())
         dispatch = unittest.mock.Mock(return_value=7)
         self.assertEqual(session_cli.main(["resume", value.session_id], store=self.store, dispatch=dispatch), 7)

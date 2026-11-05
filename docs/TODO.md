@@ -19,8 +19,6 @@ Stages and the conditions for completing them are described in [ROADMAP.md](ROAD
 - [x] Longer wait limit at the highest reasoning level and a message saying that it is about time.
 - [x] `task rollback` and `task status` list from the newest entries, with a date. Today the order comes from the plan's hash, so it is easy to pick the wrong task.
 - [x] A clear error when `--workspace` points to a file instead of a directory.
-- [x] Polish characters in messages and help visible to the user (`task`, `cli`, `analyze`, consents).
-- [ ] Polish characters in the remaining places: the Codex login page (`codex_admin.py`), `executor`/`workspace` messages, instructions for the model in `analysis_contract.py` (a change requires re-evaluating the model's answers).
 - [x] The interface, settings, docs and Skills are in English, and Claude answers in the language of the question.
 - [ ] `ai-desktop task prune`: shows old finished entries, asks for consent and only then removes them. The limit is 128 journals per directory, and once it is reached writing is blocked.
 

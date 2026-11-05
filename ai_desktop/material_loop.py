@@ -164,7 +164,7 @@ class Loop:
                 self._whole_hits.add((number, hits[-1]["text"]))
         self.observations.append({"kind": "search", "needle": needle, "complete": page.complete, "hits": hits})
         self.searches.append(needle)
-        return "a search for \"%s\": %d matches%s" % (needle, len(hits), "" if page.complete else " (more available)")
+        return "a search for \"%s\": %d %s%s" % (needle, len(hits), "match" if len(hits) == 1 else "matches", "" if page.complete else " (more available)")
 
     def _read(self, spans, clamp=True):
         budget = step.DATA_BYTES - 4096 - self.data_bytes()

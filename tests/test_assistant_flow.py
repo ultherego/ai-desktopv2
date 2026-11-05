@@ -88,8 +88,8 @@ class AssistantFlowTests(unittest.TestCase):
         self.load.assert_called_once_with(optional=True)
         self.assertNotIn("PRIVATE DATA", self.output.getvalue())
         self.confirm.assert_called_once_with("ask-question", reader=self.reader, config=None)
-        self.assertEqual(self.output.getvalue().count("Czekam na odpowiedź"), 1)
-        self.assertNotIn("Dostępy:", self.output.getvalue())
+        self.assertEqual(self.output.getvalue().count("Waiting for"), 1)
+        self.assertNotIn("Access:", self.output.getvalue())
 
     def test_out_of_scope_model_plan_refuses_before_any_collector_or_second_request(self):
         cases = [dict(READ, files=["f2"]), dict(READ, systemd=[{"scope": "remote", "view": "all"}]),
@@ -207,7 +207,7 @@ class AssistantFlowTests(unittest.TestCase):
         self.policy.access.return_value["web"] = True
         result = flow.run("Wiadomości?", options(preview=True), self.reader, self.request)
         self.assertIsNone(result)
-        self.assertIn("Internet: dozwolony", self.output.getvalue())
+        self.assertIn("Internet: allowed", self.output.getvalue())
         self.assert_no_sources()
         self.policy.expand.assert_not_called()
         self.confirm.assert_not_called()

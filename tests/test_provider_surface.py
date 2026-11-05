@@ -40,13 +40,13 @@ class ProviderSurfaceTests(unittest.TestCase):
                     patch("socket.socket") as socket:
                 prompts = []
                 request = Mock(return_value=ANSWER)
-                result = assistant_flow.run(QUESTION, args, lambda text: prompts.append(text) or "t", request)
+                result = assistant_flow.run(QUESTION, args, lambda text: prompts.append(text) or "y", request)
             name = "Codex" if provider == "codex" else "Claude"
             self.assertEqual(result, ANSWER)
             self.assertEqual(request.call_args.args[0], QUESTION)
             self.assertEqual(len(prompts), 1)
-            self.assertIn("żądanie do " + name + " [t/n]", prompts[0])
-            self.assertIn("Czekam na odpowiedź od " + name + "…", output.getvalue())
+            self.assertIn("Send this request to " + name + "? [y/n]", prompts[0])
+            self.assertIn("Waiting for " + name + "…", output.getvalue())
             run.assert_not_called()
             spawn.assert_not_called()
             socket.assert_not_called()
@@ -60,15 +60,15 @@ class ProviderSurfaceTests(unittest.TestCase):
                     patch.object(ask_cli, "managed_session", return_value=nullcontext()), \
                     patch.object(ask_cli, "send_once", return_value=ANSWER) as send:
                 prompts = []
-                result = ask_cli.request(QUESTION, args, lambda prompt: prompts.append(prompt) or "t",
+                result = ask_cli.request(QUESTION, args, lambda prompt: prompts.append(prompt) or "y",
                                          context=[], check=lambda: None)
             name = "Codex" if provider == "codex" else "Claude"
             packet = json.loads(send.call_args.args[0].payload)
             self.assertEqual(packet["execution"]["provider"], provider)
             self.assertEqual(packet["question"], QUESTION)
             self.assertEqual(result, ANSWER)
-            self.assertEqual(prompts, ["Wysłać do " + name + "? [t/n]: "])
-            self.assertIn("Czekam na odpowiedź od " + name + "…", output.getvalue())
+            self.assertEqual(prompts, ["Send to " + name + "? [y/n]: "])
+            self.assertIn("Waiting for " + name + "…", output.getvalue())
 
     def test_account_or_context_change_cannot_relabel_an_already_built_ask_gate(self):
         args = SimpleNamespace(details=False, format="plain")
@@ -79,9 +79,9 @@ class ProviderSurfaceTests(unittest.TestCase):
                 patch.object(ask_cli, "installation_ready", side_effect=lambda: execution.select(selection("claude"))), \
                 patch.object(ask_cli, "send_once") as send:
             with self.assertRaises(AnalysisDenied):
-                ask_cli.request(QUESTION, args, lambda prompt: prompts.append(prompt) or "t",
+                ask_cli.request(QUESTION, args, lambda prompt: prompts.append(prompt) or "y",
                                 context=[], check=lambda: None)
-        self.assertEqual(prompts, ["Wysłać do Codex? [t/n]: "])
+        self.assertEqual(prompts, ["Send to Codex? [y/n]: "])
         send.assert_not_called()
 
     def test_task_preview_names_provider_without_rewriting_path_instruction_or_content(self):
@@ -92,7 +92,7 @@ class ProviderSurfaceTests(unittest.TestCase):
                 result = task_cli.run_task(SimpleNamespace(details=True, preview=True, test="text"), lambda _: "n")
             name = "Codex" if provider == "codex" else "Claude"
             self.assertEqual(result, 0)
-            self.assertIn("=== WYBRANE DANE DO " + name.upper() + " ===", output.getvalue())
+            self.assertIn("=== SELECTED DATA FOR " + name.upper() + " ===", output.getvalue())
             self.assertIn(QUESTION, output.getvalue())
             self.assertIn("Claude_Codex.txt", output.getvalue())
             self.assertIn("Claude oraz Codex", output.getvalue())
@@ -109,7 +109,7 @@ class ProviderSurfaceTests(unittest.TestCase):
                 result = task_cli.finish_task({}, SOURCE, "response", args, lambda _: "n")
             name = "Codex" if provider == "codex" else "Claude"
             self.assertEqual(result, 2)
-            self.assertIn("=== PROPOZYCJA " + name.upper() + " ===", output.getvalue())
+            self.assertIn("=== PROPOSAL FROM " + name.upper() + " ===", output.getvalue())
             self.assertIn(ANSWER, output.getvalue())
             apply.assert_not_called()
 
@@ -142,7 +142,7 @@ class ProviderSurfaceTests(unittest.TestCase):
                     patch.object(task_cli.workspace, "apply") as apply, \
                     patch("subprocess.run") as run, patch("subprocess.Popen") as spawn, \
                     patch("socket.socket") as socket:
-                result = task_cli.main.__wrapped__(argv, reader=lambda _: "t")
+                result = task_cli.main.__wrapped__(argv, reader=lambda _: "y")
             self.assertEqual(result, 2)
             send.assert_called_once()
             self.assertEqual(sent[0]["execution"]["provider"], "codex")
@@ -150,11 +150,11 @@ class ProviderSurfaceTests(unittest.TestCase):
             self.assertIn(QUESTION, output.getvalue())
             self.assertIn("Claude_Codex.txt", output.getvalue())
             if failure:
-                self.assertIn("Brak zaufanego klienta Codex", output.getvalue())
-                self.assertNotIn("Brak zaufanego klienta Claude", output.getvalue())
+                self.assertIn("The trusted Codex", output.getvalue())
+                self.assertNotIn("The trusted Claude", output.getvalue())
             else:
-                self.assertIn("=== PROPOZYCJA CODEX ===", output.getvalue())
-                self.assertNotIn("=== PROPOZYCJA CLAUDE ===", output.getvalue())
+                self.assertIn("=== PROPOSAL FROM CODEX ===", output.getvalue())
+                self.assertNotIn("=== PROPOSAL FROM CLAUDE ===", output.getvalue())
                 self.assertIn(ANSWER, output.getvalue())
             apply.assert_not_called()
             run.assert_not_called()
@@ -179,13 +179,13 @@ class ProviderSurfaceTests(unittest.TestCase):
                 patch.object(ask_cli, "send_once", side_effect=sender) as send, \
                 patch("subprocess.run") as run, patch("subprocess.Popen") as spawn, \
                 patch("socket.socket") as socket:
-            result = ask_cli.main.__wrapped__(["--question", QUESTION, "--no-context", "--format", "plain"], reader=lambda _: "t")
+            result = ask_cli.main.__wrapped__(["--question", QUESTION, "--no-context", "--format", "plain"], reader=lambda _: "y")
         self.assertEqual(result, 2)
         send.assert_called_once()
         self.assertEqual(sent[0]["execution"]["provider"], "codex")
         self.assertEqual(sent[0]["question"], QUESTION)
-        self.assertIn("Brak zaufanego klienta Codex", output.getvalue())
-        self.assertNotIn("Brak zaufanego klienta Claude", output.getvalue())
+        self.assertIn("The trusted Codex", output.getvalue())
+        self.assertNotIn("The trusted Claude", output.getvalue())
         run.assert_not_called()
         spawn.assert_not_called()
         socket.assert_not_called()
@@ -226,9 +226,9 @@ class ProviderSurfaceTests(unittest.TestCase):
         self.assertEqual(sent[0]["execution"]["provider"], "codex")
         self.assertEqual(sent[0]["question"], QUESTION)
         self.assertEqual(sent[0]["material"], payload)
-        self.assertIn("Brak zaufanego klienta Codex", output.getvalue())
-        self.assertNotIn("Brak zaufanego klienta Claude", output.getvalue())
-        self.assertIn("Przekazanych danych nie można wycofać", output.getvalue())
+        self.assertIn("The trusted Codex", output.getvalue())
+        self.assertNotIn("The trusted Claude", output.getvalue())
+        self.assertIn("Data already handed over cannot be taken back", output.getvalue())
         ledger.hand_off.assert_called_once_with(packet)
         ledger.record_unknown.assert_called_once_with(packet)
         ledger.cancel.assert_not_called()
@@ -242,9 +242,9 @@ class ProviderSurfaceTests(unittest.TestCase):
                 with self.subTest(kind=kind.__name__, provider=provider), execution.using(selection(provider)), \
                         patch("subprocess.run") as run, patch("subprocess.Popen") as spawn, \
                         patch("socket.socket") as socket, redirect_stdout(io.StringIO()) as output:
-                    self.assertTrue(kind.__new__(kind)._dispatch("/pomoc"))
+                    self.assertTrue(kind.__new__(kind)._dispatch("/help"))
                 name = "Codex" if provider == "codex" else "Claude"
-                self.assertIn("przekazała do " + name, output.getvalue())
+                self.assertIn("handed to " + name, output.getvalue())
                 if provider == "codex":
                     self.assertNotIn("Claude", output.getvalue())
                 run.assert_not_called()

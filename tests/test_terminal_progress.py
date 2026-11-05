@@ -42,15 +42,15 @@ class WaitingIndicatorTests(unittest.TestCase):
         indicator, out, thread, clock = self.enabled()
         with indicator:
             indicator.phase("assistant")
-            self.assertIn("Analizowanie pytania.   0 s", out.getvalue())
+            self.assertIn("Analyzing the question.   0 s", out.getvalue())
             clock.return_value = 11.0
             indicator.phase("web")
-            self.assertIn("Szukanie i analizowanie źródeł", out.getvalue())
+            self.assertIn("Searching and analyzing sources", out.getvalue())
             self.assertIn("1 s", out.getvalue())
             clock.return_value = 11.6
             indicator._paint()
             indicator.phase("cleanup")
-        self.assertIn("Kończenie sesji", out.getvalue())
+        self.assertIn("Ending the session", out.getvalue())
         self.assertNotIn("%", out.getvalue())
         self.assertTrue(out.getvalue().endswith(progress.CLEAR_LINE))
         thread.assert_called_once()

@@ -7,8 +7,8 @@ from ai_desktop.report_policy import serialize_report, validate_report
 
 def report_fixture():
     return {
-        "kernel": "7.3.0-4-cachyos",
-        "desktop": "niri",
+        "kernel": "0.0.0-synthetic",
+        "desktop": "synthetic-desktop",
         "session": "wayland",
         "shell": "fish",
         "root_fs": "btrfs",

@@ -17,7 +17,7 @@ from unittest.mock import patch
 from ai_desktop import terminal_menu as menu
 from tests.test_whole_progress_pty import Screen
 
-OPTIONS = ("Claude", "ChatGPT / Codex", "Anuluj")
+OPTIONS = ("Claude", "ChatGPT / Codex", "Cancel")
 
 
 class TerminalMenuTests(unittest.TestCase):
@@ -27,14 +27,14 @@ class TerminalMenuTests(unittest.TestCase):
                     patch.object(menu.termios, "tcgetattr") as inspect, \
                     patch("subprocess.run") as run, patch("subprocess.Popen") as process:
                 with self.assertRaises(menu.MenuInputError):
-                    menu.choose("Logowanie", OPTIONS)
+                    menu.choose("Login", OPTIONS)
             inspect.assert_not_called()
             run.assert_not_called()
             process.assert_not_called()
             self.assertEqual(stdout.getvalue(), "")
 
     def test_unsafe_labels_options_and_default_refuse_before_terminal_access(self):
-        cases = (("Logowanie\x1b[2J", OPTIONS, 0), ("Login\n", OPTIONS, 0), ("Login\u202e", OPTIONS, 0),
+        cases = (("Login\x1b[2J", OPTIONS, 0), ("Login\n", OPTIONS, 0), ("Login\u202e", OPTIONS, 0),
                  ("\ud800", OPTIONS, 0), ("x" * 257, OPTIONS, 0), ("Login", ("Claude\x07",), 0),
                  ("Login", (), 0), ("Login", "Claude", 0), ("Login", OPTIONS, True),
                  ("Login", OPTIONS, -1), ("Login", OPTIONS, 3))
@@ -67,7 +67,7 @@ class TerminalMenuPTYTests(unittest.TestCase):
 
         def choose():
             try:
-                result["value"] = menu.choose("Logowanie", options, default=default)
+                result["value"] = menu.choose("Login", options, default=default)
                 if next_prompt:
                     target.write("NEXT> ")
                     target.flush()
@@ -118,7 +118,7 @@ class TerminalMenuPTYTests(unittest.TestCase):
             self.fail("missing menu output: " + repr(marker) + " in " + repr(bytes(state.output)))
 
     def ready(self, state):
-        self.read(state, marker=b"Esc anuluje")
+        self.read(state, marker=b"Esc cancels")
 
     def finish(self, state, expected):
         self.assertTrue(state.done.wait(3), "menu did not finish")
@@ -169,7 +169,7 @@ class TerminalMenuPTYTests(unittest.TestCase):
             self.assertTrue(state.done.wait(2), "prequeued prefix must cancel before a menu is shown")
             os.write(state.master, b"pasted text\n\x1b[201~")
             self.finish(state, None)
-            self.assertNotIn(b"Logowanie", state.output)
+            self.assertNotIn(b"Login", state.output)
 
     def test_paste_prefix_arriving_after_initial_pending_check_is_not_flushed(self):
         original_select = select.select
@@ -218,7 +218,7 @@ class TerminalMenuPTYTests(unittest.TestCase):
             self.assertIn(b"NEXT> ", state.output)
 
     def test_narrow_frame_updates_without_wrapping_or_adding_rows_and_clears_for_next_prompt(self):
-        options = ("Claude " + "a" * 100, "ChatGPT / Codex " + "b" * 100, "Anuluj")
+        options = ("Claude " + "a" * 100, "ChatGPT / Codex " + "b" * 100, "Cancel")
         with self.terminal(columns=32, options=options, next_prompt=True) as state:
             self.ready(state)
             os.write(state.master, b"\x1b[B" * 40)

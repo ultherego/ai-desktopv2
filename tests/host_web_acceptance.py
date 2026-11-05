@@ -67,7 +67,7 @@ ask_context._weather = forbidden
 ask_edit.prepare = forbidden
 def observed_input(prompt, **kwargs):
     answer = original_input(prompt, **kwargs)
-    if type(answer) is str and answer.strip().casefold() in ('tak', 't'):
+    if type(answer) is str and answer.strip().casefold() in ('yes', 'y'):
         approvals.append(prompt)
     return answer
 terminal_consent.fresh_input = observed_input
@@ -107,8 +107,8 @@ def request(*values, **kwargs):
         response = original_request(*values, **kwargs)
         # The production web parser requires real WebSearch metadata before
         # releasing this text. Inspect only its appended source section here.
-        assert type(response) is str and '\\nŹródła:\\n' in response
-        sources = response.rsplit('\\nŹródła:\\n', 1)[1]
+        assert type(response) is str and '\\nSources:\\n' in response
+        sources = response.rsplit('\\nSources:\\n', 1)[1]
         found = False
         for line in sources.splitlines():
             prefix, separator, url = line.rpartition(' — ')
@@ -204,7 +204,7 @@ def reject(fixture):
                     break
                 output.extend(block)
             if PROMPTS["ask-question"].encode() in output and not answered:
-                os.write(master, b"nie\n")
+                os.write(master, b"no\n")
                 answered = True
             if process.poll() is not None and not select.select([master], [], [], .1)[0]:
                 break
@@ -241,8 +241,8 @@ def main(argv=None):
             check_state(fixture)
             prior.check_stopped(uid, units)
             stage = "native-web"
-            print("Test używa syntetycznej polityki: tylko Claude i WebSearch; Twoja konfiguracja pozostaje nietknięta.")
-            print("Jedna zgoda obejmuje dobór źródła i wyszukiwanie; dwa zapytania Claude, bez danych lokalnych.")
+            print("The test uses a synthetic policy: only Claude and WebSearch; your configuration stays untouched.")
+            print("One approval covers choosing the source and the search; two Claude requests, no local data.")
             started = True
             prior.run(*command(fixture), timeout=600)
             stage = "source-unchanged"

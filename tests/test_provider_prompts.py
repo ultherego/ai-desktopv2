@@ -22,7 +22,7 @@ class RecipientPromptTests(unittest.TestCase):
             with self.subTest(ambient=ambient, expected=expected), execution.using(selected(ambient)):
                 self.assertEqual(run_controls.recipient(config=frozen), expected)
                 self.assertIn(expected, run_controls.label(config=frozen))
-                self.assertIn("od " + expected + "…", run_controls.wait_message(config=frozen))
+                self.assertIn("Waiting for " + expected + "…", run_controls.wait_message(config=frozen))
         self.assertIsNone(execution.current())
 
     def test_recipient_snapshot_copies_and_never_reads_accounts_or_native_clients(self):
@@ -74,7 +74,7 @@ class RecipientPromptTests(unittest.TestCase):
 
     def test_reprompt_keeps_one_recipient_if_controller_context_or_source_dictionary_changes(self):
         for explicit in (False, True):
-            source, prompts, replies = selected("codex"), [], iter(("?", "", "t"))
+            source, prompts, replies = selected("codex"), [], iter(("?", "", "y"))
             def read(prompt):
                 prompts.append(prompt)
                 execution.select(selected("claude"))
@@ -131,8 +131,8 @@ class ProviderAnimationTests(unittest.TestCase):
                     indicator.phase("question")
             self.assertTrue(child_contexts)
             self.assertTrue(all(value is None for value in child_contexts))
-            self.assertIn("Codex pracuje", out.getvalue())
-            self.assertIn("Codex: Opracowywanie odpowiedzi", out.getvalue())
+            self.assertIn("Codex is working", out.getvalue())
+            self.assertIn("Codex: Writing the answer", out.getvalue())
             self.assertNotIn("Claude", out.getvalue())
             self.assertFalse(indicator._thread.is_alive())
             self.assertTrue(out.getvalue().endswith(terminal_progress.CLEAR_LINE))
@@ -149,7 +149,7 @@ class ProviderAnimationTests(unittest.TestCase):
                 patch.object(terminal_progress.threading, "Thread"):
             with terminal_progress.WaitingIndicator(stream=out, config=None) as indicator:
                 indicator.phase("task")
-        self.assertIn("Claude pracuje", out.getvalue())
+        self.assertIn("Claude is working", out.getvalue())
         self.assertNotIn("Codex", out.getvalue())
 
 

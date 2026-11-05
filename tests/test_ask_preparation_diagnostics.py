@@ -43,7 +43,7 @@ class AskPreparationDiagnosticsTests(unittest.TestCase):
                 patch.object(service, "manager_peer"), patch.object(service, "endpoint", return_value=(1, 2)), \
                 patch.object(service, "packet", return_value=service.READY), \
                 patch.object(service, "send_message") as sent:
-            result = self.run_ui(["--v"] if verbose else [], answers=(QUESTION, "t"), send=native,
+            result = self.run_ui(["--v"] if verbose else [], answers=(QUESTION, "y"), send=native,
                                  access=ACCESS, context=[FILES], collect_source=collect_error)
         return result, observed, responses, sent
 
@@ -81,7 +81,7 @@ class AskPreparationDiagnosticsTests(unittest.TestCase):
                     result, requests, replies, sent = self.run_native_plan(provider, raw)
                     self.assertEqual(result.code, 2)
                     self.assertIn("plan-" + check, result.output)
-                    self.assertNotIn("Sprawdź treść", result.output)
+                    self.assertNotIn("Check the content", result.output)
                     self.assertNotIn(PRIVATE, result.output)
                     self.assertNotIn(raw, result.output)
                     self.assertEqual(len(requests), 1)

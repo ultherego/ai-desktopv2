@@ -50,7 +50,7 @@ class TaskPlan:
                 fromfile="a/" + item["path"] if old else "/dev/null",
                 tofile="b/" + item["path"])))
             # Explicit exact text covers missing final-newline ambiguity.
-            result.append("\nNew content JSON: " + canonical(item["content"]) + "\n")
+            result.append("\nNew content as JSON: " + canonical(item["content"]) + "\n")
         return "".join(result)
 
     def authorize(self, answer):

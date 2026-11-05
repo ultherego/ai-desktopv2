@@ -30,7 +30,7 @@ class FollowupTextTests(unittest.TestCase):
             result = ask_followup.clarify(QUESTION, 'hello.py', workspace='/home/tester', reader=lambda _: 'zachowaj stary, utwórz hello2.py')
         self.assertIn(QUESTION, result)
         self.assertIn('hello2.py', result)
-        self.assertIn('Edytować, stworzyć nowy, anulować?', out.getvalue())
+        self.assertIn('Edit it, create a new one, or cancel?', out.getvalue())
         self.assertNotIn(OLD, result)
         self.assertLessEqual(len(result.encode()), MAX_MESSAGE_BYTES)
 
@@ -43,10 +43,10 @@ class FollowupTextTests(unittest.TestCase):
         with redirect_stdout(out):
             revised = ask_followup.clarify(QUESTION, "hello.py", workspace="/home/tester", reader=reader)
         self.assertEqual(out.getvalue(),
-            '\nPlik "hello.py" istnieje w "/home/tester".\n'
-            'Edytować, stworzyć nowy, anulować?\n'
+            '\nFile "hello.py" exists in "/home/tester".\n'
+            'Edit it, create a new one, or cancel?\n'
             '> edytuj istniejący\n\n'
-            'Przygotuję nowy plan według tej odpowiedzi.\n')
+            'I will prepare a new plan based on this answer.\n')
         self.assertIn(QUESTION, revised)
         self.assertIn('"hello.py"', revised)
         self.assertNotIn('/home/tester', revised)
@@ -58,7 +58,7 @@ class FollowupTextTests(unittest.TestCase):
             revised = ask_followup.clarify(QUESTION, "scripts/hello.py", workspace=location,
                                           reader=lambda _: "podmień")
         shown = json.dumps(location + '/scripts', ensure_ascii=False).replace("\u2028", "\\u2028")
-        self.assertTrue(out.getvalue().startswith('\nPlik "hello.py" istnieje w ' + shown + '.\n'))
+        self.assertTrue(out.getvalue().startswith('\nFile "hello.py" exists in ' + shown + '.\n'))
         self.assertNotIn("\u2028", out.getvalue())
         self.assertNotIn(location, revised)
         self.assertIn('"scripts/hello.py"', revised)
@@ -77,7 +77,7 @@ class FollowupTextTests(unittest.TestCase):
             with self.subTest(error=type(error)), redirect_stdout(out), self.assertRaises(type(error)):
                 ask_followup.clarify(QUESTION, "hello.py", workspace="/home/tester", reader=reader)
             reader.assert_called_once_with("> ")
-            self.assertNotIn("Przygotuję nowy plan", out.getvalue())
+            self.assertNotIn("I will prepare a new plan", out.getvalue())
 
     def test_cancel_and_empty_never_form_a_new_question(self):
         with redirect_stdout(io.StringIO()):
@@ -139,15 +139,15 @@ class CollisionFilesystemTests(unittest.TestCase):
         self.enterContext(patch.object(task_cli.task_sandbox, 'run', return_value={'passed': True, 'output': 'synthetic test', 'check': 'python-syntax'}))
         self.payloads = []
 
-    def run_flow(self, choice='podmień', target='hello.py', write='tak', *, mutation=None, deny_read=False, details=False, echo=False, refused=False):
+    def run_flow(self, choice='podmień', target='hello.py', write='yes', *, mutation=None, deny_read=False, details=False, echo=False, refused=False):
         if deny_read:
             self.config.write_text(self.config.read_text().replace('read=["~/**"]', 'read=[]'))
         # A declined turn returns to the prompt (the conversation stays open), so each script ends with the empty line.
-        script = [QUESTION, 'tak', choice]
+        script = [QUESTION, 'yes', choice]
         if choice != 'anuluj' and not deny_read and not refused:
             script.append(write)           # a refused plan ends the turn before any write question
         if mutation and refused:
-            script.append('tak')           # an edited permissions.toml asks for the conversation's consent again
+            script.append('yes')           # an edited permissions.toml asks for the conversation's consent again
         replies = iter(script + [''])
         def reader(prompt):
             value = next(replies)
@@ -196,7 +196,7 @@ class CollisionFilesystemTests(unittest.TestCase):
             {'path': 'hello.py', 'content': OLD, 'writable': True}]}
         old_plan = TaskPlan(before, source, {'summary': 'old history', 'files': [
             {'path': 'hello.py', 'content': OLD + '\n'}]}, 'python-syntax')
-        task_workspace.apply(old_plan, old_plan.authorize('ZAPISZ ' + old_plan.sha256))
+        task_workspace.apply(old_plan, old_plan.authorize('SAVE ' + old_plan.sha256))
         journal = self.home / task_workspace.STATE / (old_plan.sha256 + '.json')
         value = json.loads(journal.read_text())
         value['before']['root'][0] ^= 1
@@ -207,17 +207,17 @@ class CollisionFilesystemTests(unittest.TestCase):
         original = journal.read_bytes()
         # Local, independent edit: the new proposal must use this fresh value.
         self.target.write_text(OLD)
-        code, sent = self.run_flow(write='nie')
+        code, sent = self.run_flow(write='no')
         self.assertEqual(code, 2, self.out.getvalue())
         self.assertEqual(sent.call_count, 3)
-        self.assertIn('istnieje w', self.out.getvalue())
+        self.assertIn('exists in', self.out.getvalue())
         self.assertNotIn(task_workspace.DETACHED_HISTORY_HINT, self.out.getvalue())
         self.assertEqual(self.target.read_text(), OLD)
         self.assertEqual(journal.read_bytes(), original)
         self.assertEqual(len(task_workspace.recovery_records(str(self.home))), 1)
         self.payloads.clear()
         self.out.seek(0); self.out.truncate(0)
-        code, sent = self.run_flow(write='nie', details=True)
+        code, sent = self.run_flow(write='no', details=True)
         self.assertEqual(code, 2)
         self.assertEqual(sent.call_count, 3)
         self.assertIn(task_workspace.DETACHED_HISTORY_HINT, self.out.getvalue())
@@ -225,18 +225,18 @@ class CollisionFilesystemTests(unittest.TestCase):
         self.assertEqual(journal.read_bytes(), original)
 
     def test_full_collision_dialogue_spacing_keeps_write_refusal(self):
-        code, sent = self.run_flow('edytuj istniejący', write='nie', echo=True)
+        code, sent = self.run_flow('edytuj istniejący', write='no', echo=True)
         self.assertEqual(code, 2)
         self.assertEqual(sent.call_count, 3)
         output = self.out.getvalue()
-        self.assertIn('Czekam na odpowiedź od Claude… Ctrl+C przerywa oczekiwanie.\n\n'
-                      'Plik "hello.py" istnieje w ' + json.dumps(str(self.home)) + '.\n'
-                      'Edytować, stworzyć nowy, anulować?\n> edytuj istniejący\n\n'
-                      'Przygotuję nowy plan według tej odpowiedzi.\n', output)
-        self.assertIn('Czekam na odpowiedź od Claude… Ctrl+C przerywa oczekiwanie.\n\nPropozycja:\n', output)
-        self.assertIn('\n\n=== Zmiany do zapisania ===\n', output)
-        self.assertIn('\n```\n\n' + PROMPTS['write'] + 'nie\n', output)
-        for unwanted in ('Co mam zrobić zamiast tego?', 'Możesz odpowiedzieć', 'To wybór dalszego planu',
+        self.assertIn('Waiting for Claude… Ctrl+C stops waiting.\n\n'
+                      'File "hello.py" exists in ' + json.dumps(str(self.home)) + '.\n'
+                      'Edit it, create a new one, or cancel?\n> edytuj istniejący\n\n'
+                      'I will prepare a new plan based on this answer.\n', output)
+        self.assertIn('Waiting for Claude… Ctrl+C stops waiting.\n\nProposal:\n', output)
+        self.assertIn('\n\n=== Changes to save ===\n', output)
+        self.assertIn('\n```\n\n' + PROMPTS['write'] + 'no\n', output)
+        for unwanted in ('What should I do instead?', 'You can answer', 'This chooses the further plan',
                          task_workspace.DETACHED_HISTORY_HINT):
             self.assertNotIn(unwanted, output)
         self.assertEqual(self.target.read_text(), OLD)
@@ -262,7 +262,7 @@ class CollisionFilesystemTests(unittest.TestCase):
         plans = [{'action': 'list', 'files': ['f0']},
                  {'action': 'edit', 'write': 'w0', 'files': [{'id': 'f0', 'path': 'hello.py'}], 'create': [],
                   'check': 'python-syntax'}]
-        replies = iter([QUESTION, 'tak', write, ''])
+        replies = iter([QUESTION, 'yes', write, ''])
 
         def send(approval):
             data = json.loads(approval.payload)
@@ -274,14 +274,14 @@ class CollisionFilesystemTests(unittest.TestCase):
             return ask_cli.main([], reader=lambda prompt: next(replies))
 
     def test_edit_after_discovery_shows_the_diff_and_writes_only_after_its_own_yes(self):
-        self.assertEqual(self.edit_after_discovery('tak'), 0, self.out.getvalue())
+        self.assertEqual(self.edit_after_discovery('yes'), 0, self.out.getvalue())
         self.assertEqual([p['mode'] for p in self.payloads], ['assistant', 'assistant', 'workspace', 'assistant'])
         self.assertIn('discovery', self.payloads[1])
-        self.assertIn('=== Zmiany do zapisania ===', self.out.getvalue())
+        self.assertIn('=== Changes to save ===', self.out.getvalue())
         self.assertEqual(self.target.read_text(), NEW)
 
     def test_edit_after_discovery_declined_at_the_diff_leaves_the_file(self):
-        self.assertEqual(self.edit_after_discovery('nie'), 2, self.out.getvalue())
+        self.assertEqual(self.edit_after_discovery('no'), 2, self.out.getvalue())
         self.assertEqual(self.target.read_text(), OLD)
         self.assertFalse((self.home / task_workspace.STATE).exists())
 
@@ -295,7 +295,7 @@ class CollisionFilesystemTests(unittest.TestCase):
         """The model proposes one new file after another; `writes` is how many it wants."""
         names = ['p%d.py' % i for i in range(writes)]
         questions, proposals = [], list(names)
-        replies = iter([QUESTION, 'tak'] + answers + [''])
+        replies = iter([QUESTION, 'yes'] + answers + [''])
 
         def send(approval):
             data = json.loads(approval.payload)
@@ -311,9 +311,9 @@ class CollisionFilesystemTests(unittest.TestCase):
             return ask_cli.main([], reader=lambda prompt: next(replies)), questions
 
     def test_one_question_makes_several_changes_each_with_its_own_yes(self):
-        code, questions = self.steps_flow(3, ['tak', 'tak', 'tak'])
+        code, questions = self.steps_flow(3, ['yes', 'yes', 'yes'])
         self.assertEqual(code, 0, self.out.getvalue())
-        self.assertEqual(self.out.getvalue().count('=== Zmiany do zapisania ==='), 3)
+        self.assertEqual(self.out.getvalue().count('=== Changes to save ==='), 3)
         for index in range(3):
             self.assertEqual((self.home / ('p%d.py' % index)).read_text(), NEW)
         self.assertEqual(questions[0], QUESTION)
@@ -322,7 +322,7 @@ class CollisionFilesystemTests(unittest.TestCase):
         self.assertIn('Gotowe.', self.out.getvalue())
 
     def test_declining_one_step_ends_the_task_and_returns_to_the_user(self):
-        code, questions = self.steps_flow(3, ['tak', 'nie'])
+        code, questions = self.steps_flow(3, ['yes', 'no'])
         self.assertEqual(code, 2)
         self.assertTrue((self.home / 'p0.py').exists())
         self.assertFalse((self.home / 'p1.py').exists())
@@ -330,10 +330,10 @@ class CollisionFilesystemTests(unittest.TestCase):
         self.assertEqual(len(questions), 2)
 
     def test_the_automatic_steps_of_one_question_are_bounded(self):
-        code, questions = self.steps_flow(ask_cli.MAX_AUTO_STEPS + 3, ['tak'] * (ask_cli.MAX_AUTO_STEPS + 1))
+        code, questions = self.steps_flow(ask_cli.MAX_AUTO_STEPS + 3, ['yes'] * (ask_cli.MAX_AUTO_STEPS + 1))
         self.assertEqual(code, 0, self.out.getvalue())
         self.assertEqual(len(questions), ask_cli.MAX_AUTO_STEPS + 1)
-        self.assertIn('Limit %d kolejnych kroków' % ask_cli.MAX_AUTO_STEPS, self.out.getvalue())
+        self.assertIn('Reached the limit of %d steps' % ask_cli.MAX_AUTO_STEPS, self.out.getvalue())
         self.assertFalse((self.home / ('p%d.py' % (ask_cli.MAX_AUTO_STEPS + 1))).exists())
 
     def test_a_long_task_still_fits_the_question_limit_after_the_prefix(self):
@@ -343,7 +343,7 @@ class CollisionFilesystemTests(unittest.TestCase):
         self.assertEqual(ask_cli._continuation(following), following)
 
     def delete_flow(self, answers, plan=None):
-        replies = iter([QUESTION, 'tak'] + answers + [''])
+        replies = iter([QUESTION, 'yes'] + answers + [''])
         plan = plan or {'action': 'delete', 'write': 'w0', 'paths': ['hello.py']}
 
         def send(approval):
@@ -353,29 +353,29 @@ class CollisionFilesystemTests(unittest.TestCase):
             return ask_cli.main([], reader=lambda prompt: next(replies)), sent
 
     def test_delete_moves_the_file_to_a_restorable_trash_after_its_own_yes(self):
-        code, sent = self.delete_flow(['tak'])
+        code, sent = self.delete_flow(['yes'])
         self.assertEqual(code, 0, self.out.getvalue())
         self.assertEqual(sent.call_count, 2)                # the plan, then the model's closing answer
         self.assertNotIn(OLD, json.dumps(self.payloads))
         self.assertFalse(self.target.exists())
-        command = next(line for line in self.out.getvalue().splitlines() if line.startswith('Przywrócenie: '))
+        command = next(line for line in self.out.getvalue().splitlines() if line.startswith('Restore: '))
         plan = command.split('--plan ')[1].strip()
         from ai_desktop import workspace_trash
         workspace_trash.restore(str(self.home), plan)
         self.assertEqual(self.target.read_text(), OLD)
 
     def test_delete_declined_leaves_the_file(self):
-        code, _ = self.delete_flow(['nie'])
+        code, _ = self.delete_flow(['no'])
         self.assertEqual(code, 2)
         self.assertEqual(self.target.read_text(), OLD)
-        self.assertIn('Nic nie usunięto', self.out.getvalue())
+        self.assertIn('Nothing was deleted', self.out.getvalue())
 
     def test_delete_refuses_a_denied_file_without_asking(self):
         self.config.write_text(self.config.read_text().replace('deny=[]', 'deny=["~/hello.py"]'))
         code, _ = self.delete_flow([])
         self.assertEqual(code, 2)
         self.assertEqual(self.target.read_text(), OLD)
-        self.assertIn('Nie zapisano zmian', self.out.getvalue())
+        self.assertIn('Nothing was saved', self.out.getvalue())
 
     def test_delete_refuses_a_missing_file_a_directory_and_a_symlink(self):
         (self.home / 'folder').mkdir()
@@ -385,7 +385,7 @@ class CollisionFilesystemTests(unittest.TestCase):
                 self.payloads.clear()
                 code, _ = self.delete_flow([], {'action': 'delete', 'write': 'w0', 'paths': [name]})
                 self.assertEqual(code, 2)
-                self.assertIn('Nie zapisano zmian', self.out.getvalue())
+                self.assertIn('Nothing was saved', self.out.getvalue())
         self.assertEqual(self.target.read_text(), OLD)
         self.assertTrue((self.home / 'link').is_symlink())
 
@@ -403,7 +403,7 @@ class CollisionFilesystemTests(unittest.TestCase):
         self.assertNotIn('write', assistant_flow.capture_access().access)
 
     def test_replace_reply_does_not_substitute_for_final_write_consent(self):
-        code, sent = self.run_flow(write='nie')
+        code, sent = self.run_flow(write='no')
         self.assertEqual(code, 2); self.assertEqual(sent.call_count, 3)
         self.assertEqual(self.target.read_text(), OLD)
         self.assertFalse((self.home/task_workspace.STATE).exists())

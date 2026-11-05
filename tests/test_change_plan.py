@@ -86,11 +86,11 @@ class ChangeFlowTests(ChangeBase):
         self.assertEqual([(s["role"], s["status"], s["argv"]) for s in self.steps()],
                          [("change", "ok", RESTART), ("test", "ok", STATUS)])
         self.assertEqual(self.wire[1]["discovery"]["remaining"]["commands"], 22)        # 24 rounds - change - test
-        self.assertEqual(facts, ["Zmiana systemctl restart foo.service: ok, kod 0",
-                                 "Test po zmianie systemctl status foo.service --no-pager: ok, kod 0"])
+        self.assertEqual(facts, ["Change systemctl restart foo.service: ok, code 0",
+                                 "Test after change systemctl status foo.service --no-pager: ok, code 0"])
         shown = self.output.getvalue()
-        for text in ("ZMIANA systemu", "zmiana ", "systemctl restart foo.service", "test po zmianie ", "wycofanie ",
-                     "systemctl enable foo.service", "Test po zmianie zaliczony"):
+        for text in ("SYSTEM CHANGE", "change ", "systemctl restart foo.service", "test after change ", "undo ",
+                     "systemctl enable foo.service", "Test after change passed"):
             self.assertIn(text, shown)
         self.assertEqual(self.wire[0]["access"]["change_commands"], ["systemctl restart <unit>", "systemctl enable <unit>"])
 
@@ -108,10 +108,10 @@ class ChangeFlowTests(ChangeBase):
         facts = self.interrupted([change(RESTART, STATUS, REVERT), ANSWER_PLAN])
         self.assertEqual(self.calls, [(RESTART, True, "change")])                   # nothing further runs on the host
         self.assertEqual(len(self.wire), 1)                                         # and nothing further is sent
-        self.assertEqual(facts, ["Zmiana systemctl restart foo.service: ok, kod 0",
-                                 "Zmiana systemctl restart foo.service: przerwano po wykonaniu, dalsze kroki nie uruchomione"])
+        self.assertEqual(facts, ["Change systemctl restart foo.service: ok, code 0",
+                                 "Change systemctl restart foo.service: stopped after it ran, further steps not run"])
         shown = self.output.getvalue()
-        for text in ("Zmiana została WYKONANA", "Test: systemctl status foo.service", "Wycofanie możesz uruchomić sam: systemctl enable foo.service"):
+        for text in ("The change WAS MADE", "Test: systemctl status foo.service", "You can run the undo yourself: systemctl enable foo.service"):
             self.assertIn(text, shown)
         self.assertNotIn("run-undo", self.asked)
 
@@ -120,16 +120,16 @@ class ChangeFlowTests(ChangeBase):
         facts = self.interrupted([change(RESTART, STATUS, REVERT), ANSWER_PLAN])
         self.assertEqual([role for _, _, role in self.calls], ["change", "test"])
         self.assertEqual(len(self.wire), 1)
-        self.assertEqual(facts[:2], ["Zmiana systemctl restart foo.service: ok, kod 0",
-                                     "Test po zmianie systemctl status foo.service --no-pager: ok, kod 0"])
-        self.assertIn("Zmiana została WYKONANA", self.output.getvalue())
+        self.assertEqual(facts[:2], ["Change systemctl restart foo.service: ok, code 0",
+                                     "Test after change systemctl status foo.service --no-pager: ok, code 0"])
+        self.assertIn("The change WAS MADE", self.output.getvalue())
 
     def test_consent_lost_before_the_change_starts_reports_no_change(self):
         with patch("ai_desktop.question_consent.QuestionConsent.waiting", side_effect=self.lapse_on_enter):
             with cs.recording(), self.assertRaises(AnalysisDenied):
                 self.run_flow([change(RESTART, STATUS, REVERT), ANSWER_PLAN])
         self.assertEqual(self.calls, [])
-        self.assertNotIn("WYKONANA", self.output.getvalue())
+        self.assertNotIn("WAS MADE", self.output.getvalue())
 
     @staticmethod
     def lapse_on_enter(*args, **kwargs):
@@ -143,15 +143,15 @@ class ChangeFlowTests(ChangeBase):
         self.assertEqual(self.calls[-1][0], REVERT)
         self.assertEqual([s["role"] for s in self.steps()], ["change", "test", "undo"])
         self.assertEqual(self.steps()[1]["status"], "failed")
-        self.assertTrue(any(f.startswith("Wycofanie systemctl enable foo.service: ok") for f in facts))
+        self.assertTrue(any(f.startswith("Undo systemctl enable foo.service: ok") for f in facts))
 
     def test_a_declined_undo_is_not_run_and_is_recorded(self):
         self.results[tuple(STATUS)] = (3, "inactive\n")
         self.undo_answer = False
         result, facts = self.facts([change(RESTART, STATUS, REVERT), ANSWER_PLAN])
         self.assertEqual([role for _, _, role in self.calls], ["change", "test"])
-        self.assertIn("Wycofanie systemctl enable foo.service: odrzucone przez użytkownika, nie uruchomiono", facts)
-        self.assertIn("Stan systemu może być zmieniony", self.output.getvalue())
+        self.assertIn("Undo systemctl enable foo.service: declined by the user, not run", facts)
+        self.assertIn("The system may still be changed", self.output.getvalue())
 
     def test_a_failed_change_skips_the_test_and_offers_the_undo(self):
         self.results[tuple(RESTART)] = (1, "Failed to restart\n")
@@ -164,7 +164,7 @@ class ChangeFlowTests(ChangeBase):
         self.assertEqual(self.calls, [])
         self.assertEqual(self.steps()[0]["status"], "declined")
         self.assertEqual(self.steps()[0]["role"], "change")
-        self.assertEqual(facts, ["Zmiana systemctl restart foo.service: odrzucone przez użytkownika, nie uruchomiono"])
+        self.assertEqual(facts, ["Change systemctl restart foo.service: declined by the user, not run"])
 
     def test_without_a_valid_test_or_undo_nothing_is_changed_and_nothing_is_asked(self):
         for test, undo in (([ "uname", "-r"], REVERT), (STATUS, ["rm", "-rf", "/"]), (RESTART, REVERT), (STATUS, STATUS[:2])):
@@ -220,14 +220,16 @@ class StrongConsentTests(unittest.TestCase):
 
     def test_only_the_whole_word_approves_a_change_or_an_undo(self):
         for action in ("run-change", "run-undo"):
-            self.assertEqual(self.ask(action, ["t", "T", "tak"])[0], True)
-            self.assertEqual(len(self.ask(action, ["t", "T", "tak"])[1]), 3)       # 't' did not approve
+            self.assertEqual(self.ask(action, ["y", "Y", "yes"])[0], True)
+            self.assertEqual(len(self.ask(action, ["y", "Y", "yes"])[1]), 3)       # 'y' did not approve
+            self.assertEqual(len(self.ask(action, ["tak", "t", "yes"])[1]), 3)     # nor do the old Polish words
             self.assertEqual(self.ask(action, ["", "n"])[0], False)
-        self.assertEqual(self.ask("ask-question", ["t"])[0], True)                   # the transfer: 't' still works
+        self.assertEqual(self.ask("ask-question", ["y"])[0], True)                   # the transfer: 'y' still works
+        self.assertEqual(self.ask("ask-question", ["tak", "t", "nie", "n"]), (False, [terminal_consent.PROMPTS["ask-question"]] * 4))
 
     def test_a_change_prompt_does_not_name_a_provider_so_it_cannot_be_mistaken_for_a_transfer(self):
         self.assertNotIn("Claude", terminal_consent.PROMPTS["run-change"])
-        self.assertIn("ZMIAN", terminal_consent.PROMPTS["run-change"])
+        self.assertIn("CHANGE", terminal_consent.PROMPTS["run-change"])
 
 
 class PolicyAndWireTests(ChangeBase):
@@ -401,25 +403,25 @@ class PolicyProblemTests(ChangeBase):
 
     def test_duplicate_command_templates_are_all_named(self):
         text = self.problem(commands='["uname -s", "uname -r", "uname -s", "uname -r"]')
-        self.assertIn("Powtórzony szablon w commands.allow: uname -s", text)
+        self.assertIn("Repeated template in commands.allow: uname -s", text)
         self.assertIn("uname -r", text)
 
     def test_other_defects_are_named_by_key_and_entry_without_a_path(self):
         self.assertIn("commands.share_processes", self.problem(text=
-                      'version = 2\n[files]\nread = []\ndeny = []\n[commands]\nshare_processes = "tak"\nallow = ["uname -s"]\n'))
-        self.assertIn("Nieznany klucz w [files]: bogus", self.problem(text='version = 2\n[files]\nread = []\ndeny = []\nbogus = 1\n'))
+                      'version = 2\n[files]\nread = []\ndeny = []\n[commands]\nshare_processes = "yes"\nallow = ["uname -s"]\n'))
+        self.assertIn("Unknown key in [files]: bogus", self.problem(text='version = 2\n[files]\nread = []\ndeny = []\nbogus = 1\n'))
         self.assertIn("version", self.problem(text='version = 3\n[files]\nread = []\ndeny = []\n'))
-        self.assertIn("składni", self.problem(text='version = 2\n[files\n'))
+        self.assertIn("syntax error", self.problem(text='version = 2\n[files\n'))
         self.assertIn("files.command_output", self.problem(extra='command_output = "900KiB"\n'))
-        self.assertIn("Niepoprawny szablon w commands.allow: bash -c x", self.problem(commands='["bash -c x"]'))
+        self.assertIn("Invalid template in commands.allow: bash -c x", self.problem(commands='["bash -c x"]'))
         text = self.problem(commands='["uname -s", "uname -s"]')
         self.assertNotIn("/", text.replace("/etc", ""))
 
     def test_the_ask_screen_shows_the_red_headline_then_the_problem(self):
         from ai_desktop import assistant_flow
-        flow_error = assistant_flow.AccessDenied("policy-invalid", ("Powtórzony szablon w commands.allow: lscpu",))
+        flow_error = assistant_flow.AccessDenied("policy-invalid", ("Repeated template in commands.allow: lscpu",))
         self.assertEqual(flow_error.reason, "policy-invalid")
-        self.assertEqual(flow_error.problem, ("Powtórzony szablon w commands.allow: lscpu",))
+        self.assertEqual(flow_error.problem, ("Repeated template in commands.allow: lscpu",))
         self.write_policy()
         self.commands = '["uname -s", "uname -s"]'
         self.write_policy()
@@ -445,7 +447,7 @@ class MissingProgramTests(ChangeBase):
             _, facts = self.facts([ops.run("uname", "-s"), ANSWER_PLAN])
         self.assertEqual(self.calls, [])
         self.assertEqual(self.steps()[0]["status"], "missing")
-        self.assertIn("nie ma tego programu", facts[0])
+        self.assertIn("this program is not on the system", facts[0])
 
 
 class AutomaticReadsTests(ChangeBase):
@@ -527,8 +529,8 @@ class WordAnswerTests(unittest.TestCase):
     def test_w_is_not_an_answer_to_any_prompt(self):
         self.assertNotIn("run-command", terminal_consent.PROMPTS)
         for action in ("run-change", "run-undo"):
-            self.assertIs(self.ask(action, ["w", "tak"]), True)       # asked again
-        self.assertIs(self.ask("ask-question", ["w", "t"]), True)
+            self.assertIs(self.ask(action, ["w", "yes"]), True)       # asked again
+        self.assertIs(self.ask("ask-question", ["w", "y"]), True)
         self.assertIs(self.ask("write", ["w", "n"]), False)
 
 

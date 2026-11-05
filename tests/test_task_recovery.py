@@ -66,7 +66,7 @@ class TaskRecoveryTests(unittest.TestCase):
             (root / name).write_text("ORIGINAL\n")
             (root / name).chmod(0o640)
         plan = self.plan(root, names)
-        workspace.apply(plan, plan.authorize("ZAPISZ " + plan.sha256))
+        workspace.apply(plan, plan.authorize("SAVE " + plan.sha256))
         journal = root / workspace.STATE / (plan.sha256 + ".json")
         return root, plan, journal
 
@@ -194,7 +194,7 @@ class TaskRecoveryTests(unittest.TestCase):
         self.assertEqual(len(workspace.recovery_records(str(root))), 128)
         candidate = self.plan(root, ("one.txt",), content="NEXT\n")
         with patch.object(workspace, "_save") as save, self.assertRaises(workspace.JournalLimit):
-            workspace.apply(candidate, candidate.authorize("ZAPISZ " + candidate.sha256))
+            workspace.apply(candidate, candidate.authorize("SAVE " + candidate.sha256))
         save.assert_not_called()
         self.assertEqual((root / "one.txt").read_text(), "CHANGED\n")
         self.assertEqual(len(workspace.recovery_records(str(root))), 128)
@@ -206,7 +206,7 @@ class TaskRecoveryTests(unittest.TestCase):
         plan = self.plan(root, ("one.txt",), content="NEXT\n")
         with patch.object(workspace, "recovery_records", side_effect=[[], [{"status": "applied"}] * 128]), \
                 patch.object(workspace, "_save") as save, self.assertRaises(workspace.JournalLimit):
-            workspace.apply(plan, plan.authorize("ZAPISZ " + plan.sha256))
+            workspace.apply(plan, plan.authorize("SAVE " + plan.sha256))
         save.assert_not_called()
         self.assertEqual((root / "one.txt").read_text(), "CHANGED\n")
 

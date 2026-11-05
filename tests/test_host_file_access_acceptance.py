@@ -173,7 +173,7 @@ class FileFixtureTests(unittest.TestCase):
                 with self.subTest(behavior=behavior):
                     package = ModuleType("ai_desktop")
                     package.permissions = SimpleNamespace()
-                    package.terminal_consent = SimpleNamespace(fresh_input=Mock(return_value="tak"),
+                    package.terminal_consent = SimpleNamespace(fresh_input=Mock(return_value="yes"),
                                                                PROMPTS={"ask-question": "QUESTION"})
                     package.ask_cli = SimpleNamespace(request=Mock(
                         return_value="wrong reply" if behavior == "wrong-marker" else host.FINAL_MARKER))
@@ -214,7 +214,7 @@ class FileFixtureTests(unittest.TestCase):
                         item["files"][0]["content"] = item["files"][0]["content"][:4096]
                     package = ModuleType("ai_desktop")
                     package.permissions = SimpleNamespace()
-                    package.terminal_consent = SimpleNamespace(fresh_input=Mock(return_value="tak"),
+                    package.terminal_consent = SimpleNamespace(fresh_input=Mock(return_value="yes"),
                                                                PROMPTS={"ask-question": "QUESTION"})
                     request = Mock(return_value=host.FINAL_MARKER)
                     package.ask_cli = SimpleNamespace(request=request)
@@ -236,7 +236,7 @@ class FileFixtureTests(unittest.TestCase):
                     package = ModuleType("ai_desktop")
                     package.permissions = SimpleNamespace()
                     package.terminal_consent = SimpleNamespace(
-                        fresh_input=Mock(return_value="tak" if behavior == "approve" else "nie"),
+                        fresh_input=Mock(return_value="yes" if behavior == "approve" else "no"),
                         PROMPTS={"ask-question": "QUESTION"})
                     package.ask_cli = SimpleNamespace(request=Mock(return_value="unused"))
                     package.file_context = SimpleNamespace(collect=Mock(return_value=host.fixture_context(fixture)))

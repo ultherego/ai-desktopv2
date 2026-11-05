@@ -101,8 +101,8 @@ class PacketTests(unittest.TestCase):
 class LineTests(unittest.TestCase):
     def test_the_verbose_line_names_the_model_or_says_it_is_unavailable(self):
         meta = ac.extract_meta({"modelUsage": USAGE})
-        self.assertEqual(mcli.Session.model_line(meta), "MODEL: claude-sonnet-5-5 · okno 200000 · tokeny we/wy 1200/340")
-        self.assertEqual(mcli.Session.model_line(None), "MODEL: niedostępny (klient nie podał metadanych)")
+        self.assertEqual(mcli.Session.model_line(meta), "MODEL: claude-sonnet-5-5 · window 200000 · tokens in/out 1200/340")
+        self.assertEqual(mcli.Session.model_line(None), "MODEL: unavailable (the client gave no metadata)")
 
 
 class BoundaryTests(unittest.TestCase):

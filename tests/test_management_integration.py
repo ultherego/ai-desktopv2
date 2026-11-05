@@ -81,7 +81,7 @@ class ManagementIntegrationTests(unittest.TestCase):
         session.project = Mock()
         session.binding = project_cli.Binding("a" * 32, "b" * 64)
         session._clock = lambda: 0
-        session.reader = lambda _: "t"
+        session.reader = lambda _: "y"
         session.conversation = None
         model_answer = json.dumps({"action": "edit", "files": ["a.py"], "create": [], "check": "text"})
         session._deliver = Mock(return_value=SimpleNamespace(answer=model_answer))
@@ -108,7 +108,7 @@ class ManagementIntegrationTests(unittest.TestCase):
             before = execution.current()
             self.assertTrue(run_controls.conversation_command("/model haiku", saved=True))
             self.assertEqual(execution.current(), before)
-        self.assertIn("związana", output.getvalue())
+        self.assertIn("tied to its agent configuration", output.getvalue())
 
     def test_default_claude_conversation_cannot_change_destination_to_codex(self):
         codex = {**reviewer(), "provider": "codex", "model": "default", "profile": "codex-review"}
@@ -121,7 +121,7 @@ class ManagementIntegrationTests(unittest.TestCase):
         arguments = SimpleNamespace(preview=True)
         with execution.using(reviewer()), patch.object(task_cli, "selection") as selection:
             with self.assertRaises(Exception) as caught:
-                task_cli.run_task(arguments, lambda _: "t")
+                task_cli.run_task(arguments, lambda _: "y")
         self.assertEqual(type(caught.exception).__name__, "AnalysisDenied")
         selection.assert_not_called()
 
@@ -151,12 +151,12 @@ class RecipientPresentationTests(unittest.TestCase):
 
     def test_transfer_prompt_names_actual_destination_and_default_is_unchanged(self):
         for selected, expected in ((None, terminal_consent.PROMPTS["project-edit"]),
-                                   (self.codex(), "Przekazać te pliki do Codex i przygotować diff? [t/n]: ")):
+                                   (self.codex(), "Send these files to Codex and prepare a diff? [y/n]: ")):
             prompts = []
             with execution.using(selected), \
                     patch.object(terminal_consent.sys.stdin, "isatty", return_value=True), \
                     patch.object(terminal_consent.sys.stdout, "isatty", return_value=True):
-                self.assertTrue(terminal_consent.confirm("project-edit", reader=lambda prompt: prompts.append(prompt) or "t"))
+                self.assertTrue(terminal_consent.confirm("project-edit", reader=lambda prompt: prompts.append(prompt) or "y"))
             self.assertEqual(prompts, [expected])
 
     def test_material_preview_names_codex_and_preserves_filename_containing_claude(self):
@@ -169,8 +169,8 @@ class RecipientPresentationTests(unittest.TestCase):
         with execution.using(self.codex()), redirect_stdout(output):
             session._scope("Co robi Claude?", "loop", loop)
         text = output.getvalue()
-        self.assertIn("Do Codex:", text)
-        self.assertIn("fragmenty, o które poprosi Codex", text)
+        self.assertIn("To Codex:", text)
+        self.assertIn("the parts Codex asks for", text)
         self.assertIn("Claude_notes.txt", text)
         self.assertNotIn("Codex_notes.txt", text)
 
@@ -187,8 +187,8 @@ class RecipientPresentationTests(unittest.TestCase):
         output = io.StringIO()
         with execution.using(self.codex()), patch.object(material_cli, "confirm", return_value=False), redirect_stdout(output):
             session._whole("Przeanalizuj całość")
-        self.assertIn("Do Codex zostanie wysłany cały plik", output.getvalue())
-        self.assertNotIn("Do Claude zostanie wysłany", output.getvalue())
+        self.assertIn("will be sent to Codex", output.getvalue())
+        self.assertNotIn("will be sent to Claude", output.getvalue())
 
     def test_task_preview_preserves_user_instruction_and_path(self):
         source = {"instruction": "Popraw opis Claude w pliku.",
@@ -198,8 +198,8 @@ class RecipientPresentationTests(unittest.TestCase):
         with execution.using(selected), patch.object(task_cli, "selection", return_value=(None, source)), redirect_stdout(output):
             code = task_cli.run_task(SimpleNamespace(preview=True, details=False), lambda _: "n")
         self.assertEqual(code, 0)
-        self.assertIn("Do Codex: instrukcja", output.getvalue())
-        self.assertIn("Zadanie: Popraw opis Claude w pliku.", output.getvalue())
+        self.assertIn("To Codex: the instruction", output.getvalue())
+        self.assertIn("Task: Popraw opis Claude w pliku.", output.getvalue())
         self.assertIn("Claude_notes.txt", output.getvalue())
         self.assertNotIn("Codex_notes.txt", output.getvalue())
 
@@ -226,8 +226,8 @@ class RecipientPresentationTests(unittest.TestCase):
                 patch.object(task_cli, "selection", return_value=(None, source)), redirect_stdout(output):
             code = task_cli.run_task(SimpleNamespace(preview=True, details=True, test="text"), lambda _: "n")
         self.assertEqual(code, 0)
-        self.assertIn("Odbiorca: OpenAI przez oficjalny Codex", output.getvalue())
-        self.assertNotIn("Odbiorca: Anthropic", output.getvalue())
+        self.assertIn("Recipient: OpenAI through the official Codex", output.getvalue())
+        self.assertNotIn("Recipient: Anthropic", output.getvalue())
 
 
 if __name__ == "__main__":

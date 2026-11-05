@@ -69,7 +69,7 @@ class SessionMenuTests(unittest.TestCase):
         self.conversation()
         result, _, choose = self.run_menu([None], argv=[], tty=True)
         self.assertEqual(result, 0)
-        self.assertIn("Zapisane rozmowy", choose.call_args.args[0])
+        self.assertIn("Saved conversations", choose.call_args.args[0])
 
     def test_preview_is_bounded_and_does_not_dispatch_or_mutate(self):
         ident = self.conversation("Q" * 2000, "A" * 8000)
@@ -77,7 +77,7 @@ class SessionMenuTests(unittest.TestCase):
         dispatch = Mock()
         result, output, _ = self.run_menu([0, 0, None, None], dispatch=dispatch)
         self.assertEqual(result, 0)
-        self.assertIn("[skrócono]", output)
+        self.assertIn("[shortened]", output)
         self.assertIn("sessions show " + ident, output)
         self.assertLess(len(output), 2500)
         self.assertEqual(self.path(ident).read_bytes(), original)
@@ -112,7 +112,7 @@ class SessionMenuTests(unittest.TestCase):
                 self.assertIn(name, item)
                 with contextlib.redirect_stdout(io.StringIO()) as shown:
                     self.assertEqual(session_cli.main(["show", ident], store=self.store), 0)
-                self.assertIn("Rozmowa %s · ask · %s" % (ident, name), shown.getvalue())
+                self.assertIn("Conversation %s · ask · %s" % (ident, name), shown.getvalue())
             self.assertEqual(self.path(ident).read_bytes(), original)
 
     def test_legacy_saved_service_is_claude_even_when_current_service_is_codex(self):
@@ -150,7 +150,7 @@ class SessionMenuTests(unittest.TestCase):
         dispatch = Mock()
         result, output, _ = self.run_menu([0, 1], dispatch=dispatch)
         self.assertEqual(result, 2)
-        self.assertIn("aktywna", output)
+        self.assertIn("is active in another process", output)
         dispatch.assert_not_called()
 
     def test_explicit_delete_action_removes_only_selected_record(self):
@@ -158,18 +158,18 @@ class SessionMenuTests(unittest.TestCase):
         dispatch = Mock()
         result, output, choose = self.run_menu([0, 2], dispatch=dispatch)
         self.assertEqual(result, 0)
-        self.assertIn("Usunięto zapis", output)
+        self.assertIn("Saved conversation deleted", output)
         self.assertEqual(self.store.list(), [])
         self.assertEqual(choose.call_count, 2)
         self.assertIn(ident, choose.call_args.args[0])
-        self.assertIn("Usuń zapis tej rozmowy", choose.call_args.args[1])
+        self.assertIn("Delete this saved conversation", choose.call_args.args[1])
         dispatch.assert_not_called()
 
     def test_changed_record_after_review_is_not_deleted(self):
         ident = self.conversation()
         original = self.store.read(ident)
         def choices(title, options):
-            if title.startswith("Zapisane"):
+            if title.startswith("Saved"):
                 return 0
             current = self.store.open(ident, "ask")
             try:
@@ -179,7 +179,7 @@ class SessionMenuTests(unittest.TestCase):
             return 2
         result, output, _ = self.run_menu(choices)
         self.assertEqual(result, 2)
-        self.assertIn("zmieniła się", output)
+        self.assertIn("changed while you were choosing", output)
         after = self.store.read(ident)
         self.assertGreater(after["revision"], original["revision"])
         self.assertEqual(after["history"][-1]["answer"], "Równoległa odpowiedź")
@@ -204,7 +204,7 @@ class SessionMenuTests(unittest.TestCase):
         def choices(title, options):
             self.assertLessEqual(len(options), 12)
             seen.extend(option.split(" · ")[0] for option in options if " · " in option)
-            return options.index("Następna strona") if "Następna strona" in options else None
+            return options.index("Next page") if "Next page" in options else None
         result, _, choose = self.run_menu(choices)
         self.assertEqual(result, 0)
         self.assertEqual(choose.call_count, 3)

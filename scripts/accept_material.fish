@@ -89,7 +89,7 @@ end
 if test "$aid_mode" = --native-c; and test "$aid_installed" = 0
     printf '\n=== PLAN: SESSION C ONLY (nothing is sent yet) ===\n'
     printf 'Request for the whole file medium.log: usually 4-5 requests, the whole file (about 266 KiB) will be sent in 3 parts. File writes: none. Internet: none.\n'
-    printf 'The file refusals and sessions A and B passed in the interrupted --native run; this mode does not repeat them.\n'
+    printf 'The file checks and sessions A and B passed in the interrupted --native run; this mode does not repeat them.\n'
     printf '\n--- Session C: log of about 200 KB, request for the whole file ---\n'
     printf '  Analyze the whole file and tell me which errors it contains.   >>> y (plan), y (stage 1)\n'
     printf '  Expected: 3 parts, coverage 3 of 3 (100%%), conclusions with codes E-100 and E-2900. /log, /exit\n\n'

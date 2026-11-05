@@ -96,7 +96,7 @@ class AnalysisRecipientTests(unittest.TestCase):
         if preview:
             args.append("--preview")
         if reader is None:
-            reader = lambda _: "t"
+            reader = lambda _: "y"
         original = analysis_cli.main
         with patch.object(analysis_cli, "main", side_effect=lambda **kwargs: original(reader=reader, **kwargs)):
             return cli.main(args)
@@ -118,9 +118,9 @@ class AnalysisRecipientTests(unittest.TestCase):
                     prompts = []
                     def reader(prompt):
                         prompts.append(prompt)
-                        self.assertIn(brand + " · profil: " + name, self.output.getvalue())
+                        self.assertIn(brand + " · profile: " + name, self.output.getvalue())
                         self.assertEqual(self.events, [])
-                        return "t"
+                        return "y"
                     with self.environment():
                         self.assertEqual(self.invoke(details=details, reader=reader), 0)
                     self.assertEqual(prompts, [PROMPTS["transfer"].replace("Claude", brand)])
@@ -132,14 +132,14 @@ class AnalysisRecipientTests(unittest.TestCase):
                     output = self.output.getvalue()
                     self.assertIn(QUESTION, output)
                     self.assertIn(ANSWER, output)
-                    waiting = next(line for line in output.splitlines() if "Czekam na odpowiedź" in line)
+                    waiting = next(line for line in output.splitlines() if "Waiting for" in line)
                     self.assertIn(brand, waiting)
                     if details:
                         self.assertIn(envelope["client_context"], output)
-                        self.assertIn("Klient: " + envelope["client_version"], output)
-                        self.assertIn("=== WYNIK " + brand.upper(), output)
+                        self.assertIn("Client: " + envelope["client_version"], output)
+                        self.assertIn("=== RESULT FROM " + brand.upper(), output)
                     else:
-                        self.assertIn("Do " + brand + " trafią powyższe dane", output)
+                        self.assertIn(brand + " will receive the data above", output)
                     self.assertEqual(self.store.path.read_bytes(), before)
 
     def test_offline_preview_keeps_the_selected_recipient_without_account_or_transport_calls(self):
@@ -150,8 +150,8 @@ class AnalysisRecipientTests(unittest.TestCase):
         session.assert_not_called()
         send.assert_not_called()
         confirm.assert_not_called()
-        self.assertIn("Codex · profil: codex-report", self.output.getvalue())
-        self.assertIn("Do Codex trafią powyższe dane", self.output.getvalue())
+        self.assertIn("Codex · profile: codex-report", self.output.getvalue())
+        self.assertIn("Codex will receive the data above", self.output.getvalue())
         self.assertIn(QUESTION, self.output.getvalue())
 
     def test_reprompt_is_bound_to_preview_and_changed_execution_still_refuses_transfer(self):
@@ -163,7 +163,7 @@ class AnalysisRecipientTests(unittest.TestCase):
             if len(prompts) == 1:
                 execution.select(claude)
                 return "?"
-            return "t"
+            return "y"
         with self.environment() as (session, send):
             self.assertEqual(self.invoke(reader=reader), 2)
         self.assertEqual(prompts, [PROMPTS["transfer"].replace("Claude", "Codex")] * 2)
@@ -182,8 +182,8 @@ class AnalysisRecipientTests(unittest.TestCase):
             send.side_effect = failure
             self.assertEqual(self.invoke(), 2)
         self.assertEqual(self.native[0]["provider"], "codex")
-        self.assertIn("Brak zaufanego klienta Codex", self.output.getvalue())
-        self.assertNotIn("Brak zaufanego klienta Claude Code", self.output.getvalue())
+        self.assertIn("The trusted Codex", self.output.getvalue())
+        self.assertNotIn("The trusted Claude Code", self.output.getvalue())
 
     def test_absent_execution_in_preview_never_inherits_ambient_codex_label(self):
         self.select("codex")
@@ -192,9 +192,9 @@ class AnalysisRecipientTests(unittest.TestCase):
             return original(*args, **kwargs, execution=None)
         with self.environment() as (session, send), patch.object(analysis_cli, "AnalysisConsent", side_effect=legacy):
             self.assertEqual(self.invoke(preview=True), 0)
-        self.assertIn("Claude · profil: default", self.output.getvalue())
-        self.assertIn("Do Claude trafią powyższe dane", self.output.getvalue())
-        self.assertNotIn("Do Codex trafią powyższe dane", self.output.getvalue())
+        self.assertIn("Claude · profile: default", self.output.getvalue())
+        self.assertIn("Claude will receive the data above", self.output.getvalue())
+        self.assertNotIn("Codex will receive the data above", self.output.getvalue())
         session.assert_not_called()
         send.assert_not_called()
 

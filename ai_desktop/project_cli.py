@@ -56,6 +56,10 @@ Optional (local commands, nothing is sent):
   /exit             quit (also Ctrl+D)"""
 
 
+def _entries(count):
+    return "1 entry" if count == 1 else "%d entries" % count
+
+
 def _source(path, first, last):
     return "%s:%d–%d" % (_safe(path, 80), first, last) if first != last else "%s:%d" % (_safe(path, 80), first)
 
@@ -318,7 +322,7 @@ class ProjectSession(Session):
             # Compact by default: what leaves the computer in one line, extras only when present.
             total = self._skipped_total()
             print(recipient("To Claude: the question, file names and parts from %s (%d file(s)%s%s)") % (
-                self.name, stats["indexed"], ", %d entries skipped" % total if total else "",
+                self.name, stats["indexed"], ", %s skipped" % _entries(total) if total else "",
                 "" if self.project.complete else "; INDEX INCOMPLETE: %s" % REASONS.get(self.project.reason, "limit")))
             extras = []
             if pasted:
@@ -648,7 +652,7 @@ class ProjectSession(Session):
     def _skipped_line(self):
         """One short line shown by default: excluded entries affect completeness, but their names are never shown."""
         total = self._skipped_total()
-        return recipient("Out of reach for Claude: %d entries skipped during the scan (details: --v).") % total if total else None
+        return recipient("Out of reach for Claude: %s skipped during the scan (details: --v).") % _entries(total) if total else None
 
     def _answer(self, text, loop, decision):
         self._close_section()
@@ -677,7 +681,7 @@ class ProjectSession(Session):
             for label, values in notes:
                 print(field(label, *values))
             if self._skipped_line():
-                print(field("Out of reach", "%d entries skipped during the scan (details: --v)" % self._skipped_total()))
+                print(field("Out of reach", "%s skipped during the scan (details: --v)" % _entries(self._skipped_total())))
             print(SEPARATOR)
             self._skipped_shown = self._skipped_total()
         elif self._skipped_line() and self._skipped_total() != self._skipped_shown:
@@ -702,7 +706,7 @@ class ProjectSession(Session):
         for label, values in self._notes(loop):
             print(field(label, *values))
         if not self.args.details and self._skipped_line():
-            print(field("Out of reach", "%d entries skipped during the scan (details: --v)" % self._skipped_total()))
+            print(field("Out of reach", "%s skipped during the scan (details: --v)" % _entries(self._skipped_total())))
         print(SEPARATOR)
         print()
         received, size = loop.delivered_summary()

@@ -83,7 +83,7 @@ def inspect_source(source):
         'test/context.txt': (expected, True), 'test/hello.py': (None, True)}
 def observed_input(prompt, **kwargs):
     answer = original_input(prompt, **kwargs)
-    if type(answer) is str and answer.strip().casefold() in ('tak', 't'):
+    if type(answer) is str and answer.strip().casefold() in ('yes', 'y'):
         approvals.append(prompt)
     return answer
 terminal_consent.fresh_input = observed_input
@@ -216,7 +216,7 @@ def reject(fixture):
                     break
                 output.extend(block)
             if PROMPTS["ask-question"].encode() in output and not answered:
-                os.write(master, b"nie\n")
+                os.write(master, b"no\n")
                 answered = True
             if process.poll() is not None and not select.select([master], [], [], .1)[0]:
                 break
@@ -255,8 +255,8 @@ def main(argv=None):
                 raise ValueError("refusal-wrote-journal")
             prior.check_stopped(uid, units)
             stage = "native-create"
-            print("Test używa prywatnego syntetycznego HOME; Twoja konfiguracja pozostaje nietknięta.")
-            print("Zatwierdź pytanie, potem zapis po teście i diffie, a na końcu cofnięcie.")
+            print("The test uses a private synthetic HOME; your configuration stays untouched.")
+            print("Approve the question, then the save after the test and the diff, and finally the undo.")
             started = True
             prior.run(*command(fixture), timeout=600)
             stage = "applied"

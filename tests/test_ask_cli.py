@@ -45,7 +45,7 @@ def _no_user_time_exemption():
 
 
 class AskCliTests(unittest.TestCase):
-    def run_ui(self, argv=None, *, answers=("Co to jest DNS?", "tak"), gate=None,
+    def run_ui(self, argv=None, *, answers=("Co to jest DNS?", "yes"), gate=None,
                session=None, send=None, context=None, policy=None, access=None,
                sources=None, capture_error=None, uid=1000, tty=True, planner=None, collect_source=None,
                context_gate_error=None, stay=False):
@@ -112,13 +112,13 @@ class AskCliTests(unittest.TestCase):
             self.assertNotIn(key, data)
         self.assertIn("DNS", r.output)
         self.assertEqual(r.output.count(ask.ANSWER_SEPARATOR), 2)
-        for technical in ("SHA256", "ASK: PASS", "SESSION:", "system_prompt", "client_context", '"action"', "Dostępy:"):
+        for technical in ("SHA256", "ASK: PASS", "SESSION:", "system_prompt", "client_context", '"action"', "Access:"):
             self.assertNotIn(technical, r.output)
 
     def test_details_shows_exact_payload_and_explicit_question_skips_prompt(self):
         for flag in ("--v", "--verbose", "-v", "--details"):
             with self.subTest(flag=flag):
-                r = self.run_ui(["--question", "Co to jest DNS?", flag], answers=("Tak",))
+                r = self.run_ui(["--question", "Co to jest DNS?", flag], answers=("Yes",))
                 self.assertEqual(r.code, 0, r.output)
                 self.assertTrue(r.output.startswith("Co to jest DNS?\n\n"))
                 r.reader.assert_called_once_with(PROMPTS["ask-question"])
@@ -135,19 +135,19 @@ class AskCliTests(unittest.TestCase):
             mock.assert_not_called()
         r.capture.assert_called_once_with()
         self.assertIn("~/example/*", r.output)
-        self.assertIn("Niczego nie wysłano", r.output)
+        self.assertIn("Nothing was sent", r.output)
 
     def test_first_decline_prevents_model_and_sources(self):
-        r = self.run_ui(answers=("Pytanie", "nie"), access=ACCESS, planner=PLAN)
+        r = self.run_ui(answers=("Pytanie", "no"), access=ACCESS, planner=PLAN)
         self.assertEqual(r.code, 2)
-        self.assertIn("Anulowano", r.output)
+        self.assertIn("Cancelled", r.output)
         for mock in (r.collect, r.started, r.sent):
             mock.assert_not_called()
 
     def test_file_read_refusal_stops_after_planner_with_one_local_hint_and_no_status_advice(self):
         for details in (False, True):
-            for reason, expected in (("files-size", "65536 bajtów na plik"),
-                                     ("PRIVATE\n\x1b[31m", "Nie udało się zweryfikować dostępu")):
+            for reason, expected in (("files-size", "65536 bytes per file"),
+                                     ("PRIVATE\n\x1b[31m", "Could not verify access")):
                 with self.subTest(details=details, reason=reason):
                     policy = Mock()
                     policy.limits.return_value = Limits(plan_corrections=0)
@@ -157,7 +157,7 @@ class AskCliTests(unittest.TestCase):
                     with patch.object(file_context.permissions, "read_selected", side_effect=ValueError(reason)) as read:
                         r = self.run_ui(["--details"] if details else [], access=ACCESS, planner=PLAN,
                                         policy=policy, collect_source=assistant_flow.collect,
-                                        answers=("Sprawdź konfigurację", "tak"))
+                                        answers=("Sprawdź konfigurację", "yes"))
                     self.assertEqual(r.code, 2)
                     read.assert_called_once_with(policy, policy.expand.return_value)
                     r.sent.assert_called_once()
@@ -166,9 +166,9 @@ class AskCliTests(unittest.TestCase):
                     self.assertEqual([call.args[0] for call in r.reader.call_args_list],
                                      [ask.QUESTION_PROMPT, PROMPTS["ask-question"]])
                     self.assertIn(expected, r.output)
-                    self.assertEqual(r.output.count("Odmowa odczytu plików:"), 1)
-                    self.assertIn("Treść plików nie została wysłana do Claude.", r.output)
-                    for unwanted in ("ai-desktop status", "ANALYSIS: REFUSED", "Nie udało się uzyskać odpowiedzi",
+                    self.assertEqual(r.output.count("File read refused:"), 1)
+                    self.assertIn("The file contents were not sent to Claude.", r.output)
+                    for unwanted in ("ai-desktop status", "ANALYSIS: REFUSED", "Could not get an answer",
                                      "PRIVATE", "\x1b"):
                         self.assertNotIn(unwanted, r.output)
                     self.assertNotIn("PRIVATE CONTENT", r.sent.call_args.args[0].payload)
@@ -179,11 +179,11 @@ class AskCliTests(unittest.TestCase):
         for details in (False, True):
             with self.subTest(details=details):
                 r = self.run_ui(["--details"] if details else [], access=ACCESS, planner=PLAN,
-                                context=context, answers=("Sprawdź konfigurację", "tak"),
+                                context=context, answers=("Sprawdź konfigurację", "yes"),
                                 context_gate_error=ContextBudgetExceeded("PRIVATE BUDGET"))
                 self.assertEqual(r.code, 2)
-                self.assertIn(f"kontekst JSON przekracza limit {ask.MAX_CONTEXT_BYTES} bajtów", r.output)
-                self.assertIn("Wybrane dane nie zostały wysłane do Claude.", r.output)
+                self.assertIn(f"the JSON context is over the limit of {ask.MAX_CONTEXT_BYTES} bytes", r.output)
+                self.assertIn("The selected data was not sent to Claude.", r.output)
                 self.assertEqual([call.args[0] for call in r.reader.call_args_list],
                                  [ask.QUESTION_PROMPT, PROMPTS["ask-question"]])
                 r.ready.assert_called_once()
@@ -198,10 +198,10 @@ class AskCliTests(unittest.TestCase):
             for error in (InputBudgetExceeded("PRIVATE RAW EXCEPTION"), ValueError("PRIVATE RAW EXCEPTION")):
                 with self.subTest(details=details, error=type(error).__name__):
                     r = self.run_ui(["--details"] if details else [], access=ACCESS, planner=PLAN,
-                                    context=[FILES], answers=("Sprawdź konfigurację", "tak"),
+                                    context=[FILES], answers=("Sprawdź konfigurację", "yes"),
                                     context_gate_error=error)
                     self.assertEqual(r.code, 2)
-                    self.assertEqual(f"całe żądanie JSON przekracza limit {ask.MAX_PACKET} bajtów" in r.output,
+                    self.assertEqual(f"the whole JSON request is over the limit of {ask.MAX_PACKET} bytes" in r.output,
                                      isinstance(error, InputBudgetExceeded))
                     self.assertEqual(r.reader.call_count, 2)
                     r.ready.assert_called_once()
@@ -213,7 +213,7 @@ class AskCliTests(unittest.TestCase):
 
     def test_large_escaped_context_is_transferred_whole_with_one_question_approval(self):
         context = [{"kind": "files", "files": [{"path": "/tmp/example/config.txt", "content": '"' * 13000}]}]
-        r = self.run_ui(access=ACCESS, planner=PLAN, context=context, answers=("Pytanie", "tak"))
+        r = self.run_ui(access=ACCESS, planner=PLAN, context=context, answers=("Pytanie", "yes"))
         self.assertEqual(r.code, 0, r.output)
         self.assertEqual(r.sent.call_count, 2)
         payload = json.loads(r.sent.call_args_list[1].args[0].payload)
@@ -221,7 +221,7 @@ class AskCliTests(unittest.TestCase):
         self.assertEqual(r.reader.call_count, 2)
 
     def test_blank_and_unknown_confirmation_reprompt_before_yes(self):
-        r = self.run_ui(answers=("Pytanie", "", "?", "t"))
+        r = self.run_ui(answers=("Pytanie", "", "?", "y"))
         self.assertEqual(r.code, 0, r.output)
         self.assertEqual(r.reader.call_count, 4)
         r.started.assert_called_once()
@@ -240,7 +240,7 @@ class AskCliTests(unittest.TestCase):
                     mock.assert_not_called()
 
     def test_empty_question_reprompts_and_explicit_empty_refuses(self):
-        r = self.run_ui(answers=("", " ", "Pytanie", "nie"))
+        r = self.run_ui(answers=("", " ", "Pytanie", "no"))
         self.assertEqual(r.code, 2)
         self.assertEqual([c.args[0] for c in r.reader.call_args_list],
                          [ask.QUESTION_PROMPT] * 3 + [PROMPTS["ask-question"]])
@@ -254,7 +254,7 @@ class AskCliTests(unittest.TestCase):
         for answers in ((EOFError(),), (KeyboardInterrupt(),), ("Pytanie", EOFError()), ("Pytanie", KeyboardInterrupt())):
             r = self.run_ui(answers=answers)
             self.assertEqual(r.code, 2)
-            self.assertIn("Anulowano", r.output)
+            self.assertIn("Cancelled", r.output)
             r.started.assert_not_called()
             r.sent.assert_not_called()
 
@@ -268,7 +268,7 @@ class AskCliTests(unittest.TestCase):
                 yield
             finally:
                 events.append("cleanup")
-        r = self.run_ui(answers=("Pytanie", "tak"), gate=gate, session=session)
+        r = self.run_ui(answers=("Pytanie", "yes"), gate=gate, session=session)
         self.assertEqual(r.code, 2)
         self.assertEqual(events, ["cleanup"])
         r.sent.assert_not_called()
@@ -284,7 +284,7 @@ class AskCliTests(unittest.TestCase):
         with patch.object(ask.time, "monotonic", side_effect=lambda: now[0]):
             r = self.run_ui(session=session, send=send)
         self.assertEqual(r.code, 2, r.output)
-        self.assertIn("Ostatnie wywołanie czekało 77 s (limit 150 s).", r.output)
+        self.assertIn("The last call waited 77 s (limit 150 s).", r.output)
 
     def test_success_waits_for_cleanup_and_provider_failure_is_not_retried(self):
         for failure in (None, AnalysisDenied("client"), AnalysisDenied("auth-required")):
@@ -322,7 +322,7 @@ class AskCliTests(unittest.TestCase):
         for details in (False, True):
             with self.subTest(details=details):
                 r = self.run_ui(["--details"] if details else [], access=ACCESS, planner=PLAN,
-                                context=[FILES], answers=("Pytanie", "tak"))
+                                context=[FILES], answers=("Pytanie", "yes"))
                 self.assertEqual(r.code, 0, r.output)
                 self.assertEqual(r.sent.call_count, 2)
                 self.assertEqual(r.started.call_count, 2)
@@ -336,14 +336,14 @@ class AskCliTests(unittest.TestCase):
                 self.assertEqual("PRIVATE CONTENT" in r.output, details)
                 self.assertEqual([c.args[0] for c in r.reader.call_args_list],
                                  [ask.QUESTION_PROMPT, PROMPTS["ask-question"]])
-                self.assertEqual(r.output.count("Czekam na odpowiedź"), 1)
+                self.assertEqual(r.output.count("Waiting for"), 1)
 
     def test_web_uses_one_question_consent_and_only_original_question_in_second_request(self):
         for details in (False, True):
             with self.subTest(details=details), \
                     patch.object(assistant_flow.ask_edit, "prepare", side_effect=AssertionError("local edit")) as edit:
                 r = self.run_ui(["--v"] if details else [], access=WEB_ACCESS, sources=WEB_SOURCES,
-                                planner=WEB_PLAN, answers=("Jakie są dzisiejsze wiadomości?", "t"))
+                                planner=WEB_PLAN, answers=("Jakie są dzisiejsze wiadomości?", "y"))
                 self.assertEqual(r.code, 0, r.output)
                 self.assertEqual(r.sent.call_count, 2)
                 self.assertEqual(r.started.call_count, 2)
@@ -360,7 +360,7 @@ class AskCliTests(unittest.TestCase):
                 self.assertNotEqual(r.gates[0].sha256, r.gates[1].sha256)
                 r.collect.assert_not_called()
                 edit.assert_not_called()
-                self.assertEqual(r.output.count("Czekam na odpowiedź"), 1)
+                self.assertEqual(r.output.count("Waiting for"), 1)
 
     def test_web_cannot_mix_local_data_or_replace_the_original_question(self):
         for plan in (dict(WEB_PLAN, files=["f0"]), dict(WEB_PLAN, context=[FILES]),
@@ -455,12 +455,12 @@ class AskCliTests(unittest.TestCase):
         self.assertEqual(r.code, 2)
         self.assertEqual(r.sent.call_count, 2)
         self.assertEqual(cleanup, [1, 2])
-        self.assertIn("Nie uzyskano potwierdzonych wyników wyszukiwania", r.output)
+        self.assertIn("No confirmed search results came back", r.output)
         self.assertNotIn(ask.ANSWER_SEPARATOR, r.output)
         r.collect.assert_not_called()
 
     def test_no_context_disables_web_even_when_policy_allows_it(self):
-        r = self.run_ui(["--question", "Wiadomości?", "--no-context"], answers=("t",),
+        r = self.run_ui(["--question", "Wiadomości?", "--no-context"], answers=("y",),
                         access=WEB_ACCESS, sources=WEB_SOURCES, planner=WEB_PLAN)
         self.assertEqual(r.code, 0, r.output)
         r.sent.assert_called_once()
@@ -484,7 +484,7 @@ class AskCliTests(unittest.TestCase):
             now[0] = 181
             return json.dumps(PLAN)
         with patch.object(question_consent.time, "monotonic", side_effect=lambda: now[0]):
-            r = self.run_ui(access=ACCESS, planner=PLAN, context=[FILES], answers=("Pytanie", "tak"), send=send)
+            r = self.run_ui(access=ACCESS, planner=PLAN, context=[FILES], answers=("Pytanie", "yes"), send=send)
             self.assertEqual(r.code, 2)
             r.sent.assert_called_once()
             r.collect.assert_not_called()
@@ -502,7 +502,7 @@ class AskCliTests(unittest.TestCase):
                 context[0]["files"][0]["content"] = "changed"
             yield
         r = self.run_ui(access=ACCESS, planner=PLAN, context=context, session=session,
-                        answers=("Pytanie", "tak"))
+                        answers=("Pytanie", "yes"))
         self.assertEqual(r.code, 2)
         r.sent.assert_called_once()
         self.assertEqual(r.started.call_count, 2)
@@ -516,7 +516,7 @@ class AskCliTests(unittest.TestCase):
                 policy.recheck.side_effect = ValueError("PRIVATE POLICY")
             yield
         r = self.run_ui(access=ACCESS, planner=PLAN, context=[FILES], policy=policy,
-                        session=session, answers=("Pytanie", "tak"))
+                        session=session, answers=("Pytanie", "yes"))
         self.assertEqual(r.code, 2)
         self.assertEqual(sessions[0], 2)
         r.sent.assert_called_once()
@@ -532,7 +532,7 @@ class AskCliTests(unittest.TestCase):
             yield
         with patch.object(question_consent.time, "monotonic", side_effect=lambda: now[0]):
             r = self.run_ui(access=ACCESS, planner=PLAN, context=[FILES], session=session,
-                            answers=("Pytanie", "tak"))
+                            answers=("Pytanie", "yes"))
         self.assertEqual(r.code, 0)
         self.assertEqual(r.started.call_count, 2)
 
@@ -549,7 +549,7 @@ class AskCliTests(unittest.TestCase):
                 cleanup.append(sessions[0])
         with _no_user_time_exemption(), patch.object(question_consent.time, "monotonic", side_effect=lambda: now[0]):
             r = self.run_ui(access=ACCESS, planner=PLAN, context=[FILES], session=session,
-                            answers=("Pytanie", "tak"))
+                            answers=("Pytanie", "yes"))
         self.assertEqual(r.code, 2)
         self.assertEqual(cleanup, [1, 2])
         self.assertEqual(r.started.call_count, 2)
@@ -559,15 +559,15 @@ class AskCliTests(unittest.TestCase):
     def test_explicit_weather_uses_same_single_upfront_approval(self):
         access = {"files": [], "systemd": [], "weather": True}
         sources = {"claude": True, "systemd": [], "weather": True}
-        for answer in ("tak", "nie"):
+        for answer in ("yes", "no"):
             with self.subTest(answer=answer):
                 r = self.run_ui(["--question", "Pogoda?", "--weather", "Warszawa"],
                                 access=access, sources=sources, context=[WEATHER], answers=(answer,))
-                self.assertEqual(r.code, 0 if answer == "tak" else 2, r.output)
+                self.assertEqual(r.code, 0 if answer == "yes" else 2, r.output)
                 r.reader.assert_called_once_with(PROMPTS["ask-question"])
-                self.assertEqual(r.sent.call_count, 1 if answer == "tak" else 0)
-                self.assertEqual(r.collect.call_count, 1 if answer == "tak" else 0)
-                if answer == "tak":
+                self.assertEqual(r.sent.call_count, 1 if answer == "yes" else 0)
+                self.assertEqual(r.collect.call_count, 1 if answer == "yes" else 0)
+                if answer == "yes":
                     self.assertEqual(json.loads(r.sent.call_args.args[0].payload)["context"], [WEATHER])
 
     def test_standalone_request_keeps_fresh_consent_and_boolean_cannot_skip_it(self):
@@ -604,7 +604,7 @@ class AskCliTests(unittest.TestCase):
                 self.assertNotIn("PRIVATE CONFIG", r.output)
 
     def test_no_context_is_one_question_transfer_after_policy_check(self):
-        r = self.run_ui(["--question", "Pytanie", "--no-context"], answers=("tak",))
+        r = self.run_ui(["--question", "Pytanie", "--no-context"], answers=("yes",))
         self.assertEqual(r.code, 0, r.output)
         r.capture.assert_called_once_with()
         r.collect.assert_not_called()
@@ -614,12 +614,12 @@ class AskCliTests(unittest.TestCase):
     def test_invalid_policy_has_a_fixed_helpful_hint_without_raw_configuration(self):
         r = self.run_ui(capture_error=assistant_flow.AccessDenied("policy-invalid"))
         self.assertEqual(r.code, 2)
-        self.assertIn("Niepoprawny permissions.toml. Sprawdź version i reguły read/write/deny.", r.output)
+        self.assertIn("Invalid permissions.toml. Check version and the read/write/deny rules.", r.output)
         r.sent.assert_not_called()
         r = self.run_ui(capture_error=assistant_flow.AccessDenied("PRIVATE CONFIG CONTENT"))
         self.assertEqual(r.code, 2)
         self.assertNotIn("PRIVATE", r.output)
-        self.assertNotIn("Niepoprawny permissions.toml", r.output)
+        self.assertNotIn("Invalid permissions.toml", r.output)
 
     def test_dispatcher_passes_ask_arguments_without_probing(self):
         with patch.object(ask, "main", return_value=0) as main:
@@ -658,7 +658,7 @@ with patch.object(ask_cli, '_choose_thread', return_value=('new', None)), patch.
                     output.extend(raw)
                 if stage == 0 and ask.QUESTION_PROMPT.encode() in output.replace(b"\r\n", b"\n"):
                     # More than the ordinary 64-byte confirmation bound.
-                    os.write(master, ("Wyjaśnij DNS. " * 12 + "\ntak\n").encode())
+                    os.write(master, ("Wyjaśnij DNS. " * 12 + "\nyes\n").encode())
                     stage = 1
                 if stage == 1 and PROMPTS["ask-question"].encode() in output:
                     confirmation_seen = time.monotonic()
@@ -666,10 +666,10 @@ with patch.object(ask_cli, '_choose_thread', return_value=('new', None)), patch.
                 if stage == 2 and time.monotonic() - confirmation_seen >= .2:
                     self.assertNotIn(b"SYNTHETIC_TRANSFER", output)
                     self.assertIsNone(process.poll())
-                    os.write(master, b"nie\n")
+                    os.write(master, b"no\n")
                     stage = 3
-                if (stage == 3 and "Anulowano".encode() in output
-                        and b"> " in output[output.find("Anulowano".encode()):]):
+                if (stage == 3 and "Cancelled".encode() in output
+                        and b"> " in output[output.find("Cancelled".encode()):]):
                     os.write(master, b"\n")                 # the declined turn leaves the conversation open: end it
                     stage = 4
                 if process.poll() is not None and not select.select([master], [], [], .02)[0]:
@@ -679,7 +679,7 @@ with patch.object(ask_cli, '_choose_thread', return_value=('new', None)), patch.
             plain = re.sub(rb"\x1b\[[0-9;?]*[A-Za-z]", b"", output.replace(b"\r\n", b"\n"))      # the prompt is coloured on a terminal
             self.assertIn(b"\n\n" + PROMPTS["ask-question"].encode(), plain)
             self.assertNotIn(b"SYNTHETIC_TRANSFER", output)
-            self.assertIn("Anulowano".encode(), output)
+            self.assertIn("Cancelled".encode(), output)
         finally:
             if process.poll() is None:
                 process.kill()

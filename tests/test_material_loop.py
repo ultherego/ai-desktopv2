@@ -123,7 +123,7 @@ class LoopTests(unittest.TestCase):
         lp = ml.Loop(m.import_bytes(("\n".join(lines) + "\n").encode(), "file"))
         note = lp.execute({"action": "search", "needle": "NEEDLE"})
         (obs,) = lp.observations
-        self.assertIn("1 trafień", note)
+        self.assertTrue(note.endswith(": 1 match"), note)
         self.assertEqual(obs["hits"][0]["line"], 1)
         self.assertLessEqual(len(obs["hits"][0]["text"].encode()), ml.SEARCH_SNIPPET)
         obs["hits"][0]["text"].encode("utf-8")      # valid text, never a cut character
@@ -167,9 +167,9 @@ class LoopTests(unittest.TestCase):
         lp.mark_handed_off(lp.request_input(1, 700000))
         self.assertEqual(lp.delivered_summary()[0], [[790, 800]])
         explained = lp.execute({"action": "read", "ranges": [(900, 950)]})
-        self.assertEqual(explained, "odczyt wierszy 900–950 — odmowa: zakres wierszy poza plikiem (materiał ma 800 wierszy)")
+        self.assertEqual(explained, "lines 900–950 — refused: line range outside the file (the file has 800 lines)")
         self.assertEqual(lp.observations[-1], {"kind": "refused", "action": "read", "code": "RANGE_INVALID"})
-        self.assertNotIn("poprosił o odmowa", note + explained)
+        self.assertNotIn("asked for refused", note + explained)
 
     def test_a_read_larger_than_one_request_is_refused_whole(self):
         lines = ["x" * 99] * 3500
@@ -214,7 +214,7 @@ class LoopTests(unittest.TestCase):
 
     def test_history_is_bounded_and_shortened_visibly(self):
         turn = ml.history_turn("q", "a" * 5000)
-        self.assertTrue(turn["answer"].endswith("…[skrócono]"))
+        self.assertTrue(turn["answer"].endswith("…[shortened]"))
         self.assertLessEqual(len(turn["answer"].encode()), ms.HISTORY_TEXT + 40)
         lp = ml.Loop(m.import_bytes(RAW, "file"), history=[{"question": "q%d" % i, "answer": "a"} for i in range(9)])
         self.assertEqual(len(lp.history), ms.MAX_HISTORY)

@@ -328,7 +328,7 @@ def main(argv=None):
             print_preinit(data["preinit"])
         print("NATIVE_EXIT=" + str(data["native_exit"]) + " FIXTURE_MESSAGES=" + str(data["messages"])
               + " FAILURE=" + data["failure"])
-        print("To obserwacja protokolu z odpowiedzia syntetyczna, nie odbior WebSearch/OAuth.")
+        print("This is a protocol observation with a synthetic answer, not WebSearch/OAuth acceptance.")
         return 0 if code == 0 and data["failure"] == "none" else 2
     except (OSError, ValueError, TypeError, KeyError, RecursionError,
             fixture.FixtureDenied, compat.CompatibilityDenied, production.AnalysisDenied):

@@ -30,7 +30,7 @@ class ContextItemTests(unittest.TestCase):
         payload = ac.application_input(None, "Why?", context=[item])
         value = json.loads(payload)
         self.assertEqual((value["mode"], value["context"][0]["kind"]), ("question", "material"))
-        self.assertIn("Kontekst material", value["system_prompt"])
+        self.assertIn("A material context", value["system_prompt"])
 
     def test_worker_side_parse_accepts_exactly_the_same_item(self):
         _, item = make_item()

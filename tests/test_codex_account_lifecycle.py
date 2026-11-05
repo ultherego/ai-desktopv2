@@ -214,8 +214,8 @@ class AuthCallbackTests(unittest.TestCase):
                 code, _, _, text = self.worker(["/auth/callback?state=STATE&code=ok"], details=details)
                 self.assertEqual(code, 0)
                 self.assertIn("https://auth.openai.com/api/accounts/authorize?state=STATE", text)
-                self.assertEqual("Dostępność modelu" in text, details)
-                self.assertNotIn("Zalogowano", text)
+                self.assertEqual("Model availability" in text, details)
+                self.assertNotIn("Logged in", text)
 
     def test_worker_refuses_wrong_identity_without_auth_store_or_network(self):
         with patch("ai_desktop.e2_socket_activation._worker_identity", return_value=False), \

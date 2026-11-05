@@ -172,7 +172,7 @@ class AskEditFixtureTests(unittest.TestCase):
         package = ModuleType("ai_desktop")
         package.permissions = SimpleNamespace()
         package.ask_cli = SimpleNamespace(request=Mock(return_value="synthetic response"))
-        package.terminal_consent = SimpleNamespace(fresh_input=Mock(return_value="tak"),
+        package.terminal_consent = SimpleNamespace(fresh_input=Mock(return_value="yes"),
                                                    PROMPTS={"ask-question": "QUESTION", "write": "WRITE"})
         package.task_cli = SimpleNamespace(task_sandbox=SimpleNamespace(run=Mock(return_value={"passed": True})),
                                           show_diff=Mock(), workspace=SimpleNamespace(apply=Mock()))
@@ -222,7 +222,7 @@ class AskEditFixtureTests(unittest.TestCase):
                 package = ModuleType("ai_desktop")
                 package.permissions = SimpleNamespace()
                 package.ask_cli = SimpleNamespace(request=Mock(return_value="unused"))
-                package.terminal_consent = SimpleNamespace(fresh_input=Mock(return_value="nie"),
+                package.terminal_consent = SimpleNamespace(fresh_input=Mock(return_value="no"),
                     PROMPTS={"ask-question": "QUESTION", "write": "WRITE"})
                 package.task_cli = SimpleNamespace(task_sandbox=SimpleNamespace(run=Mock()),
                     show_diff=Mock(), workspace=SimpleNamespace(apply=Mock()))

@@ -91,120 +91,120 @@ class RootAndLocalTests(Base):
         os.symlink(self.proj / "src", self.proj / "alias")
         for argv in ([str(self.home / "other")], [str(self.home)], [str(self.proj / "alias")], [str(self.proj / "none")]):
             with self.subTest(argv=argv):
-                self.assertEqual(self.run_cli(["/koniec"], argv=argv), 2)
-        self.assertEqual(self.run_cli(["/koniec"], tty=False), 2)
+                self.assertEqual(self.run_cli(["/exit"], argv=argv), 2)
+        self.assertEqual(self.run_cli(["/exit"], tty=False), 2)
         self.config.unlink()
-        self.assertEqual(self.run_cli(["/koniec"]), 2)
+        self.assertEqual(self.run_cli(["/exit"]), 2)
         self.assertEqual((self.sent, self.fake.opens, self.ready), ([], 0, 0))
 
     def test_local_commands_send_nothing_and_never_show_denied_names_or_content(self):
-        self.assertEqual(self.run_cli(["/pliki", "/pliki src", "/szukaj ERROR", "/szukaj TOP-SECRET", "/rejestr", "/koniec"]), 0)
+        self.assertEqual(self.run_cli(["/files", "/files src", "/search ERROR", "/search TOP-SECRET", "/log", "/exit"]), 0)
         self.assertIn("src/app.py", self.output)
-        self.assertIn("Brak trafień", self.output)
+        self.assertIn("No matches", self.output)
         self.assertNotIn("TOP-SECRET", self.output)
         self.assertNotIn("secret/", self.output)
-        self.assertIn("Nic nie zostało przekazane", self.output)
+        self.assertIn("Nothing was handed", self.output)
         self.assertEqual((self.sent, self.fake.opens), ([], 0))
 
     def test_the_banner_and_the_consent_preview_use_short_lines(self):
         self.model = script()
-        self.run_cli(["co to za projekt?", "/koniec"], ["nie"])
+        self.run_cli(["co to za projekt?", "/exit"], ["no"])
         lines = self.output.splitlines()
         self.assertEqual(lines[0], "")
-        self.assertTrue(lines[1].startswith("Projekt proj ("))
-        self.assertEqual(lines[2], "Do Claude trafi tylko to, co zatwierdzisz.")
-        self.assertEqual(lines[3:8], ["", "Opcje:", "/koniec    kończy", "/pomoc     pokazuje opcjonalne polecenia", ""])
-        self.assertEqual(lines[8], "Co chcesz z nim zrobić?")
+        self.assertTrue(lines[1].startswith("Project proj ("))
+        self.assertEqual(lines[2], "Only what you approve goes to Claude.")
+        self.assertEqual(lines[3:8], ["", "Options:", "/exit      quits", "/help      shows optional commands", ""])
+        self.assertEqual(lines[8], "What do you want to do with it?")
         # Compact by default: one line says what leaves the computer, nothing repeated from the banner.
-        self.assertIn("Do Claude: pytanie, nazwy plików i fragmenty z proj (3 plików, pominięto 1 wpisów)", lines)
-        for hidden in ("── Do wysłania", "Pominięto", "Bez ", "Treść"):
+        self.assertIn("To Claude: the question, file names and parts from proj (3 file(s), 1 entry skipped)", lines)
+        for hidden in ("── To send", "Skipped", "Without ", "Content"):
             self.assertFalse([l for l in lines if hidden in l], hidden)
-        self.assertIn("Przekazać do Claude? [t/n]", PROMPTS["project-task"])
+        self.assertIn("Send to Claude? [y/n]", PROMPTS["project-task"])
 
     def test_verbose_shows_the_full_consent_card(self):
         self.model = script()
-        self.run_cli(["co to za projekt?", "/koniec"], ["nie"], argv=[str(self.proj), "--v"])
+        self.run_cli(["co to za projekt?", "/exit"], ["no"], argv=[str(self.proj), "--v"])
         lines = self.output.splitlines()
-        self.assertIn("── Do wysłania " + "─" * 33, lines)
-        self.assertRegex(self.output, r"Pominięto\s+zabronione lub poza zakresem: 1")
-        self.assertRegex(self.output, r"Bez\s+Internetu, zapisu plików i uruchamiania kodu · limit czasu 600 s")
-        self.assertRegex(self.output, r"Dane\s+pytanie oraz nazwy plików, trafienia i fragmenty, o które poprosi Claude")
+        self.assertIn("── To send " + "─" * 37, lines)
+        self.assertRegex(self.output, r"Skipped\s+denied or out of scope: 1")
+        self.assertRegex(self.output, r"Without\s+Internet, file writes or running code · time limit 600 s")
+        self.assertRegex(self.output, r"Data\s+the question, plus the file names, matches and parts Claude asks for")
 
     def test_verbose_adds_the_explanation_of_what_is_sent(self):
         self.model = script()
-        self.run_cli(["co to za projekt?", "/koniec"], ["nie"], argv=[str(self.proj), "--v"])
-        self.assertRegex(self.output, r"Treść\s+Claude sam poprosi")
-        self.assertIn("Nazwy plików, trafienia i fragmenty są wysyłane jako dane", self.output)
+        self.run_cli(["co to za projekt?", "/exit"], ["no"], argv=[str(self.proj), "--v"])
+        self.assertRegex(self.output, r"Content\s+Claude will ask")
+        self.assertIn("File names, matches and parts are sent as data", self.output)
 
-    def test_the_bare_word_koniec_ends_the_session_instead_of_asking_claude(self):
+    def test_the_bare_word_exit_ends_the_session_instead_of_asking_claude(self):
         self.model = script()
-        self.assertEqual(self.run_cli(["koniec"]), 0)
+        self.assertEqual(self.run_cli(["exit"]), 0)
         self.assertEqual((self.sent, self.fake.opens), ([], 0))
 
     def test_no_network_permission_blocks_questions_but_not_local_commands(self):
         self.config.write_text('version = 1\n[files]\nread = ["~/proj/**"]\ndeny = []\n[network]\nclaude = false\n')
         self.config.chmod(0o600)
-        self.assertEqual(self.run_cli(["co tu jest?", "/pliki", "/koniec"]), 0)
+        self.assertEqual(self.run_cli(["co tu jest?", "/files", "/exit"]), 0)
         self.assertIn("network.claude=false", self.output)
         self.assertEqual(self.sent, [])
 
 
 class QuestionTests(Base):
-    def ask(self, *decisions, question="Gdzie jest błąd połączenia?", answers=("tak",), extra=(), verbose=False):
+    def ask(self, *decisions, question="Gdzie jest błąd połączenia?", answers=("yes",), extra=(), verbose=False):
         self.model = script(*decisions)
         argv = [str(self.proj), "--v"] if verbose else None
-        return self.run_cli([question, *extra, "/koniec"], list(answers), argv=argv)
+        return self.run_cli([question, *extra, "/exit"], list(answers), argv=argv)
 
     def test_progress_is_framed_in_its_own_section_between_the_prompt_and_the_answer(self):
         self.ask({"action": "list", "prefix": "", "cursor": 0}, {"action": "answer", "text": "Gotowe.", "sources": []})
         lines = self.output.splitlines()
-        head = lines.index("── Przygotowanie " + "─" * 31)
+        head = lines.index("── Preparing " + "─" * 35)
         self.assertEqual(lines[head - 1], "")                       # a blank line after the consent answer
-        self.assertTrue(any(l.startswith("  Krok 1/8") for l in lines[head:]))
+        self.assertTrue(any(l.startswith("  Step 1/8") for l in lines[head:]))
         foot = lines.index("─" * 48, head)
         self.assertEqual(lines[foot + 1], "")
-        self.assertTrue(all(not l.startswith("  Krok") for l in lines[foot:]))
-        self.assertLess(foot, lines.index("── Odpowiedź " + "─" * 35))     # the answer comes after the section is closed
+        self.assertTrue(all(not l.startswith("  Step") for l in lines[foot:]))
+        self.assertLess(foot, lines.index("── Answer " + "─" * 38))     # the answer comes after the section is closed
 
     def test_a_task_that_stops_closes_the_section_before_the_summary(self):
         self.ask({"action": "find", "fragment": "util", "cursor": 0}, '{"action":"list"')
         lines = self.output.splitlines()
-        head = next(i for i, l in enumerate(lines) if l.startswith("── Przygotowanie"))
+        head = next(i for i, l in enumerate(lines) if l.startswith("── Preparing"))
         foot = lines.index("─" * 48, head)
-        self.assertLess(foot, next(i for i, l in enumerate(lines) if l.startswith("── Zatrzymano bez odpowiedzi")))
+        self.assertLess(foot, next(i for i, l in enumerate(lines) if l.startswith("── Stopped without an answer")))
 
     def test_a_direct_answer_has_no_empty_progress_frame_and_no_waiting_lines(self):
         self.ask({"action": "answer", "text": "Od razu.", "sources": []})
-        self.assertNotIn("── Przygotowanie", self.output)
-        self.assertNotIn("Czekam na odpowiedź", self.output)
-        self.assertIn("── Odpowiedź", self.output)
+        self.assertNotIn("── Preparing", self.output)
+        self.assertNotIn("Waiting for", self.output)
+        self.assertIn("── Answer", self.output)
 
     def test_two_ctrl_c_anywhere_end_the_session_and_one_only_cancels_the_step(self):
         self.model = script({"action": "answer", "text": "Odpowiedź.", "sources": []})
         # Ctrl+C at the consent question cancels it and arms the next one; the second (also at consent) ends the session.
         self.run_cli(["pierwsze", "drugie", "nigdy"], [KeyboardInterrupt(), KeyboardInterrupt()])
         self.assertEqual(self.prompts.count("> "), 2)
-        self.assertIn("(Ctrl+C jeszcze raz w ciągu 3 s, aby zakończyć)", self.output)
+        self.assertIn("(Press Ctrl+C again within 3 s to quit)", self.output)
         self.assertEqual(self.sent, [])
         # A single Ctrl+C does not end the session: the next question still works.
-        self.run_cli(["pierwsze", "drugie", "/koniec"], [KeyboardInterrupt(), "tak"])
+        self.run_cli(["pierwsze", "drugie", "/exit"], [KeyboardInterrupt(), "yes"])
         self.assertEqual(self.prompts.count("> "), 3)
         self.assertIn("Odpowiedź.", self.output)
 
     def test_ctrl_c_while_waiting_for_claude_interrupts_only_the_request_and_a_second_one_ends_the_session(self):
         self.send_error = KeyboardInterrupt()
         self.model = script({"action": "answer", "text": "x", "sources": []})
-        self.run_cli(["pierwsze", "drugie", "nigdy"], ["tak", "tak"])
+        self.run_cli(["pierwsze", "drugie", "nigdy"], ["yes", "yes"])
         self.assertEqual(self.prompts.count("> "), 2)
         self.assertEqual(len(self.sent), 2)
-        self.assertIn("Przerwano.", self.output)
+        self.assertIn("Interrupted.", self.output)
 
     def test_declining_consent_sends_nothing_and_the_short_preview_has_no_long_explanation(self):
         self.model = script()
-        self.run_cli(["Gdzie jest błąd?", "/koniec"], ["nie"])
-        self.assertIn("Anulowano. Dane nie zostały wysłane.", self.output)
-        self.assertNotIn("Nazwy plików, trafienia i fragmenty", self.output)
-        self.assertIn("Do Claude: pytanie, nazwy plików i fragmenty z proj", self.output)
+        self.run_cli(["Gdzie jest błąd?", "/exit"], ["no"])
+        self.assertIn("Cancelled. No data was sent.", self.output)
+        self.assertNotIn("File names, matches and parts", self.output)
+        self.assertIn("To Claude: the question, file names and parts from proj", self.output)
         self.assertEqual((self.sent, self.fake.opens), ([], 0))
         self.assertIn(PROMPTS["project-task"], self.prompts)
 
@@ -225,52 +225,52 @@ class QuestionTests(Base):
         self.assertNotIn("TOP-SECRET", everything)
         self.assertNotIn("secret/", everything)
         self.assertNotIn("filler text for the application module\\nrow 1500", everything)    # unread parts never sent
-        self.assertIn("Krok 1/8: Claude poprosił o zawartość katalogu projektu", self.output)
-        self.assertRegex(self.output, r"Potwierdzone\s+src/app.py:120")
+        self.assertIn("Step 1/8: Claude asked for the directory contents of the project", self.output)
+        self.assertRegex(self.output, r"Confirmed\s+src/app.py:120")
         self.assertIn("src/util.py:1–2", self.output)                  # listed as NOT received
-        self.assertIn("Claude podał źródła, których nie otrzymał", self.output)
-        self.assertIn("src/app.py: wiersze 118–122", self.output)
-        self.assertRegex(self.output, r"Poza zasięgiem\s+zabronione lub poza zakresem: 1")
-        self.assertIn("reszta projektu nie została wysłana", self.output)
+        self.assertIn("Claude cited sources it did not receive", self.output)
+        self.assertIn("src/app.py: lines 118–122", self.output)
+        self.assertRegex(self.output, r"Out of reach\s+denied or out of scope: 1")
+        self.assertIn("the rest of the project was not sent", self.output)
 
     def test_search_hits_with_whole_lines_count_as_received_sources(self):
         self.ask({"action": "search", "needle": "def helper", "continue": False},
                  {"action": "answer", "text": "Pomocnik w util.py.",
                   "sources": [{"path": "src/util.py", "first": 1, "last": 1}]}, verbose=True)
-        self.assertRegex(self.output, r"Potwierdzone\s+src/util.py:1\n")
-        self.assertNotIn("żadnych wierszy", self.output)
-        self.assertIn("tylko wyniki wyszukiwania; reszta projektu nie została wysłana", self.output)
-        self.assertNotIn("0 B odczytanych", self.output)
+        self.assertRegex(self.output, r"Confirmed\s+src/util.py:1\n")
+        self.assertNotIn("no file lines", self.output)
+        self.assertIn("search results only; the rest of the project was not sent", self.output)
+        self.assertNotIn("0 B of parts read", self.output)
 
     def test_the_default_answer_is_followed_only_by_the_prompt_unless_there_is_something_to_watch(self):
         self.ask({"action": "read", "path": "src/util.py", "ranges": [{"first": 1, "last": 2}]},
                  {"action": "answer", "text": "Pomocnik.", "sources": [{"path": "src/util.py", "first": 1, "last": 2}]})
-        for header in ("── Źródła", "── Zakres", "── Uwaga"):
+        for header in ("── Sources", "── Scope", "── Note"):
             self.assertNotIn(header, self.output)
-        self.assertIn("Poza zasięgiem Claude: 1 wpisów pominiętych przy skanie (szczegóły: --v).", self.output)
-        self.assertNotIn("zabronione lub poza zakresem", self.output.split("── Odpowiedź")[1])   # after the answer: a count only
-        self.assertNotIn("secret", self.output.split("── Odpowiedź")[1].lower())
+        self.assertIn("Out of reach for Claude: 1 entry skipped during the scan (details: --v).", self.output)
+        self.assertNotIn("denied or out of scope", self.output.split("── Answer")[1])   # after the answer: a count only
+        self.assertNotIn("secret", self.output.split("── Answer")[1].lower())
         self.ask({"action": "answer", "text": "Zmyślone.", "sources": [{"path": "src/app.py", "first": 1, "last": 1}]})
-        self.assertIn("── Uwaga ", self.output)
-        self.assertRegex(self.output, r"Odrzucone\s+src/app.py:1")
+        self.assertIn("── Note ", self.output)
+        self.assertRegex(self.output, r"Rejected\s+src/app.py:1")
 
     def test_the_skipped_count_is_reported_once_per_session_unless_it_changes(self):
         self.model = script({"action": "answer", "text": "Jeden.", "sources": []}, {"action": "answer", "text": "Dwa.", "sources": []})
-        self.run_cli(["pierwsze", "drugie", "/koniec"], ["tak", "tak"])
-        self.assertEqual(self.output.count("Poza zasięgiem Claude: 1 wpisów"), 1)
+        self.run_cli(["pierwsze", "drugie", "/exit"], ["yes", "yes"])
+        self.assertEqual(self.output.count("Out of reach for Claude: 1 entry"), 1)
 
     def test_a_partial_search_is_called_out_even_without_verbose(self):
         for i in range(30):
             (self.proj / "docs" / ("n%02d.txt" % i)).write_text("NEEDLE\n" * 3)
         self.ask({"action": "search", "needle": "NEEDLE", "continue": False},
                  {"action": "answer", "text": "Tylko pierwsza strona.", "sources": []})
-        self.assertRegex(self.output, r"Niepełne\s+wyszukiwanie")
+        self.assertRegex(self.output, r"Incomplete\s+search")
 
     def test_one_json_action_after_a_short_sentence_is_executed_not_refused(self):
         self.ask('Read README.md first.  {"action":"read","path":"src/util.py","ranges":[{"first":1,"last":9}]}',
                  {"action": "answer", "text": "Przeczytane.", "sources": []})
-        self.assertIn("Krok 1/8: Claude poprosił o odczyt src/util.py", self.output)
-        self.assertNotIn("nie ma wymaganego formatu", self.output)
+        self.assertIn("Step 1/8: Claude asked for src/util.py", self.output)
+        self.assertNotIn("is not in the required format", self.output)
         for raw in ('a {"action":"overview"} b {"action":"overview"}', 'Najpierw {"action": zepsute', "x" * 700 + ' {"action":"overview"}'):
             with self.subTest(raw=raw[:30]), self.assertRaises(ValueError):
                 pstep.parse_decision(raw)
@@ -278,8 +278,8 @@ class QuestionTests(Base):
     def test_an_answer_object_that_only_fails_the_strict_schema_is_still_shown(self):
         self.ask('{"action":"answer","text":"Analiza plik po pliku nie jest wykonalna.","note":"extra"}')
         self.assertIn("Analiza plik po pliku nie jest wykonalna.", self.output)
-        self.assertRegex(self.output, r"Format\s+Claude odpowiedział zwykłym tekstem")
-        self.assertNotIn("nie ma wymaganego formatu", self.output)
+        self.assertRegex(self.output, r"Format\s+Claude answered in plain text")
+        self.assertNotIn("is not in the required format", self.output)
 
     def test_a_deep_task_continues_in_stages_with_coverage_and_a_small_yes_per_stage(self):
         self.model = script(
@@ -287,56 +287,56 @@ class QuestionTests(Base):
             {"action": "answer", "text": "Częściowo: util.py.", "sources": [], "progress": "Zrobione: util.py. Dalej: docs.", "continue": True},
             {"action": "read", "path": "docs/readme.txt", "ranges": [{"first": 1, "last": 1}]},
             {"action": "answer", "text": "Komplet.", "sources": [], "continue": False})
-        self.run_cli(["Zrób głęboką analizę", "/koniec"], ["tak", "tak"])
+        self.run_cli(["Zrób głęboką analizę", "/exit"], ["yes", "yes"])
         first, second, third, fourth = self.payloads()
         self.assertEqual((first["project"]["project"]["stage"], first["project"]["project"]["visited"]), (1, []))
         self.assertEqual(second["project"]["project"]["stage"], 1)
         self.assertEqual((third["project"]["project"]["stage"], third["project"]["project"]["visited"]), (2, ["src/util.py"]))
         self.assertEqual(third["project"]["project"]["progress"], "Zrobione: util.py. Dalej: docs.")
         self.assertIn(PROMPTS["project-continue"], self.prompts)
-        self.assertIn("Analiza częściowa, etap 1 z 5: Claude przeczytał 1 z 3 plików", self.output)
-        self.assertIn("── Etap 2 z 5", self.output)
+        self.assertIn("Partial analysis, stage 1 of 5: Claude read 1 of 3 files", self.output)
+        self.assertIn("── Stage 2 of 5", self.output)
         self.assertIn("Komplet.", self.output)
 
     def test_declining_the_next_stage_or_reaching_the_cap_ends_the_deep_task(self):
         partial = {"action": "answer", "text": "Kolejny kawałek.", "sources": [], "continue": True}
         self.model = script(partial)
-        self.run_cli(["Analiza", "/koniec"], ["tak", "nie"])
+        self.run_cli(["Analiza", "/exit"], ["yes", "no"])
         self.assertEqual(len(self.sent), 1)
-        self.assertIn("Zatrzymano po etapie 1 z 5; wnioski częściowe powyżej.", self.output)
+        self.assertIn("Stopped after stage 1 of 5; partial conclusions are above.", self.output)
         self.model = script(*[partial] * 5)
-        self.run_cli(["Analiza", "/koniec"], ["tak"] * 5)
+        self.run_cli(["Analiza", "/exit"], ["yes"] * 5)
         self.assertEqual(len(self.sent), 6)                                # 1 earlier + 5 stages
-        self.assertIn("Osiągnięto limit 5 etapów", self.output)
+        self.assertIn("Reached the limit of 5 stages", self.output)
 
     def test_prose_instead_of_an_action_is_shown_with_a_format_warning_and_no_sources(self):
         self.ask("To jest zwykły tekst z **markdownem**.")
         self.assertIn("To jest zwykły tekst", self.output)
-        self.assertRegex(self.output, r"Format\s+Claude odpowiedział zwykłym tekstem zamiast ustalonej akcji")
-        self.assertNotIn("nie ma wymaganego formatu", self.output)
+        self.assertRegex(self.output, r"Format\s+Claude answered in plain text instead of the agreed action")
+        self.assertNotIn("is not in the required format", self.output)
 
     def test_a_cut_search_hit_does_not_count_as_a_received_line(self):
         (self.proj / "docs/long.txt").write_text("a" * 400 + " LONGNEEDLE\n")
         self.ask({"action": "search", "needle": "LONGNEEDLE", "continue": False},
                  {"action": "answer", "text": "Jest w long.txt.",
                   "sources": [{"path": "docs/long.txt", "first": 1, "last": 1}]}, verbose=True)
-        self.assertIn("Claude podał źródła, których nie otrzymał", self.output)
-        self.assertIn("żadnych wierszy plików", self.output)
+        self.assertIn("Claude cited sources it did not receive", self.output)
+        self.assertIn("no file lines", self.output)
 
     def test_an_end_past_the_last_line_is_cut_and_a_start_past_it_is_refused_with_an_explanation(self):
         self.ask({"action": "read", "path": "src/util.py", "ranges": [{"first": 1, "last": 500}]},
                  {"action": "read", "path": "src/util.py", "ranges": [{"first": 300, "last": 400}]},
                  {"action": "answer", "text": "Gotowe.", "sources": [{"path": "src/util.py", "first": 1, "last": 2}]}, verbose=True)
-        self.assertIn("Krok 1/8: Claude poprosił o odczyt src/util.py, wiersze 1–2 (", self.output)
-        self.assertIn("plik ma 2 wiersze", self.output)
-        self.assertIn("Krok 2/8: Claude poprosił o odczyt src/util.py, wiersze 300–400 — odmowa: zakres wierszy poza plikiem (plik ma 2 wiersze)", self.output)
-        self.assertNotIn("poprosił o odmowa", self.output)
-        self.assertRegex(self.output, r"Potwierdzone\s+src/util.py:1–2")
+        self.assertIn("Step 1/8: Claude asked for src/util.py, lines 1–2 (", self.output)
+        self.assertIn("the file has 2 lines", self.output)
+        self.assertIn("Step 2/8: Claude asked for src/util.py, lines 300–400 — refused: line range outside the file (the file has 2 lines)", self.output)
+        self.assertNotIn("asked for refused", self.output)
+        self.assertRegex(self.output, r"Confirmed\s+src/util.py:1–2")
 
     def test_a_malformed_answer_shows_a_safe_preview_of_what_came_back(self):
         self.ask("To nie jest JSON \x1b[31mczerwony")
-        self.assertIn("nie ma wymaganego formatu", self.output)
-        self.assertIn("Początek odpowiedzi: To nie jest JSON", self.output)
+        self.assertIn("is not in the required format", self.output)
+        self.assertIn("Start of the answer: To nie jest JSON", self.output)
         self.assertNotIn("\x1b[31m", self.output)
 
     def test_unknown_paths_traversal_and_denied_files_are_refused_back_to_the_model(self):
@@ -346,17 +346,17 @@ class QuestionTests(Base):
         # The second decision is rejected by the strict schema (no "..") and ends the task without a retry.
         self.assertEqual(len(self.sent), 2)
         self.assertEqual(self.payloads()[1]["project"]["observations"][1:], [{"kind": "refused", "action": "read", "code": "PATH"}])
-        self.assertIn("nie ma wymaganego formatu", self.output)
+        self.assertIn("is not in the required format", self.output)
         self.assertNotIn("TOP-SECRET", json.dumps(self.payloads()))
 
     def test_a_repeated_request_a_bad_format_and_the_step_budget_stop_the_task_honestly(self):
         self.ask({"action": "list", "prefix": "", "cursor": 0}, {"action": "list", "prefix": "", "cursor": 0})
-        self.assertIn("powtórzył wcześniejszą prośbę", self.output)
+        self.assertIn("repeated an earlier request", self.output)
         self.ask('{"action":"list"')
-        self.assertIn("nie ma wymaganego formatu", self.output)
+        self.assertIn("is not in the required format", self.output)
         self.ask(*[{"action": "find", "fragment": "app%d" % i, "cursor": 0} for i in range(8)])
-        self.assertIn("nie odpowiedział w ostatnim kroku", self.output)
-        self.assertIn("Zatrzymano bez odpowiedzi", self.output)
+        self.assertIn("did not answer in the last step", self.output)
+        self.assertIn("Stopped without an answer", self.output)
 
     def test_a_file_that_changes_between_reads_is_reported_and_repinned(self):
         read = {"action": "read", "path": "src/util.py", "ranges": [{"first": 1, "last": 2}]}
@@ -371,17 +371,17 @@ class QuestionTests(Base):
                 (self.proj / "src/util.py").write_text("def helper():\n    return 2\n")
             return base(payload)
         self.model = model
-        self.run_cli(["Co robi helper?", "/koniec"], ["tak"], argv=[str(self.proj), "--v"])
+        self.run_cli(["Co robi helper?", "/exit"], ["yes"], argv=[str(self.proj), "--v"])
         observed = self.payloads()[2]["project"]["observations"]
         self.assertIn({"kind": "refused", "action": "read", "code": "CHANGED"}, observed)
         self.assertEqual([o["kind"] for o in observed if o["kind"] in ("read", "dropped")], ["dropped"])
-        self.assertRegex(self.output, r"Zmienione\s+src/util.py \(w trakcie zadania lub po skanie\)")
-        self.assertRegex(self.output, r"Potwierdzone\s+brak — Claude nie wskazał źródeł")
+        self.assertRegex(self.output, r"Changed\s+src/util.py \(during the task or after the scan\)")
+        self.assertRegex(self.output, r"Confirmed\s+none — Claude named no sources")
 
     def test_the_index_is_refreshed_before_every_question_and_on_request(self):
         self.model = script({"action": "answer", "text": "Jeden.", "sources": []},
                             {"action": "answer", "text": "Dwa.", "sources": []})
-        commands = ["Pierwsze pytanie?", "Drugie pytanie?", "/odswiez", "/koniec"]
+        commands = ["Pierwsze pytanie?", "Drugie pytanie?", "/refresh", "/exit"]
         added = {"done": False}
 
         def reader_hook(payload):
@@ -391,21 +391,21 @@ class QuestionTests(Base):
             return self.model_inner(payload)
         self.model_inner = self.model
         self.model = reader_hook
-        self.run_cli(commands, ["tak", "tak"])
+        self.run_cli(commands, ["yes", "yes"])
         first, second = self.payloads()
         self.assertEqual(second["project"]["project"]["files"], first["project"]["project"]["files"] + 1)
-        self.assertIn("Indeks odświeżony: 4 plików (było 3)", self.output)
-        self.assertIn("Indeks odświeżony: 4 plików.", self.output)
+        self.assertIn("Index refreshed: 4 file(s) (was 3)", self.output)
+        self.assertIn("Index refreshed: 4 file(s).", self.output)
 
     def test_a_stopped_task_is_remembered_so_the_next_question_can_continue(self):
         self.model = script({"action": "read", "path": "src/util.py", "ranges": [{"first": 1, "last": 2}]},
                             *[{"action": "find", "fragment": "app%d" % i, "cursor": 0} for i in range(7)],
                             {"action": "answer", "text": "Kontynuacja.", "sources": []})
-        self.run_cli(["Duże zadanie?", "kontynuuj", "/koniec"], ["tak", "tak"])
-        self.assertIn("Napisz np. „kontynuuj”", self.output)
+        self.run_cli(["Duże zadanie?", "kontynuuj", "/exit"], ["yes", "yes"])
+        self.assertIn('Type e.g. "continue"', self.output)
         history = self.payloads()[-1]["project"]["history"]
         self.assertEqual(len(history), 1)
-        self.assertEqual(history[0]["answer"], "[Zadanie przerwane bez odpowiedzi. Claude otrzymał: fragmenty 1 plików (%d B)]"
+        self.assertEqual(history[0]["answer"], "[Task stopped without an answer. Claude received: parts of 1 file(s) (%d B)]"
                          % len("def helper():\n    return 1\n"))
         self.assertNotIn("util.py", history[0]["answer"])            # never quotes file names (they are untrusted)
         self.assertEqual(history[0]["question"], "Duże zadanie?")
@@ -413,7 +413,7 @@ class QuestionTests(Base):
     def test_a_stopped_task_with_nothing_delivered_leaves_no_history_turn(self):
         self.model = script(*[{"action": "find", "fragment": "app%d" % i, "cursor": 0} for i in range(8)],
                             {"action": "answer", "text": "Dalej.", "sources": []})
-        self.run_cli(["Zadanie?", "jeszcze raz", "/koniec"], ["tak", "tak"])
+        self.run_cli(["Zadanie?", "jeszcze raz", "/exit"], ["yes", "yes"])
         self.assertEqual(self.payloads()[-1]["project"]["history"], [])
 
     def test_a_multi_page_search_is_not_mistaken_for_a_repeat(self):
@@ -423,7 +423,7 @@ class QuestionTests(Base):
                  {"action": "search", "needle": "NEEDLE", "continue": True},
                  {"action": "search", "needle": "NEEDLE", "continue": True},
                  {"action": "answer", "text": "Trzy strony.", "sources": []})
-        self.assertNotIn("powtórzył", self.output)
+        self.assertNotIn("repeated", self.output)
         self.assertEqual(len(self.sent), 4)
 
     def test_a_read_refused_as_changed_may_be_retried_once_and_a_same_size_edit_is_flagged(self):
@@ -439,10 +439,10 @@ class QuestionTests(Base):
                 target.write_text("def helper():\n    return 2\n")         # same size, different bytes
             return base(payload)
         self.model = model
-        self.run_cli(["Co robi helper?", "/koniec"], ["tak"])
-        self.assertNotIn("powtórzył", self.output)
+        self.run_cli(["Co robi helper?", "/exit"], ["yes"])
+        self.assertNotIn("repeated", self.output)
         self.assertEqual(len(self.sent), 4)
-        self.assertRegex(self.output, r"Zmienione\s+src/util.py \(w trakcie zadania lub po skanie\)")
+        self.assertRegex(self.output, r"Changed\s+src/util.py \(during the task or after the scan\)")
 
     def test_access_revoked_after_an_answer_stops_the_next_question_and_leaks_no_names(self):
         revoked = 'version = 1\n[files]\nread = []\ndeny = ["~/proj/"]\n[network]\nclaude = false\n'
@@ -455,39 +455,39 @@ class QuestionTests(Base):
                 self.config.chmod(0o600)
             return '{"action":"answer","text":"Gotowe.","sources":[]}'
         self.model = model
-        self.run_cli(["Pierwsze?", "Drugie?", "/koniec"], ["tak", "tak"])
+        self.run_cli(["Pierwsze?", "Drugie?", "/exit"], ["yes", "yes"])
         self.assertEqual(len(self.sent), 1)                              # only the request approved before the change
         self.assertNotIn("util.py", json.dumps(self.payloads()[1:]))
 
     def test_local_helpers_rescan_and_report_a_changed_policy_correctly(self):
         def commands():
-            yield "/pliki"
+            yield "/files"
             (self.proj / "src/late.py").write_text("late marker\n")
-            yield "/szukaj late marker"
-            yield "/koniec"
+            yield "/search late marker"
+            yield "/exit"
         self.run_cli(commands())
-        self.assertIn("Indeks odświeżony: 4 plików (było 3)", self.output)
+        self.assertIn("Index refreshed: 4 file(s) (was 3)", self.output)
         self.assertIn("src/late.py:1: late marker", self.output)
 
     def test_ledger_and_conversation_memory_cover_the_task(self):
         self.model = script({"action": "answer", "text": "Odpowiedź 1.", "sources": []},
                             {"action": "answer", "text": "Odpowiedź 2.", "sources": []})
-        self.run_cli(["Pytanie pierwsze?", "Pytanie drugie?", "/rejestr", "/koniec"], ["tak", "tak"])
+        self.run_cli(["Pytanie pierwsze?", "Pytanie drugie?", "/log", "/exit"], ["yes", "yes"])
         self.assertEqual(len(self.payloads()[1]["project"]["history"]), 1)
-        self.assertIn("stan: answered", self.output)
+        self.assertIn("state: answered", self.output)
 
     def test_delivery_failure_marks_unknown_and_is_not_retried(self):
         self.send_error = AnalysisDenied("network")
         self.model = script({"action": "list", "prefix": "", "cursor": 0})
-        self.run_cli(["Pytanie?", "/rejestr", "/koniec"], ["tak"])
+        self.run_cli(["Pytanie?", "/log", "/exit"], ["yes"])
         self.assertEqual(len(self.sent), 1)
-        self.assertIn("stan: unknown", self.output)
-        self.assertIn("nie zostanie ponowione", self.output)
+        self.assertIn("state: unknown", self.output)
+        self.assertIn("will not be retried", self.output)
 
     def test_the_models_working_notes_come_back_with_the_next_question(self):
         self.model = script({"action": "answer", "text": "Zrobione.", "sources": [], "progress": "Krok 1 gotowy; dalej: testy."},
                             {"action": "answer", "text": "Kontynuuję.", "sources": []})
-        self.run_cli(["Zacznij", "rób dalej", "/koniec"], ["tak", "tak"])
+        self.run_cli(["Zacznij", "rób dalej", "/exit"], ["yes", "yes"])
         first, second = self.payloads()
         self.assertEqual(first["project"]["project"]["progress"], "")
         self.assertEqual(second["project"]["project"]["progress"], "Krok 1 gotowy; dalej: testy.")
@@ -509,15 +509,15 @@ class QuestionTests(Base):
         marker = qi.paste_token(1, code)
         self.model = script({"action": "answer", "text": "Funkcja zwraca 42.", "sources": []})
         with patch.object(pcli, "PromptSession", Seeded):
-            self.run_cli(["co robi ten kod? " + marker, "/koniec"], ["tak"])
+            self.run_cli(["co robi ten kod? " + marker, "/exit"], ["yes"])
         (request,) = self.payloads()
         self.assertEqual(request["question"], "co robi ten kod? " + marker)
         pasted = [o for o in request["project"]["observations"] if o["kind"] == "pasted"]
         self.assertEqual(pasted, [{"kind": "pasted", "id": 1, "lines": 3, "text": code}])
-        self.assertIn("wklejki: #1 (3 wierszy, 28 B)", self.output)
+        self.assertIn("pastes: #1 (3 lines, 28 B)", self.output)
         self.model = script({"action": "answer", "text": "Bez wklejki.", "sources": []})
         with patch.object(pcli, "PromptSession", Seeded):
-            self.run_cli(["co robi ten kod? (usunięto znacznik)", "/koniec"], ["tak"])
+            self.run_cli(["co robi ten kod? (usunięto znacznik)", "/exit"], ["yes"])
         self.assertEqual([o for o in self.payloads()[-1]["project"]["observations"] if o["kind"] == "pasted"], [])
 
     def test_pasted_observations_are_validated_and_never_dropped_by_compaction(self):
@@ -552,7 +552,7 @@ class QuestionTests(Base):
     def test_listing_a_directory_returns_one_level_with_aggregates_and_a_repeated_overview_is_a_repeat(self):
         self.ask({"action": "list", "prefix": "src", "cursor": 0}, {"action": "overview"},
                  {"action": "answer", "text": "Gotowe.", "sources": []})
-        self.assertIn("powtórzył", self.output)                                       # overview was preloaded, asking again is no progress
+        self.assertIn("repeated", self.output)                                       # overview was preloaded, asking again is no progress
         tree = [o for o in self.payloads()[-1]["project"]["observations"] if o["kind"] == "tree"][0]
         self.assertEqual(tree["prefix"], "src")
         self.assertEqual([(e["name"], e["dir"]) for e in tree["items"]], [("app.py", False), ("util.py", False)])
@@ -597,10 +597,10 @@ class EditTests(Base):
         self.assertEqual((existing, created), (["src/util.py"], ["docs/new.txt"]))
 
     def test_unmappable_proposals_are_refused_with_a_reason(self):
-        for decision, reason in (({"files": ["src/nope.py"]}, "spoza indeksu"),
-                                 ({"create": ["src/util.py"]}, "już istnieje"),
-                                 ({"create": ["missing/new.py"]}, "nie istnieje"),
-                                 ({"files": ["secret/key.txt"]}, "spoza indeksu")):
+        for decision, reason in (({"files": ["src/nope.py"]}, "not in the project index"),
+                                 ({"create": ["src/util.py"]}, "already exists"),
+                                 ({"create": ["missing/new.py"]}, "does not exist"),
+                                 ({"files": ["secret/key.txt"]}, "not in the project index")):
             with self.subTest(decision=decision), self.assertRaises(pcli.EditRefused) as caught:
                 self.plan(**decision)
             self.assertIn(reason, str(caught.exception))
@@ -613,7 +613,7 @@ class EditTests(Base):
         (deep / "f.py").write_text("x\n")
         with self.assertRaises(pcli.EditRefused) as caught:
             self.plan(files=["a/b/c/d/e/f.py"])
-        self.assertIn("5 poziomów", str(caught.exception))
+        self.assertIn("5 levels", str(caught.exception))
 
     def test_no_write_scope_for_the_project_means_no_edit(self):
         self.config.write_text('version = 1\n[files]\nread = ["~/proj/**"]\ndeny = []\n[network]\nclaude = true\n')
@@ -629,7 +629,7 @@ class EditTests(Base):
         with patch.object(pcli.ask_edit, "prepare", side_effect=lambda *a, **k: self.calls.append(("prepare", a[0])) or prepared), \
                 patch.object(pcli.ask_cli, "request", side_effect=lambda *a, **k: self.calls.append(("request", a[0])) or "{}"), \
                 patch.object(pcli.ask_edit, "finish", side_effect=lambda *a, **k: self.calls.append(("finish", None)) or pcli.ask_edit.CompletedTask(0)):
-            self.run_cli(["Dodaj komentarz w util.py", "/koniec"], answers)
+            self.run_cli(["Dodaj komentarz w util.py", "/exit"], answers)
 
     def test_the_outcome_appears_in_history_within_the_same_session(self):
         self.model = script({"action": "read", "path": "src/util.py", "ranges": [{"first": 1, "last": 2}]},
@@ -638,9 +638,9 @@ class EditTests(Base):
         prepared = pcli.ask_edit.PreparedEdit({}, {"files": []}, "text", str(self.proj), object())
         with patch.object(pcli.ask_edit, "prepare", return_value=prepared), patch.object(pcli.ask_cli, "request", return_value="{}"), \
                 patch.object(pcli.ask_edit, "finish", return_value=pcli.ask_edit.CompletedTask(0)):
-            self.run_cli(["Dodaj komentarz", "tak, i rób dalej", "/koniec"], ["tak", "tak", "tak"])
+            self.run_cli(["Dodaj komentarz", "tak, i rób dalej", "/exit"], ["yes", "yes", "yes"])
         followup = self.payloads()[-1]["project"]
-        self.assertEqual(followup["history"][0]["answer"], "[zmiana zapisana po zgodzie użytkownika]")
+        self.assertEqual(followup["history"][0]["answer"], "[change saved after the user's consent]")
 
     def test_the_real_consent_chain_accepts_the_edit_request_without_a_planner_round(self):
         """prepare + request run for real (only transport, session and the executor's finish are replaced)."""
@@ -662,8 +662,8 @@ class EditTests(Base):
                 patch.object(pcli.ask_cli, "send_once", transport), patch.object(pcli.ask_cli, "installation_ready"), \
                 patch.object(pcli.ask_cli, "WaitingIndicator", Indicator), \
                 patch.object(pcli.ask_edit, "finish", side_effect=lambda *a, **k: finished.append(a[1]) or pcli.ask_edit.CompletedTask(0)):
-            self.run_cli(["utwórz hello.py który wypisze hello world", "/koniec"], ["tak", "tak"])
-        self.assertNotIn("zgoda wygasla", self.output)
+            self.run_cli(["utwórz hello.py który wypisze hello world", "/exit"], ["yes", "yes"])
+        self.assertNotIn("onsent expired", self.output)
         self.assertEqual(len(seen), 1)
         self.assertEqual(seen[0]["mode"], "workspace")                       # straight to the workspace request
         self.assertEqual(seen[0]["task"]["instruction"], "utwórz hello.py który wypisze hello world")
@@ -673,16 +673,16 @@ class EditTests(Base):
 
     def run_delete(self, answers, paths=("docs/readme.txt",)):
         self.model = script({"action": "edit", "files": [], "create": [], "delete": list(paths), "check": "text"})
-        self.run_cli(["usuń readme", "/koniec"], answers)
+        self.run_cli(["usuń readme", "/exit"], answers)
 
     def test_deleting_moves_the_file_to_the_trash_after_the_owners_own_yes_and_it_can_be_restored(self):
         target = self.proj / "docs/readme.txt"
-        self.run_delete(["tak", "tak"])
+        self.run_delete(["yes", "yes"])
         self.assertFalse(target.exists())
         self.assertIn(PROMPTS["project-delete"], self.prompts)
-        self.assertRegex(self.output, r"Do usunięcia\s+docs/readme.txt \(14 B\)")
-        self.assertIn("Usunięto 1 plików (w koszu zadania).", self.output)
-        restore = [l for l in self.output.splitlines() if l.startswith("Przywrócenie: ai-desktop task restore")][0]
+        self.assertRegex(self.output, r"To delete\s+docs/readme.txt \(14 B\)")
+        self.assertIn("Deleted 1 file(s) (in the task trash).", self.output)
+        restore = [l for l in self.output.splitlines() if l.startswith("Restore: ai-desktop task restore")][0]
         self.assertIn(str(self.proj), restore)
         plan = restore.rsplit(" ", 1)[1]
         self.assertTrue(pcli.workspace_trash.restore(str(self.proj), plan))
@@ -691,38 +691,38 @@ class EditTests(Base):
 
     def test_declining_a_deletion_or_an_unmappable_one_removes_nothing(self):
         target = self.proj / "docs/readme.txt"
-        self.run_delete(["tak", "nie"])
+        self.run_delete(["yes", "no"])
         self.assertTrue(target.exists())
-        self.assertIn("Anulowano. Nic nie usunięto.", self.output)
-        self.run_delete(["tak"], paths=("docs/missing.txt",))
-        self.assertRegex(self.output, r"Odmowa\s+Claude wskazał plik spoza indeksu projektu")
-        self.run_delete(["tak"], paths=("secret/key.txt",))
+        self.assertIn("Cancelled. Nothing was deleted.", self.output)
+        self.run_delete(["yes"], paths=("docs/missing.txt",))
+        self.assertRegex(self.output, r"Refused\s+Claude named a file that is not in the project index")
+        self.run_delete(["yes"], paths=("secret/key.txt",))
         self.assertTrue((self.proj / "secret/key.txt").exists())
         self.assertNotIn(PROMPTS["project-delete"], self.prompts)
 
     def test_locations_the_write_policy_always_protects_cannot_be_deleted_even_if_readable(self):
         (self.proj / "backup").mkdir()
         (self.proj / "backup/old.txt").write_text("keep\n")
-        self.run_delete(["tak"], paths=("backup/old.txt",))
-        self.assertRegex(self.output, r"Odmowa\s+Usunięcie nie mieści się w zakresach")
+        self.run_delete(["yes"], paths=("backup/old.txt",))
+        self.assertRegex(self.output, r"Refused\s+This deletion is outside the scopes")
         self.assertTrue((self.proj / "backup/old.txt").exists())
         self.assertNotIn(PROMPTS["project-delete"], self.prompts)
 
     def test_the_task_restore_command_brings_the_files_back_only_after_a_yes(self):
         from ai_desktop import task_cli
-        self.run_delete(["tak", "tak"])
-        plan = [l for l in self.output.splitlines() if l.startswith("Przywrócenie:")][0].rsplit(" ", 1)[1]
+        self.run_delete(["yes", "yes"])
+        plan = [l for l in self.output.splitlines() if l.startswith("Restore:")][0].rsplit(" ", 1)[1]
         argv = ["restore", "--workspace", str(self.proj), "--plan", plan]
         out = io.StringIO()
         with contextlib.redirect_stdout(out), patch.object(task_cli.sys.stdin, "isatty", return_value=True), \
                 patch.object(task_cli.sys.stdout, "isatty", return_value=True):
-            self.assertEqual(task_cli.main(argv, reader=lambda prompt: "nie"), 2)
+            self.assertEqual(task_cli.main(argv, reader=lambda prompt: "no"), 2)
         self.assertFalse((self.proj / "docs/readme.txt").exists())
         with contextlib.redirect_stdout(out), patch.object(task_cli.sys.stdin, "isatty", return_value=True), \
                 patch.object(task_cli.sys.stdout, "isatty", return_value=True):
-            self.assertEqual(task_cli.main(argv, reader=lambda prompt: "tak"), 0)
+            self.assertEqual(task_cli.main(argv, reader=lambda prompt: "yes"), 0)
         self.assertTrue((self.proj / "docs/readme.txt").exists())
-        self.assertIn("Przywrócono usunięte pliki.", out.getvalue())
+        self.assertIn("Deleted files restored.", out.getvalue())
 
     def test_delete_is_exclusive_with_other_edit_fields_and_bounded(self):
         for raw in ('{"action":"edit","files":["a"],"create":[],"delete":["b"],"check":"text"}',
@@ -750,10 +750,10 @@ class EditTests(Base):
                 patch.object(pcli.ask_edit, "prepare", return_value=prepared) as prepare, \
                 patch.object(pcli.ask_cli, "request", return_value="{}") as request, \
                 patch.object(pcli.ask_edit, "finish", return_value=pcli.ask_edit.CompletedTask(0)):
-            self.run_cli(["stwórz a.txt i wpisz do niego: " + marker, "/koniec"], ["tak"])
+            self.run_cli(["stwórz a.txt i wpisz do niego: " + marker, "/exit"], ["yes"])
         instruction = request.call_args.args[0]
         self.assertEqual(instruction, "stwórz a.txt i wpisz do niego: " + body)
-        self.assertNotIn("wklejka", instruction)
+        self.assertNotIn("paste", instruction)
         prepare.assert_called_once()
 
     def test_a_paste_too_big_for_an_edit_request_is_refused_before_anything_is_sent(self):
@@ -767,50 +767,50 @@ class EditTests(Base):
         self.model = script({"action": "edit", "files": [], "create": ["a.txt"], "check": "text"})
         with patch.object(pcli, "PromptSession", Seeded), patch.object(pcli.ask_cli, "request") as request, \
                 patch.object(pcli.task_contract, "MAX_INSTRUCTION", 2048):
-            self.run_cli(["wpisz: " + qi.paste_token(1, body), "/koniec"], ["tak"])
+            self.run_cli(["wpisz: " + qi.paste_token(1, body), "/exit"], ["yes"])
         request.assert_not_called()
-        self.assertRegex(self.output, r"Odmowa\s+Polecenie zmiany pliku razem z wklejką przekracza 2048 B")
+        self.assertRegex(self.output, r"Refused\s+The file change request with its paste is over 2048 B")
 
     def test_an_unfinished_earlier_task_is_named_instead_of_a_generic_failure(self):
         with patch.object(pcli.task_workspace, "_can_apply", side_effect=ValueError("recovery required")), \
                 patch.object(pcli.ask_cli, "request") as request:
-            self.run_edit(["tak"], {"action": "edit", "files": [], "create": ["docs/new.txt"], "check": "text"})
-        self.assertRegex(self.output, r"Odmowa\s+Wcześniejsze zadanie zmiany plików jest niedokończone")
+            self.run_edit(["yes"], {"action": "edit", "files": [], "create": ["docs/new.txt"], "check": "text"})
+        self.assertRegex(self.output, r"Refused\s+An earlier file change task is unfinished")
         self.assertIn("ai-desktop task status", self.output)
         request.assert_not_called()
         with patch.object(pcli.task_workspace, "_can_apply", side_effect=pcli.task_workspace.JournalLimit("journal limit")):
-            self.run_edit(["tak"], {"action": "edit", "files": [], "create": ["docs/new.txt"], "check": "text"})
-        self.assertIn("limit zapisanych zadań", self.output)
+            self.run_edit(["yes"], {"action": "edit", "files": [], "create": ["docs/new.txt"], "check": "text"})
+        self.assertIn("limit of saved tasks", self.output)
 
     def test_declining_the_edit_of_a_file_claude_has_not_seen_sends_nothing_and_writes_nothing(self):
-        self.run_edit(["tak", "nie"], {"action": "edit", "files": ["docs/readme.txt"], "create": [], "check": "text"})
+        self.run_edit(["yes", "no"], {"action": "edit", "files": ["docs/readme.txt"], "create": [], "check": "text"})
         self.assertEqual(self.calls, [])
-        self.assertIn("── Zmiana plików ", self.output)
-        self.assertRegex(self.output, r"Do zmiany\s+docs/readme.txt")
-        self.assertIn("Anulowano. Treść plików nie została wysłana, nic nie zapisano.", self.output)
+        self.assertIn("── File change ", self.output)
+        self.assertRegex(self.output, r"To change\s+docs/readme.txt")
+        self.assertIn("Cancelled. File contents were not sent. Nothing was saved.", self.output)
         self.assertIn(PROMPTS["project-edit"], self.prompts)
 
     def test_a_new_file_or_a_file_already_read_whole_needs_no_second_question(self):
-        self.run_edit(["tak"])                                                  # util.py was read in full during the task
+        self.run_edit(["yes"])                                                  # util.py was read in full during the task
         self.assertEqual([c[0] for c in self.calls], ["prepare", "request", "finish"])
         self.assertNotIn(PROMPTS["project-edit"], self.prompts)
-        self.assertIn("Zmiana plików — do zmiany: src/util.py · sprawdzenie: python-syntax. Przygotowuję diff…", self.output)
+        self.assertIn("File change — to change: src/util.py · check: python-syntax. Preparing the diff…", self.output)
         self.calls.clear()
-        self.run_edit(["tak"], {"action": "edit", "files": [], "create": ["docs/new.txt"], "check": "text"})
+        self.run_edit(["yes"], {"action": "edit", "files": [], "create": ["docs/new.txt"], "check": "text"})
         self.assertEqual([c[0] for c in self.calls], ["prepare", "request", "finish"])
         self.assertNotIn(PROMPTS["project-edit"], self.prompts)
 
     def test_accepting_hands_the_mapped_plan_to_the_existing_edit_pipeline_with_the_users_own_words(self):
-        self.run_edit(["tak", "tak"])
+        self.run_edit(["yes", "yes"])
         self.assertEqual([c[0] for c in self.calls], ["prepare", "request", "finish"])
         self.assertEqual(self.calls[0][1]["write"], "w0")                  # the plan argument of prepare
         self.assertEqual(self.calls[1][1], "Dodaj komentarz w util.py")     # the instruction is the user's question, verbatim
         self.assertEqual(len(self.sent), 2)                                  # only the investigation steps used the project transport
 
     def test_an_edit_the_policy_cannot_express_never_reaches_the_pipeline(self):
-        self.run_edit(["tak"], {"action": "edit", "files": [], "create": ["missing/new.py"], "check": "text"})
+        self.run_edit(["yes"], {"action": "edit", "files": [], "create": ["missing/new.py"], "check": "text"})
         self.assertEqual(self.calls, [])
-        self.assertRegex(self.output, r"Odmowa\s+Katalog missing nie istnieje")
+        self.assertRegex(self.output, r"Refused\s+Directory missing does not exist")
 
     def test_a_malformed_edit_decision_ends_the_task_without_a_retry(self):
         for raw in ('{"action":"edit","files":[],"create":[],"check":"text"}',
@@ -854,14 +854,14 @@ class ContractTests(Base):
             with self.assertRaises(ValueError):
                 pstep.validate_input(broken)
         with self.assertRaises(ValueError):
-            pstep.parse_decision('{"action":"answer","text":"x","sources":[],"continue":"tak"}')
+            pstep.parse_decision('{"action":"answer","text":"x","sources":[],"continue":"yes"}')
         self.assertTrue(pstep.parse_decision('{"action":"answer","text":"x","sources":[],"continue":true}')["continue"])
         self.assertFalse(pstep.parse_decision('{"action":"answer","text":"x","sources":[]}')["continue"])
 
     def test_the_instruction_limits_edits_to_explicit_requests(self):
         from ai_desktop.analysis_contract import SYSTEM_PROMPT
-        self.assertIn("Uzyj edit tylko, gdy uzytkownik wyraznie prosi o zmiane", SYSTEM_PROMPT)
-        self.assertIn("'kontynuuj' lub 'rob dalej' dotycza analizy", SYSTEM_PROMPT)
+        self.assertIn("Use edit only when the user explicitly asks to change", SYSTEM_PROMPT)
+        self.assertIn("'continue' or 'keep going' concern the analysis", SYSTEM_PROMPT)
 
     def test_decisions_are_a_closed_set(self):
         good = ['{"action":"list","prefix":"","cursor":0}', '{"action":"find","fragment":"a","cursor":0}',

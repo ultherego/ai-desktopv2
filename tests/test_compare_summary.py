@@ -49,7 +49,7 @@ class CompareSummaryTests(unittest.TestCase):
             self.assertEqual(data["fields"], ["kernel"])
             self.assertEqual(data["change_count"], 1)
             self.assertNotIn("a-secret-shaped-but-allowed-label", output.getvalue())
-            self.assertNotIn("7.3.0-4-cachyos", output.getvalue())
+            self.assertNotIn("0.0.0-synthetic", output.getvalue())
 
     def test_default_cli_still_includes_values(self):
         before = report_fixture()

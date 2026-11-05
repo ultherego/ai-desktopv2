@@ -103,7 +103,7 @@ class ManagementMenuPTYTests(unittest.TestCase):
 
     def frame(self, state, title, *, start=0):
         position = self.wait_for(state, title.encode(), start=start)
-        self.wait_for(state, b"Esc anuluje", start=position)
+        self.wait_for(state, b"Esc cancels", start=position)
 
     def select_after(self, state, down, title):
         start = len(state.output)
@@ -119,11 +119,11 @@ class ManagementMenuPTYTests(unittest.TestCase):
 
     def test_real_arrows_enter_save_opus_and_max_then_escape_restores_terminal(self):
         with self.settings() as state:
-            self.frame(state, "Ustawienia · agent: default")
+            self.frame(state, "Settings · agent: default")
             self.select_after(state, 2, "Model · claude")
-            self.select_after(state, 3, "Ustawienia · agent: default")
-            self.select_after(state, 1, "Poziom rozumowania")
-            self.select_after(state, 5, "Ustawienia · agent: default")
+            self.select_after(state, 3, "Settings · agent: default")
+            self.select_after(state, 1, "Reasoning level")
+            self.select_after(state, 5, "Settings · agent: default")
             os.write(state.master, b"\x1b")
             self.finish(state)
             selected = state.store.load().config.profiles["default"]
@@ -134,19 +134,19 @@ class ManagementMenuPTYTests(unittest.TestCase):
 
     def test_service_and_role_switch_refresh_the_same_real_terminal_menu(self):
         with self.settings() as state:
-            self.frame(state, "Ustawienia · agent: default")
-            self.select_after(state, 1, "Usługa · dla wszystkich agentów")
-            self.select_after(state, 1, "Ustawienia · agent: default")
+            self.frame(state, "Settings · agent: default")
+            self.select_after(state, 1, "Service · for all agents")
+            self.select_after(state, 1, "Settings · agent: default")
             start = len(state.output)
-            self.select_after(state, -1, "Wybierz agenta")
+            self.select_after(state, -1, "Choose agent")
             self.wait_for(state, "reviewer · Codex".encode(), start=start)
-            self.select_after(state, 3, "Ustawienia · agent: reviewer")
+            self.select_after(state, 3, "Settings · agent: reviewer")
             self.assertEqual(state.store.load().config.selected_provider, "codex")
             self.assertTrue(all(profile.provider == "codex" for _, profile in state.store.load().config.entries))
-            self.select_after(state, 1, "Usługa · dla wszystkich agentów")
+            self.select_after(state, 1, "Service · for all agents")
             start = len(state.output)
-            self.select_after(state, -1, "Ustawienia · agent: reviewer")
-            self.wait_for(state, "Usługa: Claude".encode(), start=start)
+            self.select_after(state, -1, "Settings · agent: reviewer")
+            self.wait_for(state, "Service: Claude".encode(), start=start)
             os.write(state.master, b"\x1b")
             self.finish(state)
             config = state.store.load().config
@@ -155,7 +155,7 @@ class ManagementMenuPTYTests(unittest.TestCase):
 
     def test_escape_from_initial_settings_creates_no_configuration(self):
         with self.settings() as state:
-            self.frame(state, "Ustawienia · agent: default")
+            self.frame(state, "Settings · agent: default")
             os.write(state.master, b"\x1b")
             self.finish(state)
             self.assertEqual(list(state.home.iterdir()), [])

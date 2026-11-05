@@ -76,5 +76,5 @@ class MenuTextInputTests(unittest.TestCase):
         menu.reader = input
         with patch("sys.stdin", io.StringIO()), patch("sys.stdout", io.StringIO()):
             with self.assertRaises(question_input.QuestionInputError) as caught:
-                menu.text("Identyfikator modelu Codex: ", 96)
+                menu.text("Codex model ID: ", 96)
         self.assertEqual(str(caught.exception), "question terminal")

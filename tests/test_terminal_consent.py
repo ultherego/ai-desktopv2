@@ -21,22 +21,22 @@ class TerminalConsentTests(unittest.TestCase):
                 patch.object(consent.sys.stdout, "isatty", return_value=True), \
                 patch.object(consent.sys.stdout, "write"):
             for action, prompt in consent.PROMPTS.items():
-                # A change or its undo needs the whole word: a bare "t" would loop (covered in test_change_plan).
-                for answer in (("tak", "TAK", " Tak ") if action in consent.STRICT
-                               else ("t", "T", "tak", "TAK", " Tak ")):
+                # A change or its undo needs the whole word: a bare "y" would loop (covered in test_change_plan).
+                for answer in (("yes", "YES", " Yes ") if action in consent.STRICT
+                               else ("y", "Y", "yes", "YES", " Yes ")):
                     with self.subTest(action=action, answer=answer):
                         reader = Mock(return_value=answer)
                         self.assertTrue(consent.confirm(action, reader=reader))
                         reader.assert_called_once_with(prompt)
-                for answer in ("n", "N", "nie", "NIE", " Nie "):
+                for answer in ("n", "N", "no", "NO", " No "):
                     with self.subTest(action=action, answer=answer):
                         reader = Mock(return_value=answer)
                         self.assertFalse(consent.confirm(action, reader=reader))
                         reader.assert_called_once_with(prompt)
-                for answer in ("", " ", "?", "yes", "true", "tak\nnie",
-                               "ANALIZUJ", "ZAPISZ", "COFNI", "a" * 64):
+                for answer in ("", " ", "?", "t", "T", "tak", "TAK", "nie", "NIE", "true", "yes\nno",
+                               "ANALYZE", "SAVE", "UNDO", "ANALIZUJ", "ZAPISZ", "COFNI", "a" * 64):
                     with self.subTest(action=action, answer=answer):
-                        reader = Mock(side_effect=[answer, "nie"])
+                        reader = Mock(side_effect=[answer, "no"])
                         self.assertFalse(consent.confirm(action, reader=reader))
                         self.assertEqual(reader.call_args_list, [call(prompt), call(prompt)])
                 for answer in (None, True):
@@ -49,7 +49,7 @@ class TerminalConsentTests(unittest.TestCase):
         for stdin, stdout in ((False, True), (True, False), (False, False)):
             with patch.object(consent.sys.stdin, "isatty", return_value=stdin), \
                     patch.object(consent.sys.stdout, "isatty", return_value=stdout):
-                reader = Mock(return_value="tak")
+                reader = Mock(return_value="yes")
                 self.assertFalse(consent.confirm("transfer", reader=reader))
                 reader.assert_not_called()
 
@@ -64,7 +64,7 @@ class TerminalConsentTests(unittest.TestCase):
 
     def test_unknown_or_untrusted_action_never_prompts(self):
         for action in ("send", "transfer\nwrite", None, []):
-            reader = Mock(return_value="tak")
+            reader = Mock(return_value="yes")
             with self.assertRaises(ValueError):
                 consent.confirm(action, reader=reader)
             reader.assert_not_called()
@@ -114,7 +114,7 @@ print('TRANSFER=' + str(confirm('transfer')), flush=True)
 print('DIFF: synthetic change', flush=True)
 print('WRITE=' + str(confirm('write')), flush=True)
 """
-        for paste in (b"t\nt\n", b"tak\ntak\n"):
+        for paste in (b"y\ny\n", b"yes\nyes\n"):
             with self.subTest(paste=paste), self.child(code) as (master, process, output):
                 self.read_until(master, process, output, consent.PROMPTS["transfer"].encode())
                 os.write(master, paste)
@@ -130,7 +130,7 @@ print('WRITE=' + str(confirm('write')), flush=True)
                             break
                 self.assertIsNone(process.poll(), output.decode(errors="replace"))
                 self.assertNotIn(b"WRITE=", output)
-                os.write(master, b"nie\n")
+                os.write(master, b"no\n")
                 self.read_until(master, process, output, b"WRITE=False")
                 self.assertEqual(process.wait(timeout=2), 0)
 
@@ -142,9 +142,9 @@ print('WRITE=' + str(confirm('write')), flush=True)
 """
         with self.child(code) as (master, process, output):
             self.read_until(master, process, output, consent.PROMPTS["transfer"].encode())
-            os.write(master, b"TAK\n")
+            os.write(master, b"YES\n")
             self.read_until(master, process, output, consent.PROMPTS["write"].encode())
-            os.write(master, b"Tak\n")
+            os.write(master, b"Yes\n")
             self.read_until(master, process, output, b"WRITE=True")
             self.assertIn(b"TRANSFER=True", output)
             self.assertEqual(process.wait(timeout=2), 0)
@@ -154,11 +154,11 @@ print('WRITE=' + str(confirm('write')), flush=True)
 from ai_desktop.terminal_consent import confirm
 print('DECISION=' + str(confirm('transfer')), flush=True)
 """
-        for final, result in ((b"N", b"False"), (b"T", b"True")):
+        for final, result in ((b"N", b"False"), (b"Y", b"True")):
             with self.subTest(final=final), self.child(code) as (master, process, output):
                 prompt = consent.PROMPTS["transfer"].encode()
                 self.read_until(master, process, output, prompt)
-                for number, answer in enumerate((b"", b"?", b"yes", b"unknown"), 2):
+                for number, answer in enumerate((b"", b"?", b"tak", b"unknown"), 2):
                     os.write(master, answer + b"\n")
                     self.read_until(master, process, output, prompt, occurrences=number)
                     self.assertNotIn(b"DECISION=", output)
@@ -175,7 +175,7 @@ print('DECISION=' + str(confirm('transfer')), flush=True)
         with self.child(code) as (master, process, output):
             prompt = consent.PROMPTS["transfer"].encode()
             self.read_until(master, process, output, prompt)
-            os.write(master, b"?\ntak\n")
+            os.write(master, b"?\nyes\n")
             self.read_until(master, process, output, prompt, occurrences=2)
             deadline = time.monotonic() + .2
             while time.monotonic() < deadline:
@@ -186,7 +186,7 @@ print('DECISION=' + str(confirm('transfer')), flush=True)
                         break
             self.assertIsNone(process.poll(), output.decode(errors="replace"))
             self.assertNotIn(b"DECISION=", output)
-            os.write(master, b"nie\n")
+            os.write(master, b"no\n")
             self.read_until(master, process, output, b"DECISION=False")
             self.assertEqual(process.wait(timeout=2), 0)
 
@@ -200,7 +200,7 @@ except (EOFError, OSError, ValueError):
     raise SystemExit(2)
 print('UNEXPECTED_RESULT=' + str(result), flush=True)
 """
-        for answer in (b"\x04", b"t" * (consent.MAX_ANSWER_BYTES + 1) + b"\n"):
+        for answer in (b"\x04", b"y" * (consent.MAX_ANSWER_BYTES + 1) + b"\n"):
             with self.subTest(answer=answer), self.child(code) as (master, process, output):
                 self.read_until(master, process, output, consent.PROMPTS["transfer"].encode())
                 os.write(master, answer)

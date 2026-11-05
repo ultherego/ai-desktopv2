@@ -42,7 +42,7 @@ def run_cli(args, *, answer=None, tty=True):
                     seen += os.read(master, 65536)
                 except OSError:
                     break
-        match = re.search(rb"UTWORZ ([0-9a-f]{64})", seen)
+        match = re.search(rb"CREATE ([0-9a-f]{64})", seen)
         if answer is not None and match:
             reply = answer.replace("{hash}", match.group(1).decode()) + "\n"
             os.write(master, reply.encode())
@@ -80,7 +80,7 @@ class WorkspaceCliTests(unittest.TestCase):
         self.assertNotIn("HELLO", out)
 
     def test_wrong_confirmation_writes_nothing(self):
-        for answer in ("tak", "UTWORZ {hash} ", "utworz {hash}", "UTWORZ " + "0" * 64):
+        for answer in ("tak", "CREATE {hash} ", "create {hash}", "CREATE " + "0" * 64):
             with self.subTest(answer=answer):
                 code, _ = run_cli(["apply", str(self.ws), "--create", self.spec],
                                   answer=answer)
@@ -90,7 +90,7 @@ class WorkspaceCliTests(unittest.TestCase):
 
     def test_confirmed_apply_status_and_explicit_rollback(self):
         code, out = run_cli(["apply", str(self.ws), "--create", self.spec],
-                            answer="UTWORZ {hash}")
+                            answer="CREATE {hash}")
         self.assertEqual(code, 0, out)
         target = self.ws / "notes/new.txt"
         self.assertEqual(target.read_text(), "HELLO FROM CLI\n")
@@ -109,7 +109,7 @@ class WorkspaceCliTests(unittest.TestCase):
     def test_second_apply_of_existing_target_is_refused(self):
         (self.ws / "notes/new.txt").write_text("MINE")
         code, _ = run_cli(["apply", str(self.ws), "--create", self.spec],
-                          answer="UTWORZ {hash}")
+                          answer="CREATE {hash}")
         self.assertEqual(code, 2)
         self.assertEqual((self.ws / "notes/new.txt").read_text(), "MINE")
 
@@ -140,7 +140,7 @@ class WorkspaceCliTests(unittest.TestCase):
     def test_output_never_contains_secret_source_content_on_refusal(self):
         self.src.write_text("TOP SECRET CONTENT\n")
         code, out = run_cli(["apply", str(self.ws), "--create", self.spec],
-                            answer="nie", tty=True)
+                            answer="no", tty=True)
         self.assertEqual(code, 2)
         self.assertNotIn("TOP SECRET", out)
 
@@ -168,7 +168,7 @@ class ControllerApproveTests(unittest.TestCase):
             self.assertEqual(controller.main(["approve"]), 0)
         ask.assert_not_called()
         self.assertEqual(confirm.call_args.args[0], report)
-        self.assertIn("nie wyslano", out.getvalue())
+        self.assertIn("no data sent to AI", out.getvalue())
 
     def test_approve_denied_returns_2_and_never_asks(self):
         with (patch.object(controller, "prepare", return_value=self.prepared()),
@@ -181,7 +181,7 @@ class ControllerApproveTests(unittest.TestCase):
 
     def test_approve_without_terminal_is_denied(self):
         with (patch.object(controller, "prepare", return_value=self.prepared()),
-              patch("sys.stdin", io.StringIO("PRZEKAZ x\n")),
+              patch("sys.stdin", io.StringIO("SEND x\n")),
               contextlib.redirect_stdout(io.StringIO())):
             self.assertEqual(controller.main(["approve"]), 2)
 

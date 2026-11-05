@@ -38,7 +38,7 @@ class CliTests(unittest.TestCase):
             with self.assertRaises(SystemExit) as stopped:
                 main(["settngs"])
         self.assertEqual(stopped.exception.code, 2)
-        self.assertIn("Podpowiedź: ai-desktop settings", output.getvalue())
+        self.assertIn("Did you mean: ai-desktop settings", output.getvalue())
         self.assertNotIn("claude", output.getvalue())
         self.assertNotIn("codex", output.getvalue())
         settings.assert_not_called()
@@ -50,8 +50,8 @@ class CliTests(unittest.TestCase):
                 with self.assertRaises(SystemExit) as stopped:
                     main([token])
             self.assertEqual(stopped.exception.code, 2)
-            self.assertNotIn("Podpowiedź: ai-desktop claude", output.getvalue())
-            self.assertNotIn("Podpowiedź: ai-desktop codex", output.getvalue())
+            self.assertNotIn("Did you mean: ai-desktop claude", output.getvalue())
+            self.assertNotIn("Did you mean: ai-desktop codex", output.getvalue())
 
     def test_typo_suggests_public_command_without_execution_or_internal_usage(self):
         with patch("ai_desktop.session_cli.main") as sessions, \
@@ -60,7 +60,7 @@ class CliTests(unittest.TestCase):
             with self.assertRaises(SystemExit) as stopped:
                 main(["ssessions"])
         self.assertEqual(stopped.exception.code, 2)
-        self.assertIn("Podpowiedź: ai-desktop sessions", output.getvalue())
+        self.assertIn("Did you mean: ai-desktop sessions", output.getvalue())
         self.assertNotIn("usage:", output.getvalue())
         self.assertNotIn("worker-once", output.getvalue())
         self.assertLessEqual(len(output.getvalue().splitlines()), 3)
@@ -74,7 +74,7 @@ class CliTests(unittest.TestCase):
                 with self.assertRaises(SystemExit) as stopped:
                     main([token])
             self.assertEqual(stopped.exception.code, 2)
-            self.assertEqual(output.getvalue(), "Nieznane polecenie.\nPomoc: ai-desktop --help\n")
+            self.assertEqual(output.getvalue(), "Unknown command.\nHelp: ai-desktop --help\n")
 
     def test_internal_command_remains_explicitly_available(self):
         with patch("ai_desktop.cli.agent.main", return_value=0) as agent:
@@ -89,7 +89,7 @@ class CliTests(unittest.TestCase):
                 patch("ai_desktop.analysis_admin.main") as admin, \
                 patch("subprocess.run") as run, contextlib.redirect_stdout(io.StringIO()) as output:
             self.assertEqual(main(["login"]), 2)
-        self.assertIn("interaktywnym terminalu", output.getvalue())
+        self.assertIn("interactive terminal", output.getvalue())
         self.assertNotIn("REFUSED", output.getvalue())
         administrative.assert_not_called()
         admin.assert_not_called()
@@ -119,7 +119,7 @@ class CliTests(unittest.TestCase):
                     patch("ai_desktop.analysis_session.administrative") as claude, \
                     patch("ai_desktop.codex_cli.main") as codex, contextlib.redirect_stdout(io.StringIO()) as output:
                 self.assertEqual(main(["login"]), 0)
-            self.assertIn("Anulowano", output.getvalue())
+            self.assertIn("Login cancelled", output.getvalue())
             claude.assert_not_called()
             codex.assert_not_called()
 
@@ -348,9 +348,9 @@ class HelpTests(unittest.TestCase):
         from ai_desktop.cli import build_parser, SHORT_HELP
         full = build_parser().format_help()
         for text in (SHORT_HELP, full):
-            self.assertNotIn("project    Pracuj z jednym katalogiem projektu tylko do odczytu", text)
-        self.assertIn("zmiany i usuwanie dopiero po Twoim zatwierdzeniu", SHORT_HELP)
-        self.assertIn("dopiero po zatwierdzeniu", full)
+            self.assertNotIn("project    Work with one project directory read-only", text)
+        self.assertIn("changes and deletions only after your approval", SHORT_HELP)
+        self.assertIn("changes and deletions only after approval", full)
 
 
 if __name__ == "__main__":

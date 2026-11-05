@@ -70,7 +70,7 @@ class ClaudeAdminOutputTests(unittest.TestCase):
     def test_verbose_preserves_explanations_and_metadata(self):
         code, text, calls = self.run_admin(details=True)
         self.assertEqual(code, 0)
-        self.assertIn("Oddzielne logowanie", text)
+        self.assertIn("Separate claude.ai login", text)
         self.assertNotIn("--quiet", calls[0][0])
         self.assertEqual(calls[0][0][-1], "login-verbose")
 
@@ -85,7 +85,7 @@ class ClaudeAdminOutputTests(unittest.TestCase):
                 self.assertIn("REFUSED", text)
                 self.assertIn("stop", calls[1][0])
                 self.assertNotIn("PASS", text)
-                self.assertNotIn("Zalogowano", text)
+                self.assertNotIn("Logged in", text)
         code, text, _ = self.run_admin(state_code=1)
         self.assertEqual((code, text), (0, ""))
 

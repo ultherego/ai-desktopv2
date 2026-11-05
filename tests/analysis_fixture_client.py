@@ -142,7 +142,7 @@ def main():
     assert (action == "web") == (data["mode"] == "web")
     if data["mode"] == "analysis":
         validate_report(data["report"])
-        assert data["report"]["kernel"] == "7.3.0-4-cachyos"
+        assert data["report"]["kernel"] == "0.0.0-synthetic"
     elif data["mode"] == "assistant":
         from ai_desktop.assistant_contract import validate_access
         assert set(data) in ({"mode", "question", "access"}, {"mode", "question", "access", "discovery"})

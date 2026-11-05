@@ -144,7 +144,7 @@ class SystemAccountPackagingTests(unittest.TestCase):
             })
             for args, expected_exit, expected_text in (
                 (("--version",), 0, "ai-desktop 0.1.0"),
-                (("doctor",), 0, "Logowanie i działanie AI: niesprawdzone."),
+                (("doctor",), 0, "Login and AI operation: not checked."),
                 (("diagnose", "invalid"), 2, "invalid choice"),
                 (("worker-once", "f" * 32, "1000"), 2, "WORKER: REFUSED"),
             ):

@@ -182,7 +182,7 @@ class Loop:
         self.observations.append({"kind": "search", "needle": needle, "complete": result.complete, "more": more,
                                   "hits": hits, "skipped": dict(result.skipped)})
         self.searches.append((needle, result.complete))
-        return "a project search for \"%s\": %d matches%s" % (needle, len(hits), " (more available)" if more else "")
+        return "a project search for \"%s\": %d %s%s" % (needle, len(hits), "match" if len(hits) == 1 else "matches", " (more available)" if more else "")
 
     def _read(self, path, spans):
         try:

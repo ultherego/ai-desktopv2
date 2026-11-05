@@ -262,6 +262,10 @@ def build_parser():
     return parser
 
 
+def _line_total(count):
+    return "1 line" if count == 1 else "%d lines" % count
+
+
 def _line_label(first, last):
     return "line %d" % first if first == last else "lines %d–%d" % (first, last)
 
@@ -380,7 +384,7 @@ class Session:
         try:
             first, last, _ = self._lines(spec)
         except materials.MaterialError:
-            print("Enter a line range in the file, e.g. /show 120-160 (the file has %d lines)." % self._line_count())
+            print("Enter a line range in the file, e.g. /show 120-160 (the file has %s)." % _line_total(self._line_count()))
             return
         shown = min(last, first + PREVIEW_LINES - 1)
         for number in range(first, shown + 1):
@@ -449,11 +453,11 @@ class Session:
         print()
         if not self.args.details:
             extra = " · context: %d earlier question(s) and answer(s)" % len(loop.history) if loop.history else ""
-            print(recipient("To Claude: the question and %s from %s (%d lines, %d B)%s") % (what, self.name, loop.lines, self.material.size, extra))
+            print(recipient("To Claude: the question and %s from %s (%s, %d B)%s") % (what, self.name, _line_total(loop.lines), self.material.size, extra))
             return
         print(rule("To send"))
         print(field("Question", _safe(text, 200)))
-        print(field("File", "%s (%s), %d B, %d lines" % (self.name, self.material.material_id[:8], self.material.size, loop.lines)))
+        print(field("File", "%s (%s), %d B, %s" % (self.name, self.material.material_id[:8], self.material.size, _line_total(loop.lines))))
         if whole == "all":
             print(field("Content", "the whole file (%d B) in one request" % self.material.size))
         elif whole == "range":
