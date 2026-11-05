@@ -1,5 +1,5 @@
 """Non-secret account names, selections and numeric usage snapshots in a private desktop store."""
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import json
 import re
 
@@ -29,6 +29,9 @@ def quota(value):
 class Accounts:
     # tuples of (service, name, selected, measured_at, samples), with no tokens or provider identifiers
     rows: tuple = ()
+    retired: tuple = ()
+    # A successful explicit login is historical evidence; the live credential might subsequently expire.
+    logins: tuple = ()
 
     def __post_init__(self):
         if len(self.rows) > 32:
@@ -46,6 +49,23 @@ class Accounts:
             if active:
                 selected.add(service)
 
+        if (len(set(self.retired)) != len(self.retired) or any(key not in seen for key in self.retired)
+                or any(not named_account(name) for _, name in self.retired)):
+            raise ProfileError("accounts")
+        if (len({(p, n) for p, n, _ in self.logins}) != len(self.logins)
+                or any((p, n) not in seen or type(t) is not int or not 0 < t < 2**34 for p, n, t in self.logins)):
+            raise ProfileError("accounts")
+
+    def logged_in(self, provider, name, when):
+        retained = tuple(r for r in self.logins if r[:2] != (provider, name))
+        return replace(self, logins=retained + ((provider, name, when),))
+
+    def retire(self, provider, name):
+        key = (provider, name)
+        if not named_account(name) or name not in self.items(provider):
+            raise ProfileError("account-missing")
+        return replace(self, retired=tuple(sorted(set(self.retired) | {key})))
+
     def active(self, service):
         return next((name for provider, name, active, _, _ in self.rows if service == provider and active), "default")
 
@@ -55,12 +75,12 @@ class Accounts:
     def add(self, service, name):
         if not named_account(name) or name in self.items(service):
             raise ProfileError("account-exists")
-        return Accounts(self.rows + ((service, name, False, 0, None),))
+        return replace(self, rows=self.rows + ((service, name, False, 0, None),))
 
     def select(self, service, name):
-        if service not in CLOUD or name not in self.items(service):
+        if service not in CLOUD or name not in self.items(service) or (service, name) in self.retired:
             raise ProfileError("account-missing")
-        return Accounts(tuple((p, n, n == name if p == service else active, t, s)
+        return replace(self, rows=tuple((p, n, n == name if p == service else active, t, s)
                               for p, n, active, t, s in self.rows))
 
     def note(self, service, name, observed, samples):
@@ -70,19 +90,25 @@ class Accounts:
         if previous is not None and previous[3] > observed:
             return self
         retained = tuple(row for row in self.rows if row[:2] != (service, name))
-        return Accounts(retained + ((service, name, self.active(service) == name, observed, quota(samples)),))
+        return replace(self, rows=retained + ((service, name, self.active(service) == name, observed, quota(samples)),))
 
     def data(self):
-        return {"schema": 1, "rows": list(self.rows)}
+        return {"schema": 1, "rows": list(self.rows), "retired": self.retired, "logins": self.logins}
 
 
 def decode(raw):
     value = json.loads(raw, object_pairs_hook=_pairs)
-    if (type(value) is not dict or set(value) != {"schema", "rows"} or type(value["schema"]) is not int
+    if (type(value) is not dict or set(value) != {"schema", "rows", "retired", "logins"} or type(value["schema"]) is not int
             or value["schema"] != 1 or type(value["rows"]) is not list
-            or any(type(row) is not list or len(row) != 5 for row in value["rows"])):
+            or any(type(row) is not list or len(row) != 5 for row in value["rows"])
+            or any(type(value[k]) is not list or len(value[k]) > 32
+                   or any(type(row) is not list or len(row) != size for row in value[k])
+                   for k, size in (("retired", 2), ("logins", 3)))):
         raise ProfileError("accounts")
-    return Accounts(tuple(tuple(row) for row in value["rows"]))
+    try:
+        return Accounts(*(tuple(tuple(row) for row in value[key]) for key in ("rows", "retired", "logins")))
+    except (TypeError, ValueError):
+        raise ProfileError("accounts") from None
 
 
 class AccountStore(Store):

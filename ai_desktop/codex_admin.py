@@ -90,7 +90,7 @@ def auth_worker(action, *, details=False):
 
 
 def main(action, *, allow=False, details=False, named=None):
-    if (allow is not True or type(details) is not bool or action not in ("login", "logout") or os.getuid() != 0 or os.geteuid() != 0
+    if (allow is not True or type(details) is not bool or action not in ("login", "logout", "retire") or (action == "retire" and not named) or os.getuid() != 0 or os.geteuid() != 0
             or not os.isatty(0) or not os.isatty(1)):
         print("Codex: this needs explicit consent, an administrator and a terminal.")
         return 2
@@ -102,9 +102,11 @@ def main(action, *, allow=False, details=False, named=None):
             provider, name = named
             uid = int(os.environ.get("SUDO_UID", ""))
             account_runtime.identity(uid, provider, name)
-            if action != "login":
+            if action not in ("login", "retire"):
                 raise AnalysisDenied("input")
-        if named and provider == "claude":
+        if action == "retire":
+            pass  # This offline operation also works after a client binary was removed.
+        elif named and provider == "claude":
             from .analysis_sandbox import runtime_ready as claude_ready
             claude_ready()
         else:
@@ -117,7 +119,7 @@ def main(action, *, allow=False, details=False, named=None):
                 unit = command[index][7:] + ".service"
         command[-2:] = [str(entry), "worker-" + action + ("-verbose" if details else "")]
         if named:
-            command[-1:] = ["account-worker", str(uid), provider, name]
+            command[-1:] = ["account-worker-" + action, str(uid), provider, name]
         code = subprocess.run(command, env={"PATH": "/usr/bin", "LANG": "C.UTF-8", "TERM": "dumb"},
                               close_fds=True, timeout=610, check=False).returncode
     except (AnalysisDenied, OSError, ValueError, subprocess.SubprocessError, KeyboardInterrupt):
@@ -144,14 +146,20 @@ def main(action, *, allow=False, details=False, named=None):
     return code
 
 
-def named_worker(uid, provider, name):
+def named_worker(action, uid, provider, name):
     from .e2_socket_activation import _worker_identity
     from .analysis_sandbox import profile_lock, run_client, supervisor_ready
     try:
         if not _worker_identity() or not os.isatty(0) or not os.isatty(1):
             return 2
-        supervisor_ready()
+        if action not in ("login", "retire"):
+            return 2
         with account_runtime.selected(int(uid), provider, name):
+            if action == "retire":
+                with profile_lock():
+                    account_runtime.retire(HOME / provider)
+                return 0
+            supervisor_ready()
             if provider == "claude":
                 run_client("login")
                 return 0

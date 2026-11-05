@@ -2,7 +2,7 @@
 from contextlib import contextmanager
 from contextvars import ContextVar
 import os
-from pathlib import Path
+import shutil
 import stat
 
 from .account_store import CLOUD, named_account
@@ -36,29 +36,49 @@ def _private_directory(path, *, create=False):
         raise AnalysisDenied("identity")
 
 
-def directory(legacy, *, login=False):
+def _root(legacy):
     slot = _current.get()
-    if slot is None:
-        return legacy
-    uid, provider, name = slot
-    if legacy.name != provider:
+    if slot is None or legacy.name != slot[1]:
         raise AnalysisDenied("identity")
-    parent = legacy.parent
-    _private_directory(parent)
-    root = parent / ("account-%d-%s-%s" % (uid, provider, name))
+    _private_directory(legacy.parent)
+    return legacy.parent / ("account-%d-%s-%s" % slot)
+
+
+def _marker(root, name):
+    try:
+        info = (root / name).lstat()
+    except FileNotFoundError:
+        return False
+    if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_gid != os.getegid()
+            or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1 or info.st_size):
+        raise AnalysisDenied("identity")
+    return True
+
+
+def _mark(root, name):
+    fd = os.open(root / name, os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW | os.O_CLOEXEC, 0o600)
+    os.close(fd)
+    fd = os.open(root, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
+def directory(legacy, *, login=False):
+    if _current.get() is None:
+        return legacy
+    root = _root(legacy)
     try:
         _private_directory(root, create=login)
+        if _marker(root, "retired"):
+            raise AnalysisDenied("auth-required")
         path = root / "profile"
         _private_directory(path, create=login)
-        try:
-            info = (root / "connected").lstat()
-        except FileNotFoundError:
+        if not _marker(root, "connected"):
             if login:
                 return path
-            raise AnalysisDenied("auth-required") from None
-        if (not stat.S_ISREG(info.st_mode) or info.st_uid != os.geteuid() or info.st_gid != os.getegid()
-                or stat.S_IMODE(info.st_mode) != 0o600 or info.st_nlink != 1 or info.st_size):
-            raise AnalysisDenied("identity")
+            raise AnalysisDenied("auth-required")
         if login:  # A connected named slot never silently changes subscription identity.
             raise AnalysisDenied("busy")
         return path
@@ -68,5 +88,20 @@ def directory(legacy, *, login=False):
 
 def connected(path):
     if _current.get() is not None:
-        fd = os.open(path.parent / "connected", os.O_CREAT | os.O_EXCL | os.O_WRONLY | os.O_NOFOLLOW, 0o600)
-        os.close(fd)
+        _mark(path.parent, "connected")
+
+
+def retire(legacy):
+    """Caller owns the service lock. Keep a permanent tombstone even if removing local credentials is interrupted."""
+    root = _root(legacy)
+    _private_directory(root, create=True)
+    if not _marker(root, "retired"):
+        _mark(root, "retired")
+    path = root / "profile"
+    try:
+        _private_directory(path)
+    except FileNotFoundError:
+        return
+    if not shutil.rmtree.avoids_symlink_attacks:
+        raise AnalysisDenied("identity")
+    shutil.rmtree(path)
