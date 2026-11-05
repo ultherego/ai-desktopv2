@@ -1,13 +1,13 @@
 import QtQuick
 import QtTest
-import "../../packaging/desktop/dms/AiDesktop" as Desktop
+import "../../packaging/desktop/dms/AiDesktop/quota" as Quota
 
 Item {
     id: scene
     width: 420
     height: 420
 
-    Desktop.QuotaCard {
+    Quota.QuotaCard {
         id: card
         width: scene.width
         sampledAt: 1800000000

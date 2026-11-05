@@ -3,7 +3,8 @@ import qs.Common
 import qs.Services
 import qs.DCommon.Widgets
 import qs.Modules.Plugins
-import "Status.js" as Status
+import "quota" as Quota
+import "quota/Status.js" as Status
 
 PluginComponent {
     id: root
@@ -136,7 +137,7 @@ PluginComponent {
                     clip: true
                     boundsBehavior: Flickable.StopAtBounds
                     model: root.snapshot?.accounts || []
-                    delegate: QuotaCard {
+                    delegate: Quota.QuotaCard {
                         required property var modelData
                         width: ListView.view.width
                         account: modelData

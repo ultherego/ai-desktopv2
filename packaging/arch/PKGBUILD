@@ -4,7 +4,7 @@
 # Only the guarded package scriptlet may apply it during this approved install.
 pkgname=ai-desktop
 pkgver=0.1.0
-pkgrel=73
+pkgrel=74
 pkgdesc='Terminal AI assistant for CachyOS and Arch with an isolated client and approved changes'
 arch=('x86_64')
 url='https://github.com/ultherego/ai-desktopv2'
@@ -97,11 +97,12 @@ package() {
     # Optional launchers and examples. The package never changes a user's Niri or DMS configuration.
     local desktop="${root}/packaging/desktop" widget="dms/AiDesktop"
     [[ -d "${desktop}" && ! -L "${desktop}" && ! -L "${desktop}/dms" && ! -L "${desktop}/${widget}" ]] || return 1
+    [[ -d "${desktop}/${widget}/quota" && ! -L "${desktop}/${widget}/quota" ]] || return 1
     for src in ai-desktop.desktop ai-desktop-panel.desktop ai-desktop-login-{claude,codex}.desktop; do
         [[ -f "${desktop}/${src}" && ! -L "${desktop}/${src}" ]] || return 1
         install -Dm644 "${desktop}/${src}" "${pkgdir}/usr/share/applications/${src}" || return 1
     done
-    for src in niri-bindings.kdl "${widget}"/{plugin.json,Widget.qml,QuotaCard.qml,Settings.qml,Status.js}; do
+    for src in niri-bindings.kdl "${widget}"/{plugin.json,Widget.qml,Settings.qml,quota/QuotaCard.qml,quota/Status.js}; do
         [[ -f "${desktop}/${src}" && ! -L "${desktop}/${src}" ]] || return 1
         install -Dm644 "${desktop}/${src}" "${pkgdir}/usr/share/ai-desktop/${src}" || return 1
     done

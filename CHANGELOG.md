@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-74: load the quota card after a running DMS upgrade
+
+- Move the quota card and its status script into a dedicated directory. When DMS reloads the widget after an upgrade, Qt can discover both files and show the current percentages and reset times.
+
 ## 0.1.0-73: graphical subscription usage and login
 
 - The DMS bar can show the current five-hour percentage. The popout shows proportional usage bars with local resets for each reported window.

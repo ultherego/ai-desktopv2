@@ -91,8 +91,8 @@ class SystemAccountPackagingTests(unittest.TestCase):
             desktop = ROOT / "packaging/desktop"
             for name in ("ai-desktop.desktop", "ai-desktop-panel.desktop", "ai-desktop-login-claude.desktop",
                          "ai-desktop-login-codex.desktop", "niri-bindings.kdl",
-                         "dms/AiDesktop/plugin.json", "dms/AiDesktop/Widget.qml", "dms/AiDesktop/QuotaCard.qml", "dms/AiDesktop/Settings.qml",
-                         "dms/AiDesktop/Status.js"):
+                         "dms/AiDesktop/plugin.json", "dms/AiDesktop/Widget.qml", "dms/AiDesktop/Settings.qml",
+                         "dms/AiDesktop/quota/QuotaCard.qml", "dms/AiDesktop/quota/Status.js"):
                 base = "usr/share/applications" if name.endswith(".desktop") else "usr/share/ai-desktop"
                 installed = package_root / base / name
                 self.assertEqual(installed.read_bytes(), (desktop / name).read_bytes())

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
-const url = new URL("../packaging/desktop/dms/AiDesktop/Status.js", import.meta.url);
+const url = new URL("../packaging/desktop/dms/AiDesktop/quota/Status.js", import.meta.url);
 const source = readFileSync(url, "utf8").replace(/^\.pragma library\s*/, "");
 const widget = vm.createContext({});
 vm.runInContext(source, widget);

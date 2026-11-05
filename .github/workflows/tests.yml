@@ -157,11 +157,14 @@ jobs:
         run: |
           sudo apt-get install -y qt6-declarative-dev-tools desktop-file-utils qml6-module-qtquick qml6-module-qtquick-window qml6-module-qtqml-workerscript qml6-module-qttest
           desktop-file-validate packaging/desktop/*.desktop
-          for file in packaging/desktop/dms/AiDesktop/*.qml; do
+          for file in packaging/desktop/dms/AiDesktop/*.qml packaging/desktop/dms/AiDesktop/quota/*.qml; do
             /usr/lib/qt6/bin/qmlformat "$file" >/dev/null
           done
           node tests/desktop_widget.mjs
           QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software /usr/lib/qt6/bin/qmltestrunner -input tests/qml
+          python -B tests/dms_widget_reload.py /usr/lib/qt6/bin/qmltestrunner
+          python -m pip install --only-binary=:all: PySide6-Essentials==6.11.3
+          python -B tests/dms_widget_reload.py --pyside
       - name: Pinned Codex strict-config startup (offline namespace, no OAuth or inference)
         if: matrix.bubblewrap == 'distro'
         run: python -B tests/ci_codex_config.py --allow-disposable-codex-config-test
