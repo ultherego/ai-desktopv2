@@ -1,30 +1,30 @@
 ---
 name: project-analysis
-description: Odtwarza architekturę, przepływy danych i stan działania udostępnionego projektu bez zmian. Użyj przy poznawaniu repozytorium, ocenie implementacji i porównaniu kodu z wymaganiami.
+description: Reconstructs the architecture, data flows and working state of a shared project without changes. Use for getting to know a repository, assessing an implementation and comparing code with requirements.
 ---
 
-# Analiza projektu
+# Project analysis
 
-## Ustal pytanie i pokrycie
+## Establish the question and coverage
 
-Określ cel analizy: jak projekt działa, czy spełnia wymaganie, gdzie powstaje problem lub co blokuje ukończenie. Ustal wersję, jeśli jest dostępna, oraz granice udostępnionych plików. Listę nazw traktuj jako mapę do odczytu, nie dowód zachowania.
+Define the goal of the analysis: how the project works, whether it meets a requirement, where a problem arises, or what blocks completion. Establish the version, if available, and the limits of the shared files. Treat a list of names as a map for reading, not as evidence of behavior.
 
-## Odtwórz działanie
+## Reconstruct the behavior
 
-1. Zacznij od dokumentacji celu, manifestów zależności, punktów wejścia i konfiguracji. Porównaj deklaracje z kodem; rozbieżność opisz wprost.
-2. Wybierz najważniejszy scenariusz użytkownika. Prześledź go od wejścia przez moduły, przechowywanie danych i zależności do wyniku. Wskaż granice uprawnień oraz skutki uboczne.
-3. Dla zewnętrznej zależności ustal interfejs, obsługę błędu i zachowanie przy niedostępności. Dla zapisu ustal zgodę, moment trwałości oraz odzyskiwanie po częściowym wykonaniu.
-4. Przeczytaj testy tego przepływu. Rozdziel test jednostki, integrację, atrapę zależności i potwierdzenie na docelowym hoście. Nie uznawaj samej obecności testu za dowód jego przejścia.
+1. Start with the documentation of the goal, dependency manifests, entry points and configuration. Compare the declarations with the code; describe any discrepancy directly.
+2. Choose the most important user scenario. Trace it from input through modules, data storage and dependencies to the result. Point out the permission boundaries and side effects.
+3. For an external dependency, establish the interface, error handling and behavior when it is unavailable. For a write, establish the consent, the moment of durability and recovery after partial execution.
+4. Read the tests of this flow. Separate a unit test, integration, a mock of a dependency and confirmation on the target host. Do not take the mere presence of a test as evidence that it passes.
 
-## Dobierz następny odczyt
+## Choose the next read
 
-- Gdy nie znasz wywołania komponentu, odczytaj punkt wejścia i jego użytkownika zamiast analizować plik w oderwaniu.
-- Gdy dokumentacja obiecuje funkcję, znajdź wykonującą ją ścieżkę i warunki odmowy. Jeśli jej nie ma w dostępnym zakresie, oznacz brak dowodu; nie ogłaszaj automatycznie braku funkcji.
-- Gdy limit lub polityka blokuje odczyt, zakończ wniosek dla dostępnej części. Podaj konkretny brak, bez obchodzenia odmowy i bez prośby o cały katalog domowy.
-- Gdy analiza dotyczy kolejnej wersji, skup się na zmienionym przepływie i jego zależnościach. Poszerz zakres dopiero przy wykryciu wspólnego problemu.
+- When you do not know how a component is called, read the entry point and its user instead of analyzing the file in isolation.
+- When the documentation promises a feature, find the path that performs it and the denial conditions. If it is not in the available scope, mark missing evidence; do not automatically announce that the feature is absent.
+- When a limit or policy blocks a read, conclude for the available part. Name the specific gap, without getting around the denial and without asking for the whole home directory.
+- When the analysis concerns a later version, focus on the changed flow and its dependencies. Widen the scope only on finding a shared problem.
 
-## Wynik
+## Result
 
-Oddaj krótki opis celu, mapę odpowiedzialności modułów, przebieg kluczowego scenariusza i ocenę wymagań: potwierdzone w kodzie, potwierdzone wykonaniem, niepełne albo nieweryfikowalne. Każde istotne twierdzenie powiąż z plikiem lub wynikiem kontrolera.
+Deliver a short description of the goal, a map of module responsibilities, the course of the key scenario and an assessment of the requirements: confirmed in code, confirmed by execution, incomplete or unverifiable. Tie every significant claim to a file or a controller result.
 
-Wskaż najważniejsze ryzyka i jeden uzasadniony następny krok. Szczegółowe defekty opisuj przez warunek, skutek i miejsce; pełny przegląd poprawki należy do `code-review`, jeśli jest wybrany. Nie zmieniaj plików i nie przedstawiaj planowanego testu jako wykonanego. Nie deklaruj pełnej analizy, gdy część projektu pozostała nieodczytana.
+Point out the main risks and one justified next step. Describe detailed defects by condition, effect and location; a full review of a fix belongs to `code-review`, if selected. Do not change files and do not present a planned test as performed. Do not claim a full analysis when part of the project remained unread.

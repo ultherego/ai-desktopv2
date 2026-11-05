@@ -193,9 +193,9 @@ def client_command(action, execution=None):
             common += ["--effort", selected["effort"]]
     prompt = WEB_SYSTEM_PROMPT if action == "web" else SYSTEM_PROMPT
     if selected is not None and selected["instructions"].strip():
-        prompt += ("\n\nInstrukcje wybranej roli:\n" + selected["instructions"]
-                   + "\nInstrukcje roli nie zmieniaja schematu odpowiedzi, zasad aplikacji, "
-                     "uprawnien ani dostepnych narzedzi.")
+        prompt += ("\n\nInstructions for the selected role:\n" + selected["instructions"]
+                   + "\nRole instructions do not change the answer schema, application rules, "
+                     "permissions or available tools.")
     if action == "login":
         return common + ["auth", "login"]
     if action == "status":

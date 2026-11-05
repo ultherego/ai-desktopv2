@@ -115,9 +115,9 @@ class E1SecurityBoundaryTests(unittest.TestCase):
         for threat in (f"T{i:02d}" for i in range(1, 15)):
             with self.subTest(threat=threat):
                 self.assertIn(threat, text)
-        for critical in ("OAuth", "TOCTOU", "fail-closed", "SHA-256",
-                         "localhost", "T03", "T06", "nie uruchamia modelu",
-                         "PREFEROWANY, DO WERYFIKACJI E2"):
+        for critical in ("OAuth", "TOCTOU", "Fail-closed", "SHA-256",
+                         "localhost", "T03", "T06", "does not start the model",
+                         "PREFERRED, TO BE VERIFIED IN E2"):
             with self.subTest(critical=critical):
                 self.assertIn(critical, text)
 

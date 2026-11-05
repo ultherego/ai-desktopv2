@@ -125,12 +125,12 @@ def capture_access():
 
 def describe_access(snapshot):
     access = snapshot.access
-    print(recipient("Dostępy: Claude ") + ("dozwolony" if snapshot.sources["claude"] else "zablokowany")
-          + "; " + str(len(access["files"])) + " zakresów plików; systemd: "
-          + (", ".join(access["systemd"]) or "brak") + "; pogoda: "
-          + ("dozwolona" if access["weather"] else "brak")
-          + "; Internet: " + ("dozwolony" if access.get("web") is True else "brak")
-          + "; zapis: " + str(len(access.get("write", []))) + " zakresów.")
+    print(recipient("Access: Claude ") + ("allowed" if snapshot.sources["claude"] else "blocked")
+          + "; file scopes: " + str(len(access["files"])) + "; systemd: "
+          + (", ".join(access["systemd"]) or "none") + "; weather: "
+          + ("allowed" if access["weather"] else "none")
+          + "; Internet: " + ("allowed" if access.get("web") is True else "none")
+          + "; write scopes: " + str(len(access.get("write", []))) + ".")
 
 
 def _legacy_selection(args, snapshot):
@@ -191,24 +191,24 @@ def _deny(policy, code, prefix, sent):
     selected = recipient_config()
     print(prefix + ": " + file_context._read_hint(ValueError(code) if code else ValueError(), policy))
     if code in ask_discovery.RECOVERABLE or code == "discovery-required":
-        print("Wyczerpano limit poprawek planu (plan_corrections=" + str(policy.limits().plan_corrections)
-              + " w [files] permissions.toml). Zawęź pytanie albo zwiększ limit.")
+        print("The limit of plan corrections ran out (plan_corrections=" + str(policy.limits().plan_corrections)
+              + " in [files] of permissions.toml). Narrow the question or raise the limit.")
     print(recipient(sent, config=selected))
     raise file_context.FileReadDenied("input")
 
 
 COMMITTED_OUTPUT = 256
-_LABEL = {"read": "Polecenie", "change": "Zmiana", "test": "Test po zmianie", "undo": "Wycofanie"}
-_OUTCOME = {"declined": "odrzucone przez użytkownika, nie uruchomiono", "not-allowed": "poza listą, nie uruchomiono",
-            "unavailable": "piaskownica niedostępna, nie uruchomiono", "timeout": "przekroczono czas", "ok": "ok",
-            "missing": "nie ma tego programu w systemie, nie uruchomiono"}
+_LABEL = {"read": "Command", "change": "Change", "test": "Test after change", "undo": "Undo"}
+_OUTCOME = {"declined": "declined by the user, not run", "not-allowed": "not on the list, not run",
+            "unavailable": "sandbox unavailable, not run", "timeout": "timed out", "ok": "ok",
+            "missing": "this program is not on the system, not run"}
 
 
 def _finished(label, step):
     healthy = step["status"] == "ok" and step["exit"] in (0, None)
-    state = "%s%s" % (step["status"], "" if step["exit"] is None else ", kod " + str(step["exit"]))
+    state = "%s%s" % (step["status"], "" if step["exit"] is None else ", code " + str(step["exit"]))
     dot = " " + symbol("dot") + " "
-    return "%s %s%s%s%s%d B %s rozmowa" % (
+    return "%s %s%s%s%s%d B %s conversation" % (
         paint(symbol("ok" if healthy else "fail"), "green" if healthy else "red", "bold"),
         paint(label, "bold"), dot, paint(state, "green" if healthy else "red"), dot,
         len(step["output"].encode("utf-8")), symbol("arrow"))
@@ -218,7 +218,7 @@ def _read_line(shown, step):
     """One row per read-only command: a whole batch stays readable on one screen."""
     healthy = step["status"] == "ok" and step["exit"] in (0, None)
     state = size_label(len(step["output"].encode("utf-8"))) if healthy else "%s%s" % (
-        step["status"], "" if step["exit"] is None else ", kod " + str(step["exit"]))
+        step["status"], "" if step["exit"] is None else ", code " + str(step["exit"]))
     return "  %s %s %s %s" % (paint(symbol("ok" if healthy else "fail"), "accent" if healthy else "red", "bold"), shown,
                               paint(symbol("dot"), "muted"), paint(state, "muted" if healthy else "red"))
 
@@ -235,9 +235,9 @@ def _run_command(snapshot, ledger, plan, permit, args, reader):
     def add(words, role, status, code=None, output="", cut=False):
         ledger.add_run({"op": "run", "argv": list(words), "status": status, "exit": code, "output": output,
                         "truncated": cut, "role": role})
-        outcome = _OUTCOME.get(status, "niepowodzenie")
+        outcome = _OUTCOME.get(status, "failed")
         conversation_state.note_action("%s %s: %s%s" % (_LABEL[role], " ".join(words), outcome,
-                                                       "" if code is None else ", kod %d" % code))
+                                                       "" if code is None else ", code %d" % code))
 
     def spend():
         try:
@@ -284,7 +284,7 @@ def _run_command(snapshot, ledger, plan, permit, args, reader):
     changing = command_ops.match(policy.changes(), argv)
     if not changing:
         if "test" in plan:
-            print("Test i wycofanie dotyczą tylko zmian z listy `change`: " + shown(argv))
+            print("A test and an undo apply only to changes from the `change` list: " + shown(argv))
             spend() is None or add(argv, "read", "not-allowed")
             return
         room = spend()
@@ -293,15 +293,15 @@ def _run_command(snapshot, ledger, plan, permit, args, reader):
         path = command_ops.resolve(argv[0]) if command_ops.match(policy.commands(), argv) else None
         if path is None:
             if command_ops.match(policy.commands(), argv):
-                print(paint("  %s %s %s brak tego programu" % (symbol("skip"), shown(argv), symbol("dot")), "muted"))
+                print(paint("  %s %s %s program not found" % (symbol("skip"), shown(argv), symbol("dot")), "muted"))
                 add(argv, "read", "missing")
                 return
-            print("Polecenie poza listą dozwolonych w permissions.toml, nie zostanie uruchomione: " + shown(argv))
+            print("This command is not on the allowed list in permissions.toml and will not run: " + shown(argv))
             add(argv, "read", "not-allowed")
             return
         permit.check()
         if args.details:
-            print("%s %s piaskownica: tylko odczyt, bez sieci" % (path, symbol("dot")))
+            print("%s %s sandbox: read-only, no network" % (path, symbol("dot")))
         extra = {}
         if policy.share_processes():          # owner opt-in; the default call is exactly what it always was
             extra["command"] = lambda program, words: command_ops.sandbox_command(program, words, share_processes=True)
@@ -321,20 +321,20 @@ def _run_command(snapshot, ledger, plan, permit, args, reader):
         # without room for change + test + undo (or without a valid test/undo) nothing is changed
         if ok:
             _budget_stop(policy, "command_rounds" if ledger.commands_left < 3 else "discovery_bytes")
-        print("Zmiana wymaga polecenia testu (z listy `allow`) i wycofania (z listy `change` lub `allow`); nie wykonano: "
+        print("A change needs a test command (from the `allow` list) and an undo (from the `change` or `allow` list); not run: "
               + shown(argv))
         spend() is None or add(argv, "change", "not-allowed")
         return
     permit.check()
     print()
-    for text in card("ZMIANA systemu · na żywo, bez piaskownicy", [
-            "zmiana          " + shown(argv), "test po zmianie " + shown(test), "wycofanie       " + shown(undo)],
+    for text in card("SYSTEM CHANGE · live, no sandbox", [
+            "change            " + shown(argv), "test after change " + shown(test), "undo              " + shown(undo)],
             tone="red"):
         print(text)
     with permit.waiting():
         agreed = confirm("run-change", reader=reader, config=selected)
     if not agreed:
-        print("Nie wykonano zmiany.")
+        print("The change was not made.")
         spend() is None or add(argv, "change", "declined")
         return
     try:
@@ -345,37 +345,37 @@ def _run_command(snapshot, ledger, plan, permit, args, reader):
         if changed["status"] == "ok":
             tested = run_step(test, "test", True)
             if tested is None:
-                conversation_state.note_action("Test po zmianie %s: pominięty, brak budżetu" % " ".join(test))
+                conversation_state.note_action("Test after change %s: skipped, no budget left" % " ".join(test))
         healthy = (changed is not None and changed["status"] == "ok" and changed["exit"] == 0
                    and tested is not None and tested["status"] == "ok" and tested["exit"] == 0)
         if healthy:
-            print("Test po zmianie zaliczony.")
+            print("Test after change passed.")
             return
-        print("Zmiana lub test po zmianie NIE powiodły się. Wycofanie: " + shown(undo))
+        print("The change or the test after it FAILED. Undo: " + shown(undo))
         with permit.waiting():
             undo_agreed = confirm("run-undo", reader=reader, config=selected)
         if undo_agreed:
             run_step(undo, "undo", True)
         else:
-            conversation_state.note_action("Wycofanie %s: odrzucone przez użytkownika, nie uruchomiono" % " ".join(undo))
-            print("Nie wykonano wycofania. Stan systemu może być zmieniony.")
+            conversation_state.note_action("Undo %s: declined by the user, not run" % " ".join(undo))
+            print("The undo was not run. The system may still be changed.")
     except AnalysisDenied:
         if change_ran:
             # No further command runs under a lapsed consent or changed policy, and nothing more is sent. The owner decides.
-            conversation_state.note_action("Zmiana %s: przerwano po wykonaniu, dalsze kroki nie uruchomione" % " ".join(argv))
-            print("Zmiana została WYKONANA, ale zgoda wygasła lub zmieniły się uprawnienia. Kolejne kroki nie zostaną "
-                  "uruchomione i nic więcej nie zostanie wysłane.")
-            print("Sprawdź stan systemu. Test: " + shown(test))
-            print("Wycofanie możesz uruchomić sam: " + shown(undo))
+            conversation_state.note_action("Change %s: stopped after it ran, further steps not run" % " ".join(argv))
+            print("The change WAS MADE, but consent expired or the permissions changed. The next steps will not "
+                  "run and nothing more will be sent.")
+            print("Check the system. Test: " + shown(test))
+            print("You can run the undo yourself: " + shown(undo))
         raise
 
 
 def _budget_stop(policy, name):
     limits = policy.limits()
-    print("Odmowa: wyczerpano budżet odkrywania plików: " + name + "=" + str(getattr(limits, name))
-          + " ([files] permissions.toml; pułap w kodzie: " + str(permissions.LIMIT_SPECS[name][2])
-          + "). Nie wysyłam niepełnego wyniku jako kompletnego.")
-    print(recipient("Wynik lokalny nie został wysłany do Claude."))
+    print("Refused: the file discovery budget ran out: " + name + "=" + str(getattr(limits, name))
+          + " ([files] of permissions.toml; ceiling in the code: " + str(permissions.LIMIT_SPECS[name][2])
+          + "). A partial result is not sent as if it were complete.")
+    print(recipient("The local result was not sent to Claude."))
     raise file_context.FileReadDenied("input")
 
 
@@ -391,7 +391,7 @@ def _observed(carried, **payload):
     try:
         application_input(None, discovery=document, **payload)
     except (ContextBudgetExceeded, InputBudgetExceeded):
-        print(paint("Wyniki wcześniejszych kroków nie mieszczą się w żądaniu: model ich nie zobaczy w tym etapie.", "muted"))
+        print(paint("The results of earlier steps do not fit in the request: the model will not see them at this stage.", "muted"))
         return {}
     return {"discovery": document}
 
@@ -412,8 +412,8 @@ def _run_once(question, args, reader, request, *, phase=None, conversation_conse
             _legacy_selection(args, snapshot)
         if args.details:
             print(json.dumps({"question": question, "access": snapshot.access}, ensure_ascii=False, indent=2))
-        print("Podgląd uprawnień — bez modelu, wyliczania katalogów i odczytu wskazanych danych.")
-        print("Podgląd gotowy. Niczego nie wysłano.")
+        print("Permissions preview: no model, no directory listing and no reading of the selected data.")
+        print("Preview done. Nothing was sent.")
         return None
     snapshot.require_claude()
     explicit_plan = _legacy_selection(args, snapshot) if explicit else None
@@ -426,7 +426,7 @@ def _run_once(question, args, reader, request, *, phase=None, conversation_conse
                              ensure_ascii=False, indent=2))
         if conversation_consent is None or not conversation_consent.covers(snapshot):
             if not confirm("ask-question", reader=reader, config=selected):
-                print("Anulowano. Pytanie nie zostało wysłane.")
+                print("Cancelled. The question was not sent.")
                 raise Declined()
             if conversation_consent is not None:
                 conversation_consent.grant(snapshot)
@@ -490,7 +490,7 @@ def _run_once(question, args, reader, request, *, phase=None, conversation_conse
                         ledger.add_skill(name, text)
                         print(paint("  %s Skill %s %s %s" % (
                             symbol("skip" if text is None else "ok"), name, symbol("dot"),
-                            "nie ma takiego" if text is None else size_label(len(text.encode("utf-8")))), "muted"))
+                            "no such Skill" if text is None else size_label(len(text.encode("utf-8")))), "muted"))
                     plan = next_plan()
                     continue
                 if plan["action"] == "run":
@@ -522,8 +522,8 @@ def _run_once(question, args, reader, request, *, phase=None, conversation_conse
                         if (type(code) is not str or code not in ask_discovery.RECOVERABLE
                                 or not ledger.correction(ask_discovery.Recoverable(
                                     code, ledger.selectors(plan["files"]), ledger.limit_for(code)))):
-                            _deny(snapshot.policy, code if type(code) is str else None, "Odmowa podglądu katalogów",
-                                  "Podgląd katalogów nie został wysłany do Claude.")
+                            _deny(snapshot.policy, code if type(code) is str else None, "Directory listing refused",
+                                  "The directory listing was not sent to Claude.")
                     plan = next_plan()
                     continue
                 if plan["action"] != "read" or not plan["files"]:
@@ -540,8 +540,8 @@ def _run_once(question, args, reader, request, *, phase=None, conversation_conse
                     problem = refused if type(refused) is ask_discovery.Recoverable else ask_discovery.Recoverable(
                         refused.code, ledger.selectors(plan["files"]), ledger.limit_for(refused.code))
                     if not ledger.correction(problem):
-                        _deny(snapshot.policy, problem.code, "Odmowa odczytu plików",
-                              "Treść plików nie została wysłana do Claude.")
+                        _deny(snapshot.policy, problem.code, "File read refused",
+                              "The file contents were not sent to Claude.")
                     plan = next_plan()
             if plan["action"] == "answer":
                 return plan["text"]
@@ -598,10 +598,10 @@ def run(question, args, reader, request, *, phase=None, conversation_consent=Non
                              **({"phase": phase} if phase is not None else {}))
         except ask_edit.CreateCollision as conflict:
             if turn == ask_followup.MAX_FOLLOWUPS:
-                print("Nie rozstrzygnięto kolizji po dwóch doprecyzowaniach. Niczego nie zapisano.")
+                print("The conflict was not resolved after two follow-ups. Nothing was saved.")
                 raise Declined() from None
             question = ask_followup.clarify(question, conflict.path, workspace=conflict.workspace, reader=reader)
             if question is None:
-                print("Anulowano. Istniejący plik pozostaje bez zmian.")
+                print("Cancelled. The existing file stays unchanged.")
                 raise Declined() from None
     raise AssertionError("unreachable collision turn")

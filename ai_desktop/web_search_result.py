@@ -272,7 +272,7 @@ def _answer(raw, observed):
                 or re.search(r"(?i)[a-z][a-z0-9+.-]*://|www\.|\]\(|\[[0-9]+\]:", answer)):
             raise ValueError("references")
         check = "web-answer-render"
-        lines = [answer, "", "Źródła:"]
+        lines = [answer, "", "Sources:"]
         for index, url in enumerate(sources, 1):
             title = re.sub(r"([\\`*_{}\[\]<>()#+.!|~-])", r"\\\1", observed[url])
             # Inline code preserves literal URL punctuation/entities in Markdown

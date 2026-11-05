@@ -125,8 +125,13 @@ class Base(unittest.TestCase):
             observed.append(json.loads(approval.payload))
             if "discovery" in kwargs:
                 text = json.dumps(kwargs["discovery"])
-                for marker in ("content", "SYNTHETIC UNUSED", "mode=basic", "output=A", "office=1", "panels\":["):
+                for marker in ("SYNTHETIC UNUSED", "mode=basic", "output=A", "office=1", "panels\":["):
                     self.assertNotIn(marker, text, "discovery carried file content")
+                # A loaded Skill's own text is a procedure, not file data, and English prose may use the word "content".
+                steps = [dict(step, text="") if step.get("op") == "skill" else step
+                         for step in kwargs["discovery"].get("steps", ())]
+                self.assertNotIn("content", json.dumps(dict(kwargs["discovery"], steps=steps)),
+                                 "discovery carried file content")
             item = next(replies)
             return item(kwargs.get("discovery")) if callable(item) else item
 
@@ -213,7 +218,7 @@ class SkillsOnDemandTests(Base):
             self.run_flow([json.dumps({"action": "skill", "names": ["przyklad"]}), plan("list", sel("gizmo")),
                            read(sel("gizmo/settings.conf")), ANSWER], skills=self.load)
         self.assertNotIn("discovery", self.wire[-1])
-        self.assertIn("nie mieszczą się", self.output.getvalue())
+        self.assertIn("do not fit", self.output.getvalue())
 
     def test_consent_accepts_only_the_exact_bound_document_on_the_last_request(self):
         ledger_step = {"op": "skill", "name": "a", "status": "ok", "text": "t"}
@@ -403,7 +408,7 @@ class DenyAndAliasTests(Base):
 
     def test_denied_directory_or_file_cannot_be_listed_or_read_even_when_the_user_typed_it(self):
         out = self.refused([read(sel("vault/secret.txt")), ANSWER], question="Pokaż vault/secret.txt")
-        self.assertIn("nie jest dozwolony", out)
+        self.assertIn("not allowed", out)
         self.assertEqual(len(self.wire), 1)                              # a security refusal stops: no correction round
         out = self.refused([plan("list", sel("vault")), ANSWER])
         self.assertEqual(len(self.wire), 1)
@@ -426,7 +431,7 @@ class DenyAndAliasTests(Base):
         self.write_policy("plan_corrections = 0\n")
         out = self.refused([read(sel("GizmoSuite/settings-link")), ANSWER],
                            question="Pokaż GizmoSuite/settings-link")
-        self.assertIn("dowiązanie symboliczne", out)
+        self.assertIn("symbolic link", out)
 
     def test_alias_loops_broken_and_escaping_links_are_refused_with_a_recoverable_code(self):
         for name in ("loop-a/x", "ghost/x", "up/x"):
@@ -434,7 +439,7 @@ class DenyAndAliasTests(Base):
                 self.output.truncate(0)
                 self.write_policy("plan_corrections = 0\n")
                 out = self.refused([read(sel(name)), ANSWER], question="Pokaż " + name)
-                self.assertIn("Odmowa odczytu plików", out)
+                self.assertIn("File read refused", out)
                 self.assertEqual(self.reads, [])
 
     def test_the_alias_is_rechecked_and_a_swap_stops_the_question(self):
@@ -847,7 +852,7 @@ class InstructionPathHintTests(Base):
         self.write_policy("plan_corrections = 0\n")
         out = self.refused([read(sel("vault/secret.txt")), ANSWER],
                            instructions="Sekret: ~/.config/vault/secret.txt oraz ~/.config/gizmo/token.txt")
-        self.assertIn("nie jest dozwolony", out)
+        self.assertIn("not allowed", out)
         self.assertEqual(self.reads, [])
 
     def test_the_hint_must_match_on_path_boundaries(self):

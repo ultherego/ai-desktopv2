@@ -120,7 +120,7 @@ class SessionClientTests(unittest.TestCase):
                     patch.object(client.subprocess, "run", return_value=subprocess.CompletedProcess([], 0)) as run, \
                     redirect_stdout(output):
                 client.authenticate(quiet=quiet)
-            self.assertEqual("Uprawnienia administratora" in output.getvalue(), not quiet)
+            self.assertEqual("Administrator permissions" in output.getvalue(), not quiet)
             self.assertEqual(run.call_args.args[0], ["/usr/bin/sudo", "-v"])
             self.assertFalse(any(key in run.call_args.kwargs for key in ("stdin", "stdout", "stderr", "capture_output")))
 
@@ -172,22 +172,22 @@ class DailyConsentTests(unittest.TestCase):
         return result, out.getvalue(), started, transferred
 
     def test_enter_unknown_answer_and_refusal_never_escalate_or_send(self):
-        for answer in ("", "nie", "ANALIZUJ", "ANALIZUJ " + "0" * 64):
-            answers = iter([answer, "nie"])
+        for answer in ("", "nie", "tak", "t", "ANALIZUJ", "ANALIZUJ " + "0" * 64):
+            answers = iter([answer, "no"])
             code, output, started, sent = self.run_ui(lambda _: next(answers))
             self.assertEqual(code, 2)
             started.assert_not_called()
             sent.assert_not_called()
-            self.assertIn("wpisz tak", output)
+            self.assertIn("type yes", output)
 
     def test_short_confirmation_keeps_exact_payload_and_is_not_reusable(self):
         report = report_fixture()
         gate = AnalysisConsent(report)
-        code, _, started, sent = self.run_ui("TAK", gate=gate, report=report)
+        code, _, started, sent = self.run_ui("YES", gate=gate, report=report)
         self.assertEqual(code, 0)
         self.assertEqual(sent.call_args.args[0].sha256, gate.sha256)
         self.assertEqual(sent.call_args.args[0].payload, gate.payload)
-        code, _, started, sent = self.run_ui("tak", gate=gate, report=report)
+        code, _, started, sent = self.run_ui("yes", gate=gate, report=report)
         self.assertEqual(code, 2)
         started.assert_not_called()
         sent.assert_not_called()
@@ -197,7 +197,7 @@ class DailyConsentTests(unittest.TestCase):
         def reader(prompt):
             self.assertEqual(prompt, PROMPTS["transfer"])
             report["kernel"] = "6.9.2-cachyos"
-            return "tak"
+            return "yes"
         code, _, started, sent = self.run_ui(reader, report=report)
         self.assertEqual(code, 2)
         started.assert_not_called()
@@ -215,7 +215,7 @@ class DailyConsentTests(unittest.TestCase):
     def test_repeated_invalid_answers_do_not_refresh_expired_preview(self):
         clock = [0]
         gate = AnalysisConsent(report_fixture(), clock=lambda: clock[0])
-        answers = iter(["", "?", "yes", "unknown", "tak"])
+        answers = iter(["", "?", "tak", "unknown", "yes"])
         def reader(_):
             clock[0] += 40
             return next(answers)
@@ -234,7 +234,7 @@ class DailyConsentTests(unittest.TestCase):
                 yield
             finally:
                 events.append("cleanup")
-        code, _, _, sent = self.run_ui("tak", session=session, gate=gate)
+        code, _, _, sent = self.run_ui("yes", session=session, gate=gate)
         self.assertEqual(code, 2)
         sent.assert_not_called()
         self.assertEqual(events, ["cleanup"])
@@ -255,7 +255,7 @@ class DailyConsentTests(unittest.TestCase):
                 if failure:
                     raise failure
                 return "wynik"
-            code, output, started, sent = self.run_ui("tak", session=session, send=send)
+            code, output, started, sent = self.run_ui("yes", session=session, send=send)
             self.assertEqual(code, 0 if failure is None else 2)
             self.assertEqual(events, ["start", "send", "cleanup"])
             self.assertEqual(sent.call_count, 1)
@@ -267,7 +267,7 @@ class DailyConsentTests(unittest.TestCase):
         def session():
             yield
             raise AnalysisDenied("cleanup")
-        code, output, _, _ = self.run_ui("tak", session=session)
+        code, output, _, _ = self.run_ui("yes", session=session)
         self.assertEqual(code, 2)
         self.assertNotIn("ANALYSIS: PASS", output)
         self.assertIn("ai-desktop stop", output)

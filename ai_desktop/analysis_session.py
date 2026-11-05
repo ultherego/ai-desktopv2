@@ -36,21 +36,21 @@ def status():
         installation_ready()
         values = properties(manager_unit(identity()))
         active = values.get("ActiveState") not in ("inactive", "failed")
-        print("Pliki i jednostki: gotowe. Sesja analizy: " + ("uruchomiona." if active else "zatrzymana."))
-        print("Wersja klienta i logowanie: niesprawdzone offline; kontrola przy zatwierdzonej analizie.")
-        print("Zapytaj: ai-desktop ask")
-        print("Twoje dostępy ask: ~/.config/ai-desktop/permissions.toml")
-        print("Podgląd: ai-desktop ask --preview")
-        print("Rozmowa: ai-desktop ask (zgoda na rozmowę, potem sudo na czas sesji)")
-        print("Zmień pliki i przetestuj: ai-desktop task run --help")
-        print("Logowanie: ai-desktop login")
-        print("Przerwanie lub odzyskanie sesji: ai-desktop stop")
+        print("Files and units: ready. Analysis session: " + ("running." if active else "stopped."))
+        print("Client version and login: not checked offline; they are checked when you approve an analysis.")
+        print("Ask: ai-desktop ask")
+        print("Your ask permissions: ~/.config/ai-desktop/permissions.toml")
+        print("Preview: ai-desktop ask --preview")
+        print("Conversation: ai-desktop ask (consent to the conversation, then sudo for the session)")
+        print("Change files and test them: ai-desktop task run --help")
+        print("Login: ai-desktop login")
+        print("Stop or recover a session: ai-desktop stop")
         print("STATUS: PASS auth=unchecked network=unused")
         return 0
     except (AnalysisDenied, OSError, ValueError, KeyError, subprocess.SubprocessError) as exc:
         reason = exc.reason if isinstance(exc, AnalysisDenied) else "runtime"
         print("STATUS: REFUSED reason=" + reason)
-        print("Sprawdź instalację pakietu i dostępność systemd. Status nie uruchamia klienta ani logowania.")
+        print("Check the package installation and that systemd is available. Status does not start the client or a login.")
         return 2
 
 
@@ -67,7 +67,7 @@ def authenticate(*, quiet=False):
     identity(terminal=True)
     trusted_file(BOOTSTRAP)
     if not quiet:
-        print("Uprawnienia administratora sa potrzebne tylko do obslugi osobnej sesji AI Desktop.", flush=True)
+        print("Administrator permissions are needed only to manage the separate AI Desktop session.", flush=True)
     try:
         result = subprocess.run(["/usr/bin/sudo", "-v"], env=ENV, check=False, close_fds=True, timeout=120)
     except (OSError, subprocess.SubprocessError):
@@ -146,7 +146,7 @@ def administrative(action, *, allow=False, details=False):
         print("SESSION: REFUSED reason=input")
         return 2
     if action == "login" and allow is not True:
-        print("Aby wybrać logowanie, uruchom: ai-desktop login")
+        print("To choose a login, run: ai-desktop login")
         return 2
     try:
         authenticate(quiet=True) if action == "login" and not details else authenticate()

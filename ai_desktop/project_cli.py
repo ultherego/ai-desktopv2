@@ -1,4 +1,4 @@
-"""`ai-desktop project KATALOG`: one read-only project, explored by the model through the controller.
+"""`ai-desktop project DIRECTORY`: one read-only project, explored by the model through the controller.
 
 Same transport, pacing and consent rules as `ai-desktop material`: one consent per question, a
 step-by-step visible loop (list, find, search, read), at most 8 requests / 768 KiB, nothing sent
@@ -38,22 +38,26 @@ from .terminal_consent import confirm
 
 Binding = collections.namedtuple("Binding", "material_id sha256")
 ROOT_HINTS = {
-    "PROJECT_ROOT": "Katalog musi być zwykłym katalogiem (nie dowiązaniem) w zakresie files.read z permissions.toml.",
-    "PROJECT_POLICY": "Polityka plików zmieniła się albo jest nieprawidłowa; uruchom polecenie ponownie.",
+    "PROJECT_ROOT": "This must be a regular directory (not a link) within files.read in permissions.toml.",
+    "PROJECT_POLICY": "The file policy changed or is invalid. Run the command again.",
 }
-SKIP_LABELS = (("denied", "zabronione lub poza zakresem"), ("links", "dowiązania"), ("special", "pliki specjalne"),
-               ("unsafe", "niebezpieczne atrybuty lub twarde linki"), ("vcs", "katalogi .git"),
-               ("other", "inne pominięte"))
-REASONS = {"files": "limit liczby plików", "entries": "limit liczby wpisów", "depth": "limit głębokości",
-           "unreadable": "nieczytelny katalog"}
-HELP = """Zadaj pytanie o projekt zwykłym zdaniem; program sam dobierze pliki i fragmenty. Możesz też poprosić o zmianę plików
-(najpierw zobaczysz diff i zatwierdzisz zapis) albo napisać „rób dalej”. Duże wklejki trafiają do Claude jako załączniki; Ctrl+C ×2 kończy.
-Opcjonalnie (polecenia lokalne, nic nie wysyłają):
-  /pliki [KATALOG]  pokaż nazwy plików (do 40)
-  /szukaj TEKST     szukaj dosłownie w treści plików projektu (do 20 trafień)
-  /odswiez          przeskanuj katalog ponownie (dzieje się też przed każdym pytaniem)
-  /rejestr          co aplikacja przekazała do Claude w tej sesji
-  /koniec           zakończ (też Ctrl+D)"""
+SKIP_LABELS = (("denied", "denied or out of scope"), ("links", "links"), ("special", "special files"),
+               ("unsafe", "unsafe attributes or hard links"), ("vcs", ".git directories"),
+               ("other", "other skipped"))
+REASONS = {"files": "file count limit", "entries": "entry count limit", "depth": "depth limit",
+           "unreadable": "unreadable directory"}
+HELP = """Ask about the project in a plain sentence; the program picks the files and parts it needs. You can also ask for file changes
+(you see a diff and approve the save first) or type "carry on". Large pastes go to Claude as attachments; Ctrl+C twice quits.
+Optional (local commands, nothing is sent):
+  /files [DIR]      show file names (up to 40)
+  /search TEXT      search project file contents for this exact text (up to 20 matches)
+  /refresh          scan the directory again (also happens before every question)
+  /log              what the app handed to Claude in this session
+  /exit             quit (also Ctrl+D)"""
+
+
+def _entries(count):
+    return "1 entry" if count == 1 else "%d entries" % count
 
 
 def _source(path, first, last):
@@ -71,11 +75,11 @@ def build_edit_plan(project, snapshot, decision):
     scopes, so the model never chooses its own authority."""
     policy = snapshot.policy
     if policy is None:
-        raise EditRefused("Brak permissions.toml: zmiana plików wymaga zakresu zapisu.")
+        raise EditRefused("No permissions.toml: changing files needs a write scope.")
     root = project.root
     writes = [s for s in policy.write_scopes() if s.mode == "tree" and (root == s.base or root.startswith(s.base + "/"))]
     if not writes:
-        raise EditRefused("files.write w permissions.toml nie obejmuje tego projektu (potrzebny wpis typu ~/Projekty/**).")
+        raise EditRefused("files.write in permissions.toml does not cover this project (it needs an entry like ~/Projects/**).")
     write = max(writes, key=lambda s: len(s.base))
     reads = [s for s in policy.scopes() if s.mode == "tree"]
 
@@ -87,52 +91,52 @@ def build_edit_plan(project, snapshot, decision):
         for path in decision["files"]:
             entry = project._by_path.get(path)
             if entry is None:
-                raise EditRefused(recipient("Claude wskazał plik spoza indeksu projektu."))
+                raise EditRefused(recipient("Claude named a file that is not in the project index."))
             if entry.size > task_contract.MAX_FILE:
-                raise EditRefused("Plik %s przekracza limit 64 KiB trybu edycji." % _safe(path, 80))
+                raise EditRefused("File %s is over the 64 KiB limit for edit mode." % _safe(path, 80))
             covering = [s for s in reads if (root + "/" + path).startswith(s.base + "/")]
             if not covering:
-                raise EditRefused("Plik %s nie leży w zakresie files.read." % _safe(path, 80))
+                raise EditRefused("File %s is not within files.read." % _safe(path, 80))
             scope = max(covering, key=lambda s: len(s.base))
             selectors.append({"id": "f%d" % scope.index, "path": relative(path, scope.base)})
             existing.append(task_contract.path(relative(path, write.base)))
         for path in decision["create"]:
             if path in project._by_path:
-                raise EditRefused("Plik %s już istnieje; nie nadpisuję go jako nowego." % _safe(path, 80))
+                raise EditRefused("File %s already exists and is not overwritten as a new file." % _safe(path, 80))
             parent = path.rpartition("/")[0]
             if parent and not any(e.path.startswith(parent + "/") for e in project.files):
-                raise EditRefused("Katalog %s nie istnieje; tryb edycji nie tworzy katalogów." % _safe(parent, 80))
+                raise EditRefused("Directory %s does not exist; edit mode does not create directories." % _safe(parent, 80))
             created.append(task_contract.path(relative(path, write.base)))
     except ValueError as exc:
         if isinstance(exc, EditRefused):
             raise
-        raise EditRefused("Ścieżka nie nadaje się do trybu edycji (do 5 poziomów od katalogu zakresu zapisu, "
-                          "nazwy z liter, cyfr, kropki, _ i -).") from None
+        raise EditRefused("This path cannot be used in edit mode (up to 5 levels below the write scope directory, "
+                          "names made of letters, digits, dots, _ and -).") from None
     plan = {"action": "edit", "write": "w%d" % write.index, "files": selectors, "create": created, "check": decision["check"]}
     try:
         return parse_plan(json.dumps(plan), snapshot.access), existing, created
     except ValueError:
-        raise EditRefused("Zmiana nie mieści się w zakresach z permissions.toml.") from None
+        raise EditRefused("This change is outside the scopes in permissions.toml.") from None
 
 
 def build_delete_plan(project, snapshot, decision):
     """Map project-relative deletions onto the owner's write scope; returns (scope, workspace, names)."""
     policy = snapshot.policy
     if policy is None:
-        raise EditRefused("Brak permissions.toml: usuwanie plików wymaga zakresu zapisu.")
+        raise EditRefused("No permissions.toml: deleting files needs a write scope.")
     root = project.root
     writes = [s for s in policy.write_scopes() if s.mode == "tree" and (root == s.base or root.startswith(s.base + "/"))]
     if not writes:
-        raise EditRefused("files.write w permissions.toml nie obejmuje tego projektu (potrzebny wpis typu ~/Projekty/**).")
+        raise EditRefused("files.write in permissions.toml does not cover this project (it needs an entry like ~/Projects/**).")
     scope = max(writes, key=lambda s: len(s.base))
     names, absolute = [], []
     try:
         for path in decision["delete"]:
             entry = project._by_path.get(path)
             if entry is None:
-                raise EditRefused(recipient("Claude wskazał plik spoza indeksu projektu."))
+                raise EditRefused(recipient("Claude named a file that is not in the project index."))
             if entry.size > workspace_trash.MAX_FILE_BYTES:
-                raise EditRefused("Plik %s jest za duży do bezpiecznego usunięcia (limit 16 MiB)." % _safe(path, 80))
+                raise EditRefused("File %s is too large to delete safely (limit 16 MiB)." % _safe(path, 80))
             names.append(task_contract.path((root + "/" + path)[len(scope.base) + 1:]))
             absolute.append(root + "/" + path)
         policy.require_write(tuple(absolute), index=scope.index)
@@ -140,20 +144,20 @@ def build_delete_plan(project, snapshot, decision):
     except EditRefused:
         raise
     except ValueError:
-        raise EditRefused("Usunięcie nie mieści się w zakresach z permissions.toml albo ścieżka jest zbyt głęboka "
-                          "(do 5 poziomów od katalogu zakresu zapisu).") from None
+        raise EditRefused("This deletion is outside the scopes in permissions.toml or the path is too deep "
+                          "(up to 5 levels below the write scope directory).") from None
     return scope, workspace, names
 
 
 def build_parser():
     from .run_controls import add_arguments
     parser = argparse.ArgumentParser(prog="ai-desktop project",
-                                     description="Pracuj z jednym katalogiem projektu: analiza do odczytu, zmiany i usuwanie dopiero po Twoim zatwierdzeniu")
-    parser.add_argument("path", help="Katalog w zakresie files.read z permissions.toml")
+                                     description="Work with one project directory: read-only analysis, with changes and deletions only after you approve them")
+    parser.add_argument("path", help="Directory within files.read in permissions.toml")
     add_arguments(parser, session=True)
     parser.add_argument("--format", choices=("auto", "plain", "markdown"), default="auto")
     parser.add_argument("--v", "--verbose", "-v", "--details", dest="details", action="store_true",
-                        help="Pokaż dokładny ładunek i diagnostykę")
+                        help="Show the exact payload and diagnostics")
     return parser
 
 
@@ -167,7 +171,7 @@ class ProjectSession(Session):
         self.window = window or SessionWindow(quiet=not args.details, clock=clock)
         self.pacer = Pacer(clock=clock, sleep=sleep)
         self.tasks, self.history = [], []
-        self.edit_transfers = []                # whole files handed over for a proposed change, shown by /rejestr
+        self.edit_transfers = []                # whole files handed over for a proposed change, shown by /log
         self.prompt_session = PromptSession()
         self._skipped_shown = None              # last skipped-entry count already reported after an answer
         self.progress = ""                      # the model's own working summary (what is done, what next), session-only
@@ -183,9 +187,9 @@ class ProjectSession(Session):
         if not self.edit_transfers or any(task["session"].ledger() for task in self.tasks):
             super().ledger()
         for number, item in enumerate(self.edit_transfers, 1):
-            print("Edycja %d: %d plików, %d B, stan: %s: %s" % (
+            print("Edit %d: %d file(s), %d B, state: %s: %s" % (
                 number, len(item["files"]), item["bytes"], item["state"],
-                ", ".join(_safe(path, 60) for path in item["files"][:8]) or "tylko nowe pliki"))
+                ", ".join(_safe(path, 60) for path in item["files"][:8]) or "new files only"))
 
     # --- optional local helpers --------------------------------------------------------
     def files(self, prefix):
@@ -194,11 +198,11 @@ class ProjectSession(Session):
         try:
             items, following, total = self.project.listing(prefix.strip(), 0, 40)
         except ProjectError:
-            print("Podaj katalog względny w projekcie, np. /pliki src.")
+            print("Enter a directory relative to the project, e.g. /files src.")
             return
         for entry in items:
             print("%s  (%d B)" % (_safe(entry.path), entry.size))
-        print("(pokazano %d z %d plików)" % (len(items), total) if following else "(%d plików)" % total)
+        print("(showing %d of %d files)" % (len(items), total) if following else "(%d file(s))" % total)
 
     def search(self, needle):
         if not self._refresh():
@@ -207,17 +211,17 @@ class ProjectSession(Session):
             result = self.project.search_text(needle)
         except ProjectError as exc:
             print(ROOT_HINTS["PROJECT_POLICY"] if exc.code == "PROJECT_POLICY"
-                  else "Podaj niepusty tekst do 256 bajtów bez znaków sterujących.")
+                  else "Enter non-empty text of up to 256 bytes, without control characters.")
             return
         for hit in result.hits:
             print("%s:%d: %s" % (_safe(hit.path), hit.line, _safe(hit.text)))
         if not result.hits:
-            print("Brak trafień w przeszukanych plikach." if result.complete else "Brak trafień w tej partii; przeszukanie nie objęło całości.")
+            print("No matches in the files searched." if result.complete else "No matches in this batch; the search did not cover everything.")
         elif not result.complete:
-            print("Są kolejne trafienia lub nieprzeszukane pliki; zawęź frazę.")
+            print("There are more matches or unsearched files; narrow the phrase.")
         skipped = {k: v for k, v in result.skipped.items() if v}
         if skipped:
-            print("Pominięte w wyszukiwaniu: %s." % ", ".join("%s: %d" % kv for kv in skipped.items()))
+            print("Skipped in the search: %s." % ", ".join("%s: %d" % kv for kv in skipped.items()))
 
     # --- a question in plain words -----------------------------------------------------
     def question(self, text, span=None):
@@ -227,7 +231,7 @@ class ProjectSession(Session):
         try:
             text = validate_question(text.strip())
         except ValueError:
-            print("Pytanie ma być jedną linią zwykłego tekstu do %d bajtów." % MAX_QUESTION_BYTES)
+            print("The question must be one line of plain text, up to %d bytes." % MAX_QUESTION_BYTES)
             return
         pastes = self.prompt_session.take_pastes(text)
         self._pastes = pastes
@@ -247,7 +251,7 @@ class ProjectSession(Session):
             self._interrupted()
             approved = False
         if not approved:
-            print("Anulowano. Dane nie zostały wysłane.")
+            print("Cancelled. No data was sent.")
             return
         self._open_section()
         try:
@@ -266,7 +270,7 @@ class ProjectSession(Session):
                 self._interrupted()
                 again = False
             if not again:
-                print("Zatrzymano po etapie %d z %d; wnioski częściowe powyżej." % (stage, MAX_STAGES))
+                print("Stopped after stage %d of %d; partial conclusions are above." % (stage, MAX_STAGES))
                 print()
                 return
             stage += 1
@@ -276,14 +280,14 @@ class ProjectSession(Session):
                         visited=loop.visited, stage=stage)
             grant = MaterialGrant(self.binding.material_id, self.binding.sha256, text[:256], self._clock() + GRANT_SECONDS)
             session = TransferSession(self.binding, grant, clock=self._clock)
-            self.tasks.append({"session": session, "label": "%s: %s (etap %d)" % (self.name, _safe(text, 50), stage)})
-            self._open_section("Etap %d z %d" % (stage, MAX_STAGES))
+            self.tasks.append({"session": session, "label": "%s: %s (stage %d)" % (self.name, _safe(text, 50), stage)})
+            self._open_section("Stage %d of %d" % (stage, MAX_STAGES))
             try:
                 partial = self._run(text, loop, session)
             finally:
                 self._close_section()
         if partial is not None:
-            print("Osiągnięto limit %d etapów; wnioski częściowe powyżej. Napisz „kontynuuj”, aby zacząć kolejną serię." % MAX_STAGES)
+            print("Reached the limit of %d stages; partial conclusions are above. Type \"continue\" to start another round." % MAX_STAGES)
             print()
 
     def _coverage_line(self, loop, stage):
@@ -291,7 +295,7 @@ class ProjectSession(Session):
         total = sum(e.size for e in self.project.files)
         files = len(loop.visited)
         size = sum(self.project._by_path[p].size for p in loop.visited if p in self.project._by_path)
-        return (recipient("Analiza częściowa, etap %d z %d: Claude przeczytał %d z %d plików (%s z %s w indeksie).") % (
+        return (recipient("Partial analysis, stage %d of %d: Claude read %d of %d files (%s of %s in the index).") % (
             stage, MAX_STAGES, files, len(self.project.files),
             "%.1f KiB" % (size / 1024), "%.1f MiB" % (total / 1048576)))
 
@@ -301,12 +305,12 @@ class ProjectSession(Session):
         try:
             self.project.scan()
         except (ProjectError, ValueError):
-            print("Nie udało się odświeżyć indeksu (zmiana polityki lub katalogu); uruchom polecenie ponownie.")
+            print("Could not refresh the index (the policy or directory changed). Run the command again.")
             return False
         self.binding = Binding(self.project.project_id, self.project.manifest_sha256())
         now = self.project.stats["indexed"]
         if announce or now != before:
-            print("Indeks odświeżony: %d plików%s." % (now, "" if now == before else " (było %d)" % before))
+            print("Index refreshed: %d file(s)%s." % (now, "" if now == before else " (was %d)" % before))
         return True
 
     def _scope(self, text, loop):
@@ -317,34 +321,34 @@ class ProjectSession(Session):
         if not self.args.details:
             # Compact by default: what leaves the computer in one line, extras only when present.
             total = self._skipped_total()
-            print(recipient("Do Claude: pytanie, nazwy plików i fragmenty z %s (%d plików%s%s)") % (
-                self.name, stats["indexed"], ", pominięto %d wpisów" % total if total else "",
-                "" if self.project.complete else "; INDEKS NIEKOMPLETNY: %s" % REASONS.get(self.project.reason, "limit")))
+            print(recipient("To Claude: the question, file names and parts from %s (%d file(s)%s%s)") % (
+                self.name, stats["indexed"], ", %s skipped" % _entries(total) if total else "",
+                "" if self.project.complete else "; INDEX INCOMPLETE: %s" % REASONS.get(self.project.reason, "limit")))
             extras = []
             if pasted:
-                extras.append("wklejki: " + ", ".join("#%d (%d wierszy, %d B)" % (o["id"], o["lines"], len(o["text"].encode("utf-8")))
+                extras.append("pastes: " + ", ".join("#%d (%d lines, %d B)" % (o["id"], o["lines"], len(o["text"].encode("utf-8")))
                                                        for o in pasted))
             if loop.history:
-                extras.append("kontekst: %d poprzednie pytania i odpowiedzi" % len(loop.history))
+                extras.append("context: %d earlier question(s) and answer(s)" % len(loop.history))
             if extras:
                 print(" · ".join(extras))
             return
-        print(rule("Do wysłania"))
-        print(field("Pytanie", _safe(text, 200)))
-        print(field("Projekt", "%s (%s), %d plików%s" % (
+        print(rule("To send"))
+        print(field("Question", _safe(text, 200)))
+        print(field("Project", "%s (%s), %d file(s)%s" % (
             self.name, self.project.project_id[:8], stats["indexed"],
-            "" if self.project.complete else " — INDEKS NIEKOMPLETNY (%s)" % REASONS.get(self.project.reason, "limit"))))
+            "" if self.project.complete else " — INDEX INCOMPLETE (%s)" % REASONS.get(self.project.reason, "limit"))))
         if skipped:
-            print(field("Pominięto", *skipped))
+            print(field("Skipped", *skipped))
         if pasted:
-            print(field("Wklejki", *["#%d: %d wierszy, %d B" % (o["id"], o["lines"], len(o["text"].encode("utf-8"))) for o in pasted]))
+            print(field("Pastes", *["#%d: %d lines, %d B" % (o["id"], o["lines"], len(o["text"].encode("utf-8"))) for o in pasted]))
         if loop.history:
-            print(field("Kontekst", "%d wcześniejsze(-ych) pytań i odpowiedzi z tej sesji (skrócone)" % len(loop.history)))
-        print(field("Dane", recipient("pytanie oraz nazwy plików, trafienia i fragmenty, o które poprosi Claude")))
-        print(field("Bez", "Internetu, zapisu plików i uruchamiania kodu · limit czasu %d s" % GRANT_SECONDS))
-        print(field("Treść", recipient("Claude sam poprosi o listę nazw plików, wyszukiwanie lub odczyt wierszy plików z tego projektu."),
-                    "Nazwy plików, trafienia i fragmenty są wysyłane jako dane; reszta projektu nie jest wysyłana.",
-                    "Limity: do %d żądań, łącznie do %d KiB danych; każdy krok zobaczysz na bieżąco." % (MAX_STEPS, TOTAL_BYTES // 1024)))
+            print(field("Context", "%d earlier question(s) and answer(s) from this session (shortened)" % len(loop.history)))
+        print(field("Data", recipient("the question, plus the file names, matches and parts Claude asks for")))
+        print(field("Without", "Internet, file writes or running code · time limit %d s" % GRANT_SECONDS))
+        print(field("Content", recipient("Claude will ask for a list of file names, a search or lines of files from this project."),
+                    "File names, matches and parts are sent as data; the rest of the project is not sent.",
+                    "Limits: up to %d requests, up to %d KiB of data in total; you will see each step as it happens." % (MAX_STEPS, TOTAL_BYTES // 1024)))
         print(SEPARATOR)
 
     def _run(self, text, loop, session):
@@ -357,8 +361,8 @@ class ProjectSession(Session):
                 return self._stopped(loop)
             if self.args.details:
                 if number == 1:
-                    self._line("=== DOKŁADNY ŁADUNEK (żądanie 1) ===\n" + packet.payload)
-                self._line("ŻĄDANIE %d: SHA256 %s, %d B danych" % (number, packet.sha256, packet.data_bytes))
+                    self._line("=== EXACT PAYLOAD (request 1) ===\n" + packet.payload)
+                self._line("REQUEST %d: SHA256 %s, %d B of data" % (number, packet.sha256, packet.data_bytes))
             delivery = self._deliver(session, packet, on_handoff=loop.mark_handed_off)
             if delivery is None:
                 return
@@ -368,8 +372,8 @@ class ProjectSession(Session):
             except ValueError:
                 decision = plain_answer(delivery.answer)          # prose instead of an action: shown, but without sources
                 if decision is None:
-                    print(recipient("Odpowiedź Claude nie ma wymaganego formatu; zadanie zatrzymano bez ponowienia."))
-                    print("Początek odpowiedzi: %s" % _safe(str(delivery.answer).replace("\n", " "), 4000 if self.args.details else 160))
+                    print(recipient("The answer from Claude is not in the required format; the task was stopped without a retry."))
+                    print("Start of the answer: %s" % _safe(str(delivery.answer).replace("\n", " "), 4000 if self.args.details else 160))
                     return self._stopped(loop)
                 loop.format_note = True
             action = decision["action"]
@@ -379,71 +383,71 @@ class ProjectSession(Session):
                 return self._edit(text, loop, decision)
             if action == "ask_user":
                 self._close_section()
-                print(recipient("Claude pyta: %s") % _safe(decision["text"], 500))
-                self.remember(text, recipient("[Claude zapytał: %s]") % decision["text"])
+                print(recipient("Claude asks: %s") % _safe(decision["text"], 500))
+                self.remember(text, recipient("[Claude asked: %s]") % decision["text"])
                 return
             if number == loop.max_steps:
-                print(recipient("Claude nie odpowiedział w ostatnim kroku."))
+                print(recipient("Claude did not answer in the last step."))
                 return self._stopped(loop)
             if loop.repeated(decision):
-                print(recipient("Claude powtórzył wcześniejszą prośbę bez postępu; zadanie zatrzymano."))
+                print(recipient("Claude repeated an earlier request without progress; the task was stopped."))
                 return self._stopped(loop)
             try:
                 note = loop.execute(decision)
             except ValueError:                  # ProjectError is a ValueError: a changed policy or directory
-                print("Polityka plików zmieniła się w trakcie zadania; zatrzymano.")
+                print("The file policy changed during the task, so it was stopped.")
                 return self._stopped(loop)
-            self._line(recipient("  Krok %d/%d: Claude poprosił o %s") % (number, loop.max_steps, _safe(note, 200)))
+            self._line(recipient("  Step %d/%d: Claude asked for %s") % (number, loop.max_steps, _safe(note, 200)))
         return self._stopped(loop)
 
     def _delivered_lines(self, loop):
         """What Claude really received, one entry per file, as display lines."""
         received, size = loop.delivered_summary()
         if not received:
-            return [], "żadnych wierszy plików", size
+            return [], "no file lines", size
         lines = ["%s: %s" % (_safe(path, 80), lines_label(spans[:8]) + (" …" if len(spans) > 8 else ""))
                  for path, spans in list(received.items())[:10]]
         if len(received) > 10:
-            lines.append("… (+%d plików)" % (len(received) - 10))
+            lines.append("… (+%d more file(s))" % (len(received) - 10))
         return lines, "", size
 
     def _notes(self, loop, rejected=()):
         """Things a reader must not assume away: shown even without --v, and nothing else."""
         notes = []
         if rejected:
-            notes.append(("Odrzucone", [_source(p, a, b) for p, a, b in rejected]
-                          + [recipient("(Claude podał źródła, których nie otrzymał)")]))
+            notes.append(("Rejected", [_source(p, a, b) for p, a, b in rejected]
+                          + [recipient("(Claude cited sources it did not receive)")]))
         if not self.project.complete:
-            notes.append(("Indeks", [recipient("niekompletny (%s) — mogą istnieć pliki, których Claude nie mógł zobaczyć") %
+            notes.append(("Index", [recipient("incomplete (%s) — there may be files Claude could not see") %
                                      REASONS.get(self.project.reason, "limit")]))
         partial = [needle for needle, complete in loop.searches if not complete]
         if partial:
-            notes.append(("Niepełne", ["wyszukiwanie (budżet lub kolejne strony): " + ", ".join("„%s”" % _safe(n, 40) for n in partial)]))
+            notes.append(("Incomplete", ["search (budget or further pages): " + ", ".join('"%s"' % _safe(n, 40) for n in partial)]))
         if loop.format_note:
-            notes.append(("Format", [recipient("Claude odpowiedział zwykłym tekstem zamiast ustalonej akcji — źródła nie są potwierdzone.")]))
+            notes.append(("Format", [recipient("Claude answered in plain text instead of the agreed action; sources are not confirmed.")]))
         if loop.changed:
-            notes.append(("Zmienione", [", ".join(_safe(p, 80) for p in loop.changed[:8]) + " (w trakcie zadania lub po skanie)"]))
+            notes.append(("Changed", [", ".join(_safe(p, 80) for p in loop.changed[:8]) + " (during the task or after the scan)"]))
         return notes
 
     def _received_field(self, loop):
         lines, empty, size = self._delivered_lines(loop)
         if not lines:
-            return field(recipient("Claude dostał"), "%s; reszta projektu nie została wysłana" % empty)
-        return field(recipient("Claude dostał"), *lines, "(%s; reszta projektu nie została wysłana)" % (
-            "%d B odczytanych fragmentów" % size if size else "tylko wyniki wyszukiwania"))
+            return field(recipient("Claude received"), "%s; the rest of the project was not sent" % empty)
+        return field(recipient("Claude received"), *lines, "(%s; the rest of the project was not sent)" % (
+            "%d B of parts read" % size if size else "search results only"))
 
     def _skipped_field(self):
         stats = self.project.stats
         skipped = ["%s: %d" % (label, stats[key]) for key, label in SKIP_LABELS if stats[key]]
-        return field("Poza zasięgiem", *skipped) if skipped else None
+        return field("Out of reach", *skipped) if skipped else None
 
     def _edit(self, text, loop, decision):
         from .run_controls import require_changes
         try:
             require_changes()
         except AnalysisDenied:
-            print("Ten agent pracuje tylko do odczytu. Propozycja zmiany została odrzucona.")
-            return self._remember_edit(text, "profil agenta zezwala wyłącznie na odczyt")
+            print("This agent is read-only. The proposed change was rejected.")
+            return self._remember_edit(text, "the agent profile allows reading only")
         """Claude proposes a change: map it to the owner's write policy, ask once, then hand over to the proven
         ask/task pipeline (copy test, full diff, separate write consent, rollback). Nothing is written here."""
         self._close_section()
@@ -459,35 +463,35 @@ class ProjectSession(Session):
                     _, raw = permissions.read_bounded(snapshot.policy, self.project.root + "/" + path,
                                                       task_contract.MAX_FILE)
                 except ValueError:
-                    raise EditRefused("Plik %s jest niedostępny lub zmienił się od analizy. Zadaj pytanie ponownie." % _safe(path, 80)) from None
+                    raise EditRefused("File %s is unavailable or changed since the analysis. Ask again." % _safe(path, 80)) from None
                 version = task_workspace.sha(raw)
                 if loop.fully_read(path) and version != loop.delivered_versions.get(path):
-                    raise EditRefused("Plik %s zmienił się od analizy. Zadaj pytanie ponownie, aby pracować na aktualnej wersji." % _safe(path, 80))
+                    raise EditRefused("File %s changed since the analysis. Ask again to work on the current version." % _safe(path, 80))
                 versions[name] = version
             blocker = self._edit_blocker(snapshot, plan)
             if blocker:
                 raise EditRefused(blocker)
         except (EditRefused, ProjectError, assistant_flow.AccessDenied, AnalysisDenied) as exc:
-            print(rule("Zmiana plików"))
-            print(field("Odmowa", str(exc) if isinstance(exc, EditRefused) else "Polityka plików uniemożliwia zmianę."))
+            print(rule("File change"))
+            print(field("Refused", str(exc) if isinstance(exc, EditRefused) else "The file policy does not allow this change."))
             print(SEPARATOR)
             print()
-            return self._remember_edit(text, "propozycja zmiany odrzucona przez aplikację")
+            return self._remember_edit(text, "proposed change rejected by the app")
         # Content Claude has not seen yet would leave the computer in the edit request: that needs its own yes.
         # A new file, or files Claude already read whole in this task, add nothing new: no second question.
         unsent = [path for path in decision["files"] if not loop.fully_read(path)]
         summary = " · ".join(part for part in (
-            "nowe: " + ", ".join(_safe(p, 80) for p in decision["create"]) if created else "",
-            "do zmiany: " + ", ".join(_safe(p, 80) for p in decision["files"]) if existing else "",
-            "sprawdzenie: " + decision["check"]) if part)
+            "new: " + ", ".join(_safe(p, 80) for p in decision["create"]) if created else "",
+            "to change: " + ", ".join(_safe(p, 80) for p in decision["files"]) if existing else "",
+            "check: " + decision["check"]) if part)
         if unsent:
-            print(rule("Zmiana plików"))
-            print(field("Do zmiany", *[_safe(p, 80) for p in decision["files"]]))
+            print(rule("File change"))
+            print(field("To change", *[_safe(p, 80) for p in decision["files"]]))
             if created:
-                print(field("Nowe", *[_safe(p, 80) for p in decision["create"]]))
-            print(field("Sprawdzenie", decision["check"]))
-            print(field("Dalej", recipient("treść plików, których Claude jeszcze nie widział (%s), pójdzie do niego w osobnym zadaniu;") %
-                        ", ".join(_safe(p, 60) for p in unsent), "zapis dopiero po obejrzeniu diffu i osobnej zgodzie."))
+                print(field("New", *[_safe(p, 80) for p in decision["create"]]))
+            print(field("Check", decision["check"]))
+            print(field("Next", recipient("the content of files Claude has not seen yet (%s) goes to Claude in a separate task;") %
+                        ", ".join(_safe(p, 60) for p in unsent), "saving happens only after you see the diff and give separate consent."))
             print(SEPARATOR)
             try:
                 approved = confirm("project-edit", reader=self.reader)
@@ -497,15 +501,15 @@ class ProjectSession(Session):
                 self._interrupted()
                 approved = False
             if not approved:
-                print("Anulowano. Treść plików nie została wysłana, nic nie zapisano.")
+                print("Cancelled. File contents were not sent. Nothing was saved.")
                 print()
-                return self._remember_edit(text, "użytkownik odrzucił propozycję zmiany")
+                return self._remember_edit(text, "the user rejected the proposed change")
         else:
-            print("Zmiana plików — %s. Przygotowuję diff…" % summary)
+            print("File change — %s. Preparing the diff…" % summary)
         code = self._run_edit(request_text, snapshot, plan, versions)
         print()
-        return self._remember_edit(text, "zmiana zapisana po zgodzie użytkownika" if code == 0
-                                   else "zmiana NIE została zapisana (odrzucona, niezaliczony test albo błąd)")
+        return self._remember_edit(text, "change saved after the user's consent" if code == 0
+                                   else "change NOT saved (rejected, failed test or error)")
 
     def _expand_pastes(self, text):
         """The edit request carries the pasted text itself (the marker alone would tell the model nothing)."""
@@ -513,7 +517,7 @@ class ProjectSession(Session):
         for number, body in getattr(self, "_pastes", ()):
             expanded = expanded.replace(paste_token(number, body), body)
         if len(expanded.encode("utf-8")) > task_contract.MAX_INSTRUCTION:
-            raise EditRefused("Polecenie zmiany pliku razem z wklejką przekracza %d B; skróć wklejkę albo podziel zmianę." % task_contract.MAX_INSTRUCTION)
+            raise EditRefused("The file change request with its paste is over %d B. Shorten the paste or split the change." % task_contract.MAX_INSTRUCTION)
         return expanded
 
     def _edit_blocker(self, snapshot, plan):
@@ -521,19 +525,19 @@ class ProjectSession(Session):
         try:
             workspace = snapshot.policy.write_workspace(int(plan["write"][1:]))
         except ValueError:
-            return ("Zakres zapisu z permissions.toml nie wskazuje bezpiecznego katalogu roboczego "
-                    "(np. cały HOME wymaga polityki version = 2; zalecany wpis typu ~/Projekty/**).")
+            return ("The write scope in permissions.toml does not point to a safe working directory "
+                    "(e.g. a whole HOME needs policy version = 2; an entry like ~/Projects/** is recommended).")
         try:
             task_workspace._can_apply(workspace)
         except task_workspace.JournalLimit:
-            return "Osiągnięto limit zapisanych zadań w katalogu zakresu zapisu. Sprawdź: ai-desktop task status --workspace KATALOG."
+            return "Reached the limit of saved tasks in the write scope directory. Check: ai-desktop task status --workspace DIRECTORY."
         except ValueError as exc:
             if str(exc) == "recovery required":
-                return ("Wcześniejsze zadanie zmiany plików jest niedokończone lub w konflikcie. "
-                        "Sprawdź: ai-desktop task status --workspace KATALOG (potem task rollback).")
-            return "Dziennik zadań w katalogu zakresu zapisu jest nieczytelny lub zawiera nieoczekiwane wpisy (ai-desktop task status)."
+                return ("An earlier file change task is unfinished or in conflict. "
+                        "Check: ai-desktop task status --workspace DIRECTORY (then task rollback).")
+            return "The task journal in the write scope directory is unreadable or has unexpected entries (ai-desktop task status)."
         except (ExecutionDenied, OSError):
-            return "Katalog zakresu zapisu jest niedostępny albo ma niebezpieczne uprawnienia."
+            return "The write scope directory is unavailable or has unsafe permissions."
         return None
 
     def _delete(self, text, decision):
@@ -541,24 +545,24 @@ class ProjectSession(Session):
         try:
             require_changes()
         except AnalysisDenied:
-            print("Ten agent pracuje tylko do odczytu. Propozycja usunięcia została odrzucona.")
-            return self._remember_edit(text, "profil agenta zezwala wyłącznie na odczyt")
+            print("This agent is read-only. The proposed deletion was rejected.")
+            return self._remember_edit(text, "the agent profile allows reading only")
         """Deleting is moving to a recoverable trash: it needs the owner's own yes (nothing is sent to Claude)."""
-        print(rule("Usunięcie plików"))
+        print(rule("File deletion"))
         try:
             snapshot = assistant_flow.capture_access()
             scope, workspace, names = build_delete_plan(self.project, snapshot, decision)
             prepared = workspace_trash.prepare(workspace, names)
         except (EditRefused, assistant_flow.AccessDenied, AnalysisDenied, ExecutionDenied, ValueError, OSError) as exc:
-            print(field("Odmowa", str(exc) if isinstance(exc, EditRefused)
+            print(field("Refused", str(exc) if isinstance(exc, EditRefused)
                         else workspace_trash.FULL_MESSAGE if isinstance(exc, workspace_trash.TrashFull)
-                        else "Polityka plików uniemożliwia usunięcie."))
+                        else "The file policy does not allow this deletion."))
             print(SEPARATOR)
             print()
-            return self._remember_edit(text, "propozycja usunięcia odrzucona przez aplikację")
-        print(field("Do usunięcia", *["%s (%d B)" % (_safe(p, 80), e["size"])
+            return self._remember_edit(text, "proposed deletion rejected by the app")
+        print(field("To delete", *["%s (%d B)" % (_safe(p, 80), e["size"])
                                      for p, e in zip(decision["delete"], prepared.data()["entries"])]))
-        print(field("Kosz", recipient("pliki zostaną przeniesione do prywatnego katalogu zadania i można je przywrócić; nic nie idzie do Claude")))
+        print(field("Trash", recipient("files are moved to a private task directory and can be restored; nothing goes to Claude")))
         print(SEPARATOR)
         try:
             approved = confirm("project-delete", reader=self.reader)
@@ -568,33 +572,33 @@ class ProjectSession(Session):
             self._interrupted()
             approved = False
         if not approved:
-            print("Anulowano. Nic nie usunięto.")
+            print("Cancelled. Nothing was deleted.")
             print()
-            return self._remember_edit(text, "użytkownik odrzucił usunięcie plików")
+            return self._remember_edit(text, "the user rejected the file deletion")
         try:
             snapshot.policy.recheck()
             plan = workspace_trash.execute(prepared, prepared.authorize())
         except workspace_trash.TrashRecoveryRequired as exc:
-            print("Usuwanie przerwane. Wynik wymaga sprawdzenia; dane i dziennik zachowano.")
+            print("Deletion interrupted. The result needs checking; the data and journal were kept.")
             self._trash_recovery(workspace, exc.plan)
-            return self._remember_edit(text, "usuwanie przerwane; wymagane sprawdzenie kosza zadania")
+            return self._remember_edit(text, "deletion interrupted; the task trash needs checking")
         except KeyboardInterrupt:
-            print("\nPrzerwano usuwanie. Sprawdź stan zadania przed kolejną operacją.")
+            print("\nDeletion interrupted. Check the task state before the next operation.")
             self._trash_recovery(workspace, prepared.data()["plan"])
-            return self._remember_edit(text, "usuwanie przerwane; stan wymaga sprawdzenia")
+            return self._remember_edit(text, "deletion interrupted; the state needs checking")
         except (ExecutionDenied, ValueError, OSError):
-            print("Nie usunięto: plik zmienił się, nazwa jest niezwykła albo polityka się zmieniła. Nic nie zostało usunięte.")
+            print("Not deleted: a file changed, a name is unusual or the policy changed. Nothing was deleted.")
             print()
-            return self._remember_edit(text, "usunięcie plików nie powiodło się, nic nie usunięto")
-        print("Usunięto %d plików (w koszu zadania)." % len(names))
-        print("Przywrócenie: " + shlex.join(["ai-desktop", "task", "restore", "--workspace", workspace, "--plan", plan]))
+            return self._remember_edit(text, "file deletion failed, nothing was deleted")
+        print("Deleted %d file(s) (in the task trash)." % len(names))
+        print("Restore: " + shlex.join(["ai-desktop", "task", "restore", "--workspace", workspace, "--plan", plan]))
         print()
-        return self._remember_edit(text, "usunięto %d plików po zgodzie użytkownika (można przywrócić)" % len(names))
+        return self._remember_edit(text, "deleted %d file(s) after the user's consent (can be restored)" % len(names))
 
     @staticmethod
     def _trash_recovery(workspace, plan):
-        print("Stan: " + shlex.join(["ai-desktop", "task", "status", "--workspace", workspace]))
-        print("Przywrócenie: " + shlex.join(["ai-desktop", "task", "restore", "--workspace", workspace, "--plan", plan]))
+        print("State: " + shlex.join(["ai-desktop", "task", "status", "--workspace", workspace]))
+        print("Restore: " + shlex.join(["ai-desktop", "task", "restore", "--workspace", workspace, "--plan", plan]))
         print()
 
     def _run_edit(self, text, snapshot, plan, versions):
@@ -612,26 +616,26 @@ class ProjectSession(Session):
             sent = prepared.source["files"]
             transfer = {"files": [item["path"] for item in sent if item["content"] is not None],
                         "bytes": sum(len(item["content"].encode("utf-8")) for item in sent if item["content"] is not None),
-                        "state": "nie wiadomo, czy dotarło"}      # recorded before the hand-off, like the read steps
+                        "state": "not known whether it arrived"}      # recorded before the hand-off, like the read steps
             self.edit_transfers.append(transfer)
             response = ask_cli.request(text, args, self.reader, task=prepared.source, write_grant=prepared.write_grant,
                                        check=permit.check, question_consent=permit)
-            transfer["state"] = "odpowiedź otrzymana"
+            transfer["state"] = "answer received"
             permit.check()
             permit.close()
             return ask_edit.finish(prepared, response, args, self.reader).code
         except ask_edit.CreateCollision:
-            print("Plik do utworzenia już istnieje; niczego nie zapisano.")
+            print("The file to create already exists. Nothing was saved.")
         except (ask_edit.EditDenied, ExecutionDenied) as exc:
-            print("Nie przygotowano zmiany (zgoda, polityka lub stan plików się zmieniły). Niczego nie zapisano.")
+            print("The change was not prepared (the consent, policy or file state changed). Nothing was saved.")
         except AnalysisDenied as exc:
-            print(failure_hint(getattr(exc, "reason", None), HINTS.get(getattr(exc, "reason", None), "Nie udało się uzyskać odpowiedzi. Sprawdź ai-desktop status."),
+            print(failure_hint(getattr(exc, "reason", None), HINTS.get(getattr(exc, "reason", None), "Could not get an answer. Check ai-desktop status."),
                                **({"diagnostic": exc.diagnostic} if exc.diagnostic is not None else {})))
-            print("Przekazanych danych nie można wycofać; zmiana nie zostanie ponowiona automatycznie.")
+            print("Data already handed over cannot be taken back; the change will not be retried automatically.")
         except assistant_flow.Declined:
-            print("Anulowano.")
+            print("Cancelled.")
         except KeyboardInterrupt:
-            print("\nPrzerwano.")
+            print("\nInterrupted.")
             self._interrupted()
         finally:
             if permit is not None:
@@ -648,22 +652,22 @@ class ProjectSession(Session):
     def _skipped_line(self):
         """One short line shown by default: excluded entries affect completeness, but their names are never shown."""
         total = self._skipped_total()
-        return recipient("Poza zasięgiem Claude: %d wpisów pominiętych przy skanie (szczegóły: --v).") % total if total else None
+        return recipient("Out of reach for Claude: %s skipped during the scan (details: --v).") % _entries(total) if total else None
 
     def _answer(self, text, loop, decision):
         self._close_section()
         confirmed, rejected = loop.confirm_sources(decision["sources"])
-        print(rule("Odpowiedź") + "\n")
+        print(rule("Answer") + "\n")
         print(render_answer(decision["text"], output_format=self.args.format))
         notes = self._notes(loop, rejected)
         if self.args.details:                       # --v: the full account of sources and scope, every time
-            print("\n" + rule("Źródła"))
+            print("\n" + rule("Sources"))
             if confirmed:
-                print(field("Potwierdzone", *[_source(p, a, b) for p, a, b in confirmed]))
+                print(field("Confirmed", *[_source(p, a, b) for p, a, b in confirmed]))
             else:
-                print(field("Potwierdzone", recipient("brak — Claude nie wskazał źródeł, które aplikacja mogłaby potwierdzić")))
+                print(field("Confirmed", recipient("none — Claude named no sources the app could confirm")))
             print()
-            print(rule("Zakres"))
+            print(rule("Scope"))
             print(self._received_field(loop))
             skipped = self._skipped_field()
             if skipped:
@@ -673,11 +677,11 @@ class ProjectSession(Session):
             print(SEPARATOR)
             print("ASK: PASS")
         elif notes:                                  # default: silence unless there is something to be careful about
-            print("\n" + rule("Uwaga"))
+            print("\n" + rule("Note"))
             for label, values in notes:
                 print(field(label, *values))
             if self._skipped_line():
-                print(field("Poza zasięgiem", "%d wpisów pominiętych przy skanie (szczegóły: --v)" % self._skipped_total()))
+                print(field("Out of reach", "%s skipped during the scan (details: --v)" % _entries(self._skipped_total())))
             print(SEPARATOR)
             self._skipped_shown = self._skipped_total()
         elif self._skipped_line() and self._skipped_total() != self._skipped_shown:
@@ -691,9 +695,9 @@ class ProjectSession(Session):
 
     def _stopped(self, loop):
         self._close_section()
-        print(rule("Zatrzymano bez odpowiedzi"))
-        print(field("Co dalej", "Zawęź pytanie albo zadaj je ponownie (nowa zgoda).",
-                    "Napisz np. „kontynuuj”, aby następne pytanie znało to, co już sprawdzono."))
+        print(rule("Stopped without an answer"))
+        print(field("What next", "Narrow the question or ask it again (new consent).",
+                    "Type e.g. \"continue\" so the next question knows what was already checked."))
         print(self._received_field(loop))
         if self.args.details:
             skipped = self._skipped_field()
@@ -702,26 +706,26 @@ class ProjectSession(Session):
         for label, values in self._notes(loop):
             print(field(label, *values))
         if not self.args.details and self._skipped_line():
-            print(field("Poza zasięgiem", "%d wpisów pominiętych przy skanie (szczegóły: --v)" % self._skipped_total()))
+            print(field("Out of reach", "%s skipped during the scan (details: --v)" % _entries(self._skipped_total())))
         print(SEPARATOR)
         print()
         received, size = loop.delivered_summary()
-        self._remember_stop(received, "fragmenty %d plików (%d B)" % (len(received), size))
+        self._remember_stop(received, "parts of %d file(s) (%d B)" % (len(received), size))
 
     # --- loop ----------------------------------------------------------------------------
     def run(self):
         stats = self.project.stats
         print()
-        print("Projekt %s (%s): %d plików w indeksie%s. Przeskanowano lokalnie." % (
+        print("Project %s (%s): %d file(s) in the index%s. Scanned locally." % (
             self.name, self.project.project_id[:8], stats["indexed"],
-            "" if self.project.complete else " (indeks niekompletny: %s)" % REASONS.get(self.project.reason, "limit")))
-        print(recipient("Do Claude trafi tylko to, co zatwierdzisz."))
+            "" if self.project.complete else " (index incomplete: %s)" % REASONS.get(self.project.reason, "limit")))
+        print(recipient("Only what you approve goes to Claude."))
         print()
-        print("Opcje:")
-        print("/koniec    kończy")
-        print("/pomoc     pokazuje opcjonalne polecenia")
+        print("Options:")
+        print("/exit      quits")
+        print("/help      shows optional commands")
         print()
-        print("Co chcesz z nim zrobić?")
+        print("What do you want to do with it?")
         if not self.can_send:
             print(network_hint(short=True))
         return self._loop()
@@ -742,7 +746,7 @@ class ProjectSession(Session):
             try:
                 self.window.close()
             except AnalysisDenied:
-                print("Nie potwierdzono zatrzymania sesji. Uruchom ai-desktop stop.")
+                print("Could not confirm that the session stopped. Run ai-desktop stop.")
 
     def _dispatch(self, line):
         from .run_controls import conversation_command
@@ -761,16 +765,16 @@ class ProjectSession(Session):
             return False
         if command in ("/pomoc", "/help", "/?"):
             print(recipient(HELP))
-        elif command == "/pliki":
+        elif command in ("/files", "/pliki"):
             self.files(rest)
-        elif command == "/szukaj":
+        elif command in ("/search", "/szukaj"):
             self.search(rest)
-        elif command == "/rejestr":
+        elif command in ("/log", "/rejestr"):
             self.ledger()
-        elif command == "/odswiez":
+        elif command in ("/refresh", "/odswiez"):
             self._refresh(announce=True)
         else:
-            print("Nieznane polecenie. /pomoc pokazuje dostępne.")
+            print("Unknown command. /help shows the available ones.")
         return True
 
 
@@ -791,7 +795,7 @@ def main(argv=None, *, reader=input, clock=time.monotonic, sleep=time.sleep, win
             print(_read_hint(exc))
             return 2
         if policy is None:
-            print("Brak permissions.toml: katalog wymaga zakresu files.read. Zobacz config/permissions.example.toml.")
+            print("No permissions.toml: this directory needs a files.read scope. See config/permissions.example.toml.")
             return 2
         try:
             project = Project(policy, os.path.abspath(os.path.expanduser(args.path))).scan()
@@ -802,7 +806,7 @@ def main(argv=None, *, reader=input, clock=time.monotonic, sleep=time.sleep, win
             print(_read_hint(exc))
             return 2
     except AnalysisDenied:
-        print("Polecenie wymaga zwykłego użytkownika i terminala.")
+        print("This command needs a regular user and a terminal.")
         return 2
     session = ProjectSession(project, os.path.basename(project.root), policy, args, reader, clock=clock, sleep=sleep,
                              window=window, sender=sender)
@@ -810,7 +814,7 @@ def main(argv=None, *, reader=input, clock=time.monotonic, sleep=time.sleep, win
         session.attach_conversation("project", project.root, project.manifest_sha256())
         return session.run()
     except (OSError, ValueError):
-        print("Nie można użyć zapisu rozmowy. Projekt lub ustawienia mogły się zmienić; sprawdź ai-desktop sessions list.")
+        print("Cannot use the saved conversation. The project or settings may have changed; check ai-desktop sessions list.")
         return 2
     finally:
         session.close_conversation()

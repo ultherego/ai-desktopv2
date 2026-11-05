@@ -73,7 +73,7 @@ class _SettingError(Exception):
 
 
 class _Problem(Exception):
-    """A found defect of the owner's policy file: plain Polish lines that name the key and the entry, never a path."""
+    """A found defect of the owner's policy file: plain English lines that name the key and the entry, never a path."""
     def __init__(self, *lines):
         super().__init__("policy-problem")
         self.lines = tuple(lines)
@@ -905,64 +905,64 @@ def load_policy(*, optional=False):
         try:
             value = tomllib.loads(raw.decode("utf-8", errors="strict"))
         except (tomllib.TOMLDecodeError, UnicodeError):
-            raise _Problem("Plik nie jest poprawnym TOML-em (błąd składni, np. brak cudzysłowu, przecinka albo nawiasu).") from None
+            raise _Problem("The file is not valid TOML (a syntax error, such as a missing quote, comma or bracket).") from None
         if type(value) is not dict:
             raise ValueError("policy-schema")
         missing = [key for key in ("version", "files") if key not in value]
         if missing:
-            raise _Problem("Brak wymaganego klucza najwyższego poziomu: " + ", ".join(missing) + ".")
+            raise _Problem("Missing required top-level key: " + ", ".join(missing) + ".")
         unknown = sorted(set(value) - {"version", "files", "network", "system", "commands"})
         if unknown:
-            raise _Problem("Nieznana sekcja: " + ", ".join(_shown(key) for key in unknown) + ".")
+            raise _Problem("Unknown section: " + ", ".join(_shown(key) for key in unknown) + ".")
         if type(value["version"]) is not int or value["version"] not in (1, 2):
-            raise _Problem("version musi mieć wartość 1 lub 2.")
+            raise _Problem("version must be 1 or 2.")
         if type(value["files"]) is not dict:
-            raise _Problem("files musi być sekcją [files].")
+            raise _Problem("files must be a [files] section.")
         absent = [key for key in ("read", "deny") if key not in value["files"]]
         if absent:
-            raise _Problem("W [files] brakuje: " + ", ".join(absent) + ".")
+            raise _Problem("Missing from [files]: " + ", ".join(absent) + ".")
         stray = sorted(set(value["files"]) - {"read", "deny", "write", "file_size", "part_size", *LIMIT_SPECS})
         if stray:
-            raise _Problem("Nieznany klucz w [files]: " + ", ".join(_shown(key) for key in stray) + ".")
+            raise _Problem("Unknown key in [files]: " + ", ".join(_shown(key) for key in stray) + ".")
         rules = []
         for key in ("read", "deny", "write"):
             items = value["files"].get(key, [])
             if type(items) is not list:
-                raise _Problem("files.%s musi być listą." % key)
+                raise _Problem("files.%s must be a list." % key)
             if len(items) > MAX_RULES:
-                raise _Problem("files.%s ma za dużo reguł (%d, max %d)." % (key, len(items), MAX_RULES))
+                raise _Problem("files.%s has too many rules (%d, max %d)." % (key, len(items), MAX_RULES))
             parsed = []
             for item in items:
                 try:
                     parsed.append(_rule(item, home, version=value["version"]))
                 except ValueError:
-                    raise _Problem("Niepoprawna reguła w files.%s: %s" % (key, _shown(item))) from None
+                    raise _Problem("Invalid rule in files.%s: %s" % (key, _shown(item))) from None
             again = _repeated([(r.base, r.mode) for r in parsed])
             if again:
                 names = [rule.original for rule in parsed if (rule.base, rule.mode) in again]
-                raise _Problem(*("Powtórzona reguła w files.%s: %s" % (key, _shown(name)) for name in dict.fromkeys(names)))
+                raise _Problem(*("Repeated rule in files.%s: %s" % (key, _shown(name)) for name in dict.fromkeys(names)))
             rules.append(tuple(parsed))
         for rule in rules[0]:
             if (_reserved(rule.base) or (value["version"] == 1
                     and (_blocked(rule.base, home) or not _ssh_safe(rule.base, home, (rule,))))):
-                raise _Problem("Reguła files.read wskazuje miejsce, którego nie wolno czytać: " + _shown(rule.original))
+                raise _Problem("A files.read rule points to a place that must not be read: " + _shown(rule.original))
         for rule in rules[2]:
             try:
                 validate_write_path(rule.base, home, managed=value["version"] == 2)
             except ValueError:
-                raise _Problem("Reguła files.write jest niedozwolona: " + _shown(rule.original)) from None
+                raise _Problem("A files.write rule is not allowed: " + _shown(rule.original)) from None
         network, system = value.get("network", {}), value.get("system", {})
         if type(network) is not dict or set(network) - {"claude", "codex", "weather", "web"}:
-            raise _Problem("[network] zna tylko klucze claude, codex, weather, web.")
+            raise _Problem("[network] only accepts the keys claude, codex, weather, web.")
         if any(type(flag) is not bool for flag in network.values()):
-            raise _Problem("Wartości w [network] muszą być true albo false.")
+            raise _Problem("Values in [network] must be true or false.")
         if type(system) is not dict or set(system) - {"systemd"}:
-            raise _Problem("[system] zna tylko klucz systemd.")
+            raise _Problem("[system] only accepts the key systemd.")
         systemd = system.get("systemd", [])
         if (type(systemd) is not list or len(systemd) > 2
                 or any(type(scope) is not str or scope not in ("system", "user") for scope in systemd)
                 or len(set(systemd)) != len(systemd)):
-            raise _Problem('system.systemd to lista z "system" i/lub "user", bez powtórzeń.')
+            raise _Problem('system.systemd is a list of "system" and/or "user", without repeats.')
         try:
             file_size = parse_file_size(value["files"].get("file_size", DEFAULT_FILE_SIZE))
         except ValueError:
@@ -974,31 +974,31 @@ def load_policy(*, optional=False):
         limits = parse_limits(value["files"])
         section = value.get("commands", {})
         if type(section) is not dict or set(section) - {"allow", "change", "share_processes"}:
-            raise _Problem("[commands] zna tylko klucze allow, change, share_processes.")
+            raise _Problem("[commands] only accepts the keys allow, change, share_processes.")
         from .command_ops import MAX_TEMPLATES, parse_template, parse_templates
         parsed_lists = {}
         for key in ("allow", "change"):
             items = section.get(key, [])
             if type(items) is not list:
-                raise _Problem("commands.%s musi być listą." % key)
+                raise _Problem("commands.%s must be a list." % key)
             if len(items) > MAX_TEMPLATES:
-                raise _Problem("commands.%s ma za dużo szablonów (%d, max %d)." % (key, len(items), MAX_TEMPLATES))
+                raise _Problem("commands.%s has too many templates (%d, max %d)." % (key, len(items), MAX_TEMPLATES))
             for item in items:
                 try:
                     parse_template(item, strict=key == "change")
                 except ValueError:
-                    raise _Problem("Niepoprawny szablon w commands.%s: %s" % (key, _shown(item))) from None
+                    raise _Problem("Invalid template in commands.%s: %s" % (key, _shown(item))) from None
             again = _repeated(items)
             if again:
-                raise _Problem(*("Powtórzony szablon w commands.%s: %s" % (key, _shown(item)) for item in again))
+                raise _Problem(*("Repeated template in commands.%s: %s" % (key, _shown(item)) for item in again))
             parsed_lists[key] = parse_templates(items, strict=key == "change")
         commands, changes = parsed_lists["allow"], parsed_lists["change"]
         both = [" ".join(t) for t in commands if t in set(changes)]
         if both:
-            raise _Problem(*("Szablon jest jednocześnie w allow i change: " + _shown(item) for item in both))
+            raise _Problem(*("A template is in both allow and change: " + _shown(item) for item in both))
         share = section.get("share_processes", False)
         if type(share) is not bool:
-            raise _Problem("commands.share_processes musi być true albo false.")
+            raise _Problem("commands.share_processes must be true or false.")
         policy = Policy(uid, home, raw, identity, *rules,
                         network.get("claude", False), network.get("weather", False), tuple(systemd), value["version"],
                         network.get("web", False), file_size, part_size, network.get("codex", False), limits, commands, changes, share)
@@ -1006,16 +1006,16 @@ def load_policy(*, optional=False):
             for token in template[1:]:
                 if token[:1] == "/":        # templates carry absolute literal paths only (`~` is refused by the parser)
                     if policy._excluded(token):
-                        raise _Problem("Szablon wskazuje ścieżkę objętą files.deny: " + _shown(" ".join(template)))
+                        raise _Problem("A template points to a path covered by files.deny: " + _shown(" ".join(template)))
         try:
             policy.access()  # Reject oversized metadata before any planner transfer.
         except ValueError:
-            raise _Problem("Dane dostępu są zbyt duże do wysłania do modelu (za dużo reguł albo szablonów).") from None
+            raise _Problem("The access data is too large to send to the model (too many rules or templates).") from None
         return policy
     except _SettingError as exc:
         error = ValueError("policy-invalid")
         error.setting = exc.args[0]          # closed name of the bad option; never the value
-        error.problem = ("Ustawienie files.%s ma niepoprawną wartość albo przekracza pułap." % exc.args[0],)
+        error.problem = ("The setting files.%s has an invalid value or is over its ceiling." % exc.args[0],)
         raise error from None
     except _Problem as exc:
         error = ValueError("policy-invalid")

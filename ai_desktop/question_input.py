@@ -17,13 +17,13 @@ from .analysis_contract import MAX_MESSAGE_BYTES, MAX_QUESTION_BYTES, validate_q
 from .terminal_style import greeting, paint
 
 
-PROMPT = "W czym mogę pomóc?\n> "
+PROMPT = "How can I help?\n> "
 PASTE_TEXT_BYTES = 32 * 1024          # one pasted block kept as an attachment (project mode)
 PASTES_TOTAL_BYTES = 32 * 1024        # all attachments of one prompt
 MAX_PASTES = 9
 ATTACH_MIN_BYTES = 400                # shorter single-line pastes simply become typed text
 HISTORY_LIMIT = 50
-CTRL_C_HINT = "(Naciśnij Ctrl+C jeszcze raz, aby zakończyć)"
+CTRL_C_HINT = "(Press Ctrl+C again to exit)"
 FOLLOWUP_PROMPT = "> "
 _PASTE_START = b"[200~"
 _PASTE_END = b"\x1b[201~"
@@ -34,7 +34,7 @@ _KEYS = {b"[D": "left", b"OD": "left", b"[C": "right", b"OC": "right",
          b"OA": "ignore", b"OB": "ignore"}
 
 
-_TOKEN = r"\[wklejka #\d: \d+ wierszy, [0-9, ]+(?:B|KiB)\]"
+_TOKEN = r"\[paste #\d: \d+ lines?, [0-9. ]+(?:B|KiB)\]"
 _TOKEN_END = re.compile(_TOKEN + r"\Z")
 _TOKEN_START = re.compile(_TOKEN)
 
@@ -45,8 +45,9 @@ class QuestionInputError(ValueError):
 
 def paste_token(number, text):
     size = len(text.encode("utf-8"))
-    return "[wklejka #%d: %d wierszy, %s]" % (number, text.count("\n") + 1,
-                                              ("%.1f KiB" % (size / 1024)).replace(".", ",") if size >= 1024 else "%d B" % size)
+    lines = text.count("\n") + 1
+    return "[paste #%d: %d %s, %s]" % (number, lines, "line" if lines == 1 else "lines",
+                                       "%.1f KiB" % (size / 1024) if size >= 1024 else "%d B" % size)
 
 
 class PromptSession:

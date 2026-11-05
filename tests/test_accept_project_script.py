@@ -24,14 +24,14 @@ class ProjectScriptTests(unittest.TestCase):
         source = SCRIPT.read_text()
         run = source.index("/usr/bin/ai-desktop project")
         order = [source.index(text) for text in (
-            "installed_matches(native=False)", "PLAN ODBIORU NATYWNEGO", 'lc4_check.py" prepare',
+            "installed_matches(native=False)", "NATIVE ACCEPTANCE PLAN", 'lc4_check.py" prepare',
             'lc4_check.py" policy --lib /usr/lib/ai-desktop', 'lc4_check.py" scan --lib /usr/lib/ai-desktop')]
         self.assertEqual(order, sorted(order))
         self.assertLess(order[-1], run)
         self.assertIn('if test "$aid_scan" = 0', source[:run])
         self.assertLess(run, source.index('lc4_check.py" check-unchanged'))
-        self.assertIn("PRZERWANO przed sesja", source)
-        self.assertIn("skrypt jej NIE zmienia", source)
+        self.assertIn("STOPPED before the session", source)
+        self.assertIn("the script does NOT change it", source)
 
     def test_results_name_every_stage(self):
         source = SCRIPT.read_text()

@@ -76,29 +76,29 @@ def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     verbose_flags = ("--v", "--verbose", "-v", "--details")
     if argv in (["--help"], ["-h"]):
-        print("Użycie: ai-desktop doctor [--v]")
-        print("Sprawdzenie lokalnych metadanych, bez uruchamiania AI.")
-        print("--v, --verbose, -v, --details: pełny raport JSON.")
+        print("Usage: ai-desktop doctor [--v]")
+        print("Checks local metadata without starting AI.")
+        print("--v, --verbose, -v, --details: full JSON report.")
         return 0
     if argv and (len(argv) != 1 or argv[0] not in verbose_flags):
-        print("Użycie: ai-desktop doctor [--v]")
+        print("Usage: ai-desktop doctor [--v]")
         return 2
     if hasattr(os, "geteuid") and os.geteuid() == 0:
         print("DOCTOR: REFUSED (root)")
         return 2
     data = inspect()
     if argv:
-        print("=== AI DESKTOP READINESS (TYLKO ODCZYT) ===")
+        print("=== AI DESKTOP READINESS (READ-ONLY) ===")
         print(json.dumps(data, ensure_ascii=False, indent=2))
-        print("DOCTOR: PASS (sprawdzono wymagania; nie uruchomiono AI)")
+        print("DOCTOR: PASS (requirements checked; AI not started)")
     else:
-        print("Wymagania offline (metadane): " + (
-            "spełnione." if data.get("offline_prerequisites_present") is True else "niekompletne."))
-        print("Klient Claude: %s; metadane izolowanego konta: %s." % (
-            "znaleziony" if data.get("claude_binary_valid") is True else "brak",
-            "poprawne" if data.get("isolated_account_metadata_valid") is True else "niepotwierdzone"))
-        print("Logowanie i działanie AI: niesprawdzone.")
-        print("Szczegóły: ai-desktop doctor --v")
+        print("Offline requirements (metadata): " + (
+            "met." if data.get("offline_prerequisites_present") is True else "incomplete."))
+        print("Claude client: %s; isolated account metadata: %s." % (
+            "found" if data.get("claude_binary_valid") is True else "missing",
+            "valid" if data.get("isolated_account_metadata_valid") is True else "unconfirmed"))
+        print("Login and AI operation: not checked.")
+        print("Details: ai-desktop doctor --v")
     return 0
 
 

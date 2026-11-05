@@ -65,14 +65,14 @@ class RegisterTests(unittest.TestCase):
         return out.getvalue()
 
     def test_nothing_sent_says_so(self):
-        self.assertIn("Nic nie zostało przekazane", self.output(self.session()))
+        self.assertIn("Nothing was handed to Claude", self.output(self.session()))
 
     def test_an_edit_transfer_is_listed_and_does_not_claim_nothing_was_sent(self):
         value = self.session()
-        value.edit_transfers.append({"files": ["a.py", "b.py"], "bytes": 12, "state": "odpowiedź otrzymana"})
+        value.edit_transfers.append({"files": ["a.py", "b.py"], "bytes": 12, "state": "answer received"})
         text = self.output(value)
-        self.assertNotIn("Nic nie zostało", text)
-        self.assertIn("2 plików, 12 B", text)
+        self.assertNotIn("Nothing was handed", text)
+        self.assertIn("2 file(s), 12 B", text)
         self.assertIn("a.py", text)
 
 

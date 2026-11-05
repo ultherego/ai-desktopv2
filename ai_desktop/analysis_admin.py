@@ -36,7 +36,7 @@ def main(*, allow=False, details=False):
     # runtime binary, credential access or network request can be started.
     if (allow is not True or type(details) is not bool or os.getuid() != 0 or os.geteuid() != 0
             or not os.isatty(0) or not os.isatty(1)):
-        print("LOGIN: REFUSED (root, TTY i --allow-claude-login wymagane)")
+        print("LOGIN: REFUSED (root, TTY and --allow-claude-login required)")
         return 2
     unit, passed = None, False
     environment = {"PATH": "/usr/bin", "LANG": "C.UTF-8", "TERM": "dumb"}
@@ -44,8 +44,8 @@ def main(*, allow=False, details=False):
         with failure_stage("runtime"):
             runtime_ready()
         if details:
-            print("Oddzielne logowanie claude.ai dla ai-desktop. Otworz adres klienta recznie w przegladarce.")
-            print("Nie wklejaj kodu logowania ani tokenow do czatu lub logow testowych.", flush=True)
+            print("Separate claude.ai login for ai-desktop. Open the client's address by hand in your browser.")
+            print("Do not paste the login code or tokens into a chat or test logs.", flush=True)
         with failure_stage("manager"):
             command = login_command(details=details)
             unit = next(arg[len("--unit="):] for arg in command if arg.startswith("--unit=")) + ".service"

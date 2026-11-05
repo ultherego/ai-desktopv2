@@ -50,14 +50,14 @@ class ControlsTests(unittest.TestCase):
         self.assertIs(self.run_line(" /hello")[0], False)                 # what the message below promises
         result, output = self.run_line("/etc")
         self.assertIs(result, True)
-        self.assertIn("Nieznane polecenie", output)
-        self.assertIn("spacji", output)
+        self.assertIn("Unknown command", output)
+        self.assertIn("space", output)
 
     def test_help_lists_every_command_and_aliases_reach_the_same_action(self):
-        output = self.run_line("/pomoc")[1]
+        output = self.run_line("/help")[1]
         for name, _ in commands.COMMANDS:
             self.assertIn(name, output)
-        self.assertEqual(self.run_line("/help")[1], output)
+        self.assertEqual(self.run_line("/pomoc")[1], output)
         for line in ("/koniec", "/exit", "/q"):
             self.assertEqual(self.run_line(line)[0], commands.EXIT)
 
@@ -66,17 +66,17 @@ class ControlsTests(unittest.TestCase):
         result, output = self.run_line("/model haiku", conversation)
         self.assertIs(result, True)
         self.assertEqual(execution.current()["model"], "haiku")
-        self.assertIn("poprosi o zgodę", output)
+        self.assertIn("will ask for consent", output)
         self.assertEqual(conversation.bound[-1]["model"], "haiku")
         self.run_line("/effort high", conversation)
         self.assertEqual(execution.current()["effort"], "high")
 
     def test_an_invalid_model_changes_nothing_and_binds_nothing(self):
         conversation, before = Conversation(), execution.current()
-        output = self.run_line("/model nie-ma-takiego", conversation)[1]
+        output = self.run_line("/model no-such-model", conversation)[1]
         self.assertEqual(execution.current(), before)
         self.assertEqual(conversation.bound, [])
-        self.assertNotIn("poprosi o zgodę", output)
+        self.assertNotIn("will ask for consent", output)
 
     def test_skills_toggle_for_this_conversation_without_touching_the_saved_agent(self):
         output = self.run_line("/skills b")[1]
@@ -93,9 +93,9 @@ class ControlsTests(unittest.TestCase):
 
     def test_an_unknown_skill_or_one_that_does_not_fit_changes_nothing(self):
         before = execution.current()
-        self.assertIn("Nie ma Skilla", self.run_line("/skills zzz")[1])
+        self.assertIn("There is no Skill", self.run_line("/skills zzz")[1])
         with patch.object(profiles, "catalog_for", side_effect=profiles.ProfileError("x")):
-            self.assertIn("Nie zmieniono", self.run_line("/skills b")[1])
+            self.assertIn("Skills not changed", self.run_line("/skills b")[1])
         self.assertEqual(execution.current(), before)
 
     def test_a_conversation_sends_only_the_catalog_and_nothing_outside_the_selection_can_be_fetched(self):
@@ -116,16 +116,16 @@ class ControlsTests(unittest.TestCase):
             offered.append((title, options[default]))
             return default
         with patch.object(commands, "choose", side_effect=stay):
-            for line in ("/model", "/sila", "/agent", "/model default"):
+            for line in ("/model", "/effort", "/agent", "/model default"):
                 output = self.run_line(line)[1]
         self.assertEqual([row[1] for row in offered], ["default", "default", "default"])
-        self.assertIn("teraz: default", offered[0][0])
-        self.assertIn("Bez zmian", output)
+        self.assertIn("now: default", offered[0][0])
+        self.assertIn("No change", output)
         self.assertEqual(execution.current(), before)
 
     def test_a_long_skill_list_is_paged_and_ticks_survive_changing_the_page(self):
         names = tuple("s%02d" % index for index in range(20))
-        script = iter(["space:0", "Następna strona", "space:1", "Poprzednia strona", "Zastosuj"])
+        script = iter(["space:0", "Next page", "space:1", "Previous page", "Apply"])
         pages = []
 
         def menu(title, options, default=0, marks=None, markable=0):
@@ -143,7 +143,7 @@ class ControlsTests(unittest.TestCase):
 
     def test_a_list_longer_than_one_frame_reaches_the_last_entry_and_opens_on_the_current_page(self):
         options = tuple("a%02d" % index for index in range(20))
-        answers = iter(["Następna strona", "Następna strona", "a19"])
+        answers = iter(["Next page", "Next page", "a19"])
 
         def menu(title, shown, default=0):
             self.assertLessEqual(len(shown), MAX_OPTIONS)
@@ -163,7 +163,7 @@ class ControlsTests(unittest.TestCase):
         before = execution.current()
         output = self.run_line("/agent reviewer", Conversation())[1]
         self.assertEqual(execution.current(), before)
-        self.assertIn("związana", output)
+        self.assertIn("tied to", output)
 
 
 class LongConversationTests(unittest.TestCase):

@@ -32,22 +32,22 @@ class MaterialScriptTests(unittest.TestCase):
         source = SCRIPT.read_text()
         run = source.index('/usr/bin/ai-desktop material "$aid_project/small.py"')
         order = [source.index(text) for text in (
-            "installed_matches(native=False)", "PLAN ODBIORU NATYWNEGO", "najwyzej ok. 30",
+            "installed_matches(native=False)", "NATIVE ACCEPTANCE PLAN", "at most about 30",
             "lc1_check.py\" prepare", "lc1_check.py\" refusals --lib /usr/lib/ai-desktop")]
         self.assertEqual(order, sorted(order))
         self.assertLess(order[-1], run)
         self.assertIn('if test "$aid_refusals" = 0', source[:run])
-        self.assertIn("PRZERWANO przed sesja", source)
-        self.assertIn("zadne zadanie do Claude nie zostalo wyslane", source)
+        self.assertIn("STOPPED before the session", source)
+        self.assertIn("no request to Claude was sent", source)
         self.assertIn("--v", source[run:run + 120])
 
     def test_questions_are_plain_sentences_and_each_mode_is_exercised(self):
         source = SCRIPT.read_text()
-        for text in ("Przeanalizuj ten plik i wskaz mozliwe bledy", "Co oznaczaja wpisy ERROR-MARKER", "nie  (0 zadan)",
-                     "pamiec rozmowy", "Przeanalizuj caly plik i powiedz", "pokrycie 3 z 3", "CALY ten plik",
-                     "bez /pytaj i numerow wierszy", "medium.log"):
+        for text in ("Analyze this file and point out possible bugs", "What do the ERROR-MARKER entries", "n  (0 requests)",
+                     "conversation memory", "Analyze the whole file and tell me", "coverage 3 of 3", "this WHOLE file",
+                     "without /ask and line numbers", "medium.log"):
             self.assertIn(text, source)
-        self.assertNotIn(">>> tak   (zadanie", source)       # no hand-picked line ranges left from LC1
+        self.assertNotIn(">>> y   (request", source)       # no hand-picked line ranges left from LC1
 
     def test_results_name_every_stage_and_check_files_after_the_sessions(self):
         source = SCRIPT.read_text()

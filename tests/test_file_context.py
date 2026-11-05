@@ -141,7 +141,7 @@ class FileContextTests(unittest.TestCase):
                                  question_consent=permit)
         self.assert_no_read()
         self.consent.assert_not_called()
-        self.assertIn("Konfiguracja dostępu lub jej stan", self.output.getvalue())
+        self.assertIn("The access settings or their state", self.output.getvalue())
         self.assertNotIn("PRIVATE FILE CONTENT", self.output.getvalue())
 
     def test_exact_configured_ids_map_to_scope_indices_after_fresh_read_consent(self):
@@ -156,7 +156,7 @@ class FileContextTests(unittest.TestCase):
         self.assertEqual(actions.mock_calls, [call.consent("files-read", reader=self.reader),
             call.recheck(), call.expand((2, 0)), call.read(self.policy, self.policy.expand.return_value), call.recheck()])
         self.assertIn(CONTEXT["files"][0]["path"], self.output.getvalue())
-        self.assertIn("1 plików", self.output.getvalue())
+        self.assertIn("1 file", self.output.getvalue())
         self.assertIn("--details", self.output.getvalue())
         self.assertNotIn("PRIVATE FILE CONTENT", self.output.getvalue())
         self.reader.assert_not_called()
@@ -191,7 +191,7 @@ class FileContextTests(unittest.TestCase):
                          call.expand_selected(((2, None), (0, "config.kdl"))),
                          call.read(self.policy, self.policy.expand_selected.return_value), call.recheck()])
         self.policy.expand.assert_not_called()
-        self.assertIn('Zawężenie "f0": "config.kdl"', self.output.getvalue())
+        self.assertIn('Narrowed "f0": "config.kdl"', self.output.getvalue())
         self.assertNotIn("PRIVATE FILE CONTENT", self.output.getvalue())
 
     def test_malformed_selector_and_scope_mismatch_refuse_before_consent_or_expansion(self):
@@ -299,7 +299,7 @@ class FileContextTests(unittest.TestCase):
                     file_context.collect(self.policy, ["f0"], options(), self.reader)
                 self.assertEqual(error.exception.reason, "input")
         self.assertNotIn("PRIVATE", self.output.getvalue())
-        self.assertNotIn("Do pytania:", self.output.getvalue())
+        self.assertNotIn("For the question:", self.output.getvalue())
 
     def test_expansion_read_and_bundle_validation_failures_have_no_partial_or_private_output(self):
         for operation in (self.policy.expand, self.read):
@@ -312,26 +312,26 @@ class FileContextTests(unittest.TestCase):
         with self.assertRaises(AnalysisDenied):
             file_context.collect(self.policy, ["f0"], options(), self.reader)
         self.assertNotIn("PRIVATE", self.output.getvalue())
-        self.assertNotIn("Do pytania:", self.output.getvalue())
+        self.assertNotIn("For the question:", self.output.getvalue())
 
     def test_collection_refusals_explain_limits_and_causes_without_partial_context(self):
         cases = (
-            (self.policy.expand, "files-count", "więcej niż 64 plików"),
-            (self.policy.expand, "files-entries", "1024 wpisów na katalog lub 4096 wpisów łącznie"),
-            (self.policy.expand, "files-depth", "8 poziomów"),
-            (self.policy.expand, "files-symlink", "dowiązanie symboliczne"),
-            (self.policy.expand, "files-empty", "nie ma plików dopuszczonych"),
-            (self.read, "files-size", "65536 bajtów na plik"),
-            (self.read, "files-total", "131072 bajtów"),
-            (self.read, "files-owner", "nie jest bieżący użytkownik"),
-            (self.read, "files-links", "dowiązań twardych"),
-            (self.read, "files-mode", "setuid lub setgid"),
-            (self.read, "files-type", "nie jest zwykłym plikiem"),
+            (self.policy.expand, "files-count", "more than 64 files"),
+            (self.policy.expand, "files-entries", "1024 entries per directory or 4096 entries in total"),
+            (self.policy.expand, "files-depth", "8 levels"),
+            (self.policy.expand, "files-symlink", "symbolic link"),
+            (self.policy.expand, "files-empty", "no files that may be read"),
+            (self.read, "files-size", "65536 bytes per file"),
+            (self.read, "files-total", "131072 bytes"),
+            (self.read, "files-owner", "not owned by the current user"),
+            (self.read, "files-links", "hard links"),
+            (self.read, "files-mode", "setuid or setgid"),
+            (self.read, "files-type", "not a regular file"),
             (self.read, "files-text", "UTF-8"),
-            (self.read, "files-private-key", "rozpoznany nagłówek klucza prywatnego"),
-            (self.read, "files-changed", "zmienił się"),
-            (self.read, "files-access", "zweryfikować dostępu"),
-            (self.policy.recheck, "policy-changed", "Konfiguracja dostępu lub jej stan"),
+            (self.read, "files-private-key", "recognized private key header"),
+            (self.read, "files-changed", "changed while"),
+            (self.read, "files-access", "verify access"),
+            (self.policy.recheck, "policy-changed", "The access settings or their state"),
         )
         for operation, reason, expected in cases:
             with self.subTest(reason=reason):
@@ -347,8 +347,8 @@ class FileContextTests(unittest.TestCase):
                 self.assertEqual(error.exception.reason, "input")
                 output = self.output.getvalue()
                 self.assertIn(expected, output)
-                self.assertIn("Treść plików nie została wysłana do Claude.", output)
-                self.assertNotIn("Do pytania:", output)
+                self.assertIn("The file contents were not sent to Claude.", output)
+                self.assertNotIn("For the question:", output)
                 self.assertNotIn("PRIVATE FILE CONTENT", output)
                 if operation is not self.read:
                     self.read.assert_not_called()
@@ -364,11 +364,11 @@ class FileContextTests(unittest.TestCase):
                 with self.assertRaises(file_context.FileReadDenied):
                     file_context.collect(self.policy, ["f0"], options(details=True), self.reader)
                 output = self.output.getvalue()
-                self.assertIn("Nie udało się zweryfikować dostępu lub odczytać wybranych plików.", output)
+                self.assertIn("Could not verify access to, or read, the selected files.", output)
                 self.assertNotIn("65536", output)
                 self.assertNotIn("PRIVATE", output)
                 self.assertNotIn("\x1b", output)
-                self.assertNotIn("Do pytania:", output)
+                self.assertNotIn("For the question:", output)
 
     def test_scope_names_are_terminal_escaped_data(self):
         pattern = "~/niri/\x1b]52;c;PRIVATE\x07\npretend approval\u202e/**"
@@ -387,7 +387,7 @@ class FileContextTests(unittest.TestCase):
 
     def test_actual_confirm_parser_reprompts_then_requires_explicit_yes(self):
         self.consent.side_effect = terminal_consent.confirm
-        self.reader.side_effect = ["", "inne", "Tak"]
+        self.reader.side_effect = ["", "other", "Yes"]
         with patch.object(terminal_consent.sys.stdin, "isatty", return_value=True), \
                 patch.object(terminal_consent.sys.stdout, "isatty", return_value=True):
             file_context.collect(self.policy, ["f0"], options(), self.reader)
@@ -397,7 +397,7 @@ class FileContextTests(unittest.TestCase):
 
     def test_no_tty_cannot_read_even_if_injected_reader_says_yes(self):
         self.consent.side_effect = terminal_consent.confirm
-        self.reader.side_effect = ["Tak"]
+        self.reader.side_effect = ["Yes"]
         with patch.object(terminal_consent.sys.stdin, "isatty", return_value=False):
             with self.assertRaises(AnalysisDenied) as error:
                 file_context.collect(self.policy, ["f0"], options(), self.reader)

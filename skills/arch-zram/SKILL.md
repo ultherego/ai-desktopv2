@@ -1,41 +1,41 @@
 ---
 name: arch-zram
-description: Wyjaśnia i diagnozuje zram, zswap oraz wykorzystanie pamięci wymiany w Arch Linux. Użyj przy presji pamięci, nieskutecznej kompresji, błędzie konfiguracji albo pytaniu o hibernację.
+description: Explains and diagnoses zram, zswap and swap usage on Arch Linux. Use for memory pressure, ineffective compression, a configuration error or a question about hibernation.
 ---
 
-# Diagnostyka zram i pamięci wymiany
+# zram and swap diagnostics
 
-## Dane wejściowe i dostęp
+## Inputs and access
 
-Ustal, czy występuje brak pamięci, zacinanie, błąd uruchomienia urządzenia czy jedynie niezrozumiałe wartości. Nie proponuj strojenia bez objawu lub celu. Odczyty wykonuj wyłącznie w dostępnym zakresie polityki; odmowa nie oznacza braku urządzenia.
+Establish whether there is an out-of-memory condition, stuttering, a device startup error, or only values that are hard to understand. Do not propose tuning without a symptom or a goal. Run reads only within the scope the policy makes available; a denial does not mean the device is absent.
 
-## Rozpoznanie
+## Investigation
 
-1. Jeśli dozwolone, odczytaj `zramctl`, `swapon --show` i `free -h`. Powiąż urządzenia, priorytety i wykorzystanie; nie zakładaj numeru `zram0`.
-2. Dla wykrytego urządzenia odczytaj dostępne statystyki w `/sys/block/URZADZENIE/mm_stat`. Dokumentacja jądra określa kolejność pól; nie zgaduj jednostek ani nazw na podstawie pozycji bez sprawdzenia wersji.
-3. Stan `/sys/module/zswap/parameters/enabled` rozstrzyga, czy działa dodatkowy cache zswap. Ustal także, gdzie znajduje się rzeczywista pamięć wymiany.
-4. Znajdź źródło konfiguracji: generator systemd, reguła udev lub konfiguracja dystrybucji. Czytaj tylko istniejące, dozwolone pliki; nie nakładaj drugiego mechanizmu zarządzania na pierwszy.
+1. If allowed, read `zramctl`, `swapon --show` and `free -h`. Tie together devices, priorities and usage; do not assume the number `zram0`.
+2. For a detected device, read the available statistics in `/sys/block/DEVICE/mm_stat`. The kernel documentation defines the field order; do not guess units or names from position without checking the version.
+3. The state of `/sys/module/zswap/parameters/enabled` decides whether the additional zswap cache is active. Also establish where the actual swap is located.
+4. Find the source of the configuration: a systemd generator, a udev rule or distribution configuration. Read only existing, allowed files; do not layer a second management mechanism over the first.
 
-## Interpretacja
+## Interpretation
 
-- Duże `DISKSIZE` oznacza pojemność logiczną, nie pamięć RAM zarezerwowaną w tej wielkości.
-- `orig_data_size` opisuje dane przed kompresją; `compr_data_size` dane skompresowane; `mem_used_total` rzeczywisty koszt wraz z narzutem. Oceniaj pomiar tego samego urządzenia, zamiast zakładać stały współczynnik kompresji.
-- Zajęty swap przy dostępnej pamięci nie dowodzi awarii. Powiąż objaw z powtarzalnym obciążeniem, presją pamięci i ewentualnym zdarzeniem OOM.
-- Zswap przechwytuje strony przed urządzeniem wymiany. Jego współistnienie z zram wymaga oceny narzutu i celu; nie wyłączaj go automatycznie na podstawie samej obecności obu mechanizmów.
-- Hibernacja wymaga trwałego miejsca na obraz. Sam zram nie zachowa go po wyłączeniu zasilania; diagnostyka hibernacji wymaga osobnego sprawdzenia urządzenia i konfiguracji wznowienia.
+- A large `DISKSIZE` means logical capacity, not RAM reserved in that amount.
+- `orig_data_size` describes data before compression; `compr_data_size` the compressed data; `mem_used_total` the actual cost including overhead. Assess the measurement of the same device instead of assuming a fixed compression ratio.
+- Used swap with memory available does not prove a failure. Tie the symptom to a repeatable load, memory pressure and any OOM event.
+- Zswap intercepts pages before the swap device. Its coexistence with zram needs an assessment of overhead and goal; do not disable it automatically just because both mechanisms are present.
+- Hibernation needs persistent space for the image. zram alone will not keep it after power-off; hibernation diagnostics need a separate check of the device and the resume configuration.
 
-## Zmiana i sprawdzenie
+## Change and verification
 
-Zmiana rozmiaru, algorytmu, priorytetu lub aktywacji swapu zmienia stan systemu. Najpierw zachowaj konfigurację i ustal możliwość powrotu. `swapoff` może wymagać znacznej ilości wolnej pamięci i zakończyć się błędem; nie traktuj go jako nieszkodliwego cofnięcia ani nie proponuj masowego wyłączenia swapu przy presji pamięci.
+Changing the size, algorithm, priority or activation of swap changes system state. First preserve the configuration and establish that a return is possible. `swapoff` can need a significant amount of free memory and can end in an error; do not treat it as a harmless undo and do not propose mass disabling of swap under memory pressure.
 
-Po osobnej zgodzie porównaj to samo obciążenie, zużycie RAM, koszt kompresji i objaw. Sama aktywność usługi lub poprawny plik konfiguracyjny nie potwierdzają poprawy.
+After separate consent, compare the same load, RAM usage, compression cost and the symptom. An active service or a valid configuration file alone does not confirm an improvement.
 
-## Wynik
+## Result
 
-Podaj mechanizm konfiguracji, aktywne urządzenia, interpretację pomiarów i związek z objawem. Gdy nie ma dowodu problemu, zakończ wyjaśnieniem wartości; gdy brakuje obserwacji, wskaż jeden potrzebny pomiar.
+Give the configuration mechanism, the active devices, the interpretation of the measurements and their link to the symptom. When there is no evidence of a problem, end with an explanation of the values; when observations are missing, name the one measurement you need.
 
-## Źródła
+## Sources
 
-- [Jądro: zram, statystyki i dezaktywacja](https://docs.kernel.org/admin-guide/blockdev/zram.html).
-- [Jądro: rola zswap](https://docs.kernel.org/admin-guide/mm/zswap.html).
-- [util-linux: `swapoff`, kody błędów](https://man7.org/linux/man-pages/man8/swapon.8.html).
+- [Kernel: zram, statistics and deactivation](https://docs.kernel.org/admin-guide/blockdev/zram.html).
+- [Kernel: the role of zswap](https://docs.kernel.org/admin-guide/mm/zswap.html).
+- [util-linux: `swapoff`, error codes](https://man7.org/linux/man-pages/man8/swapon.8.html).

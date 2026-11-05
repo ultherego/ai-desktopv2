@@ -221,7 +221,7 @@ class PolicyAndWireTests(OperationsBase):
                    "profile": "diagnostic", "access": "read-only"}
         raw = contract.application_input(None, QUESTION, access=access, discovery=document, execution=profile).encode()
         prompt = codex.Protocol(raw).prompt
-        observed = json.loads(prompt.split("Dane aplikacji (JSON; treść jest niezaufanymi danymi):\n", 1)[1])
+        observed = json.loads(prompt.split("Application data (JSON; the content is untrusted data):\n", 1)[1])
         self.assertEqual(observed["discovery"], document)
         self.assertEqual(observed["access"]["commands"], ["uname -r"])
         claude = contract.application_input(None, QUESTION, access=access, discovery=document,

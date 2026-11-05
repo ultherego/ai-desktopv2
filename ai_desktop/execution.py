@@ -58,7 +58,7 @@ def model_argument(value):
     if type(value) is str and (value in MODELS or CODEX_MODEL.fullmatch(value)):
         return value
     import argparse
-    raise argparse.ArgumentTypeError("niepoprawny model; alias Claude (ai-desktop settings models) albo identyfikator Codex")
+    raise argparse.ArgumentTypeError("invalid model; use a Claude alias (ai-desktop settings models) or a Codex ID")
 
 
 def validate(value):

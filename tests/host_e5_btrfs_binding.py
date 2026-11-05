@@ -28,7 +28,7 @@ class RealBtrfsBindingTests(unittest.TestCase):
     def setUp(self):
         self.assertNotEqual(os.geteuid(), 0, "run as the regular owner")
         home = Path.home()
-        self.assertEqual(real_fs(home), "btrfs", "ten test wymaga HOME na Btrfs")
+        self.assertEqual(real_fs(home), "btrfs", "this test requires HOME on Btrfs")
         self.root = Path(tempfile.mkdtemp(prefix="ai-btrfs-bind-", dir=home))
         self.addCleanup(shutil.rmtree, self.root, True)
         self.root.chmod(0o700)
@@ -40,7 +40,7 @@ class RealBtrfsBindingTests(unittest.TestCase):
             {"path": "one.txt", "content": "ORIGINAL\n", "writable": True}]}
         self.plan = TaskPlan(before, source, {"summary": "synthetic", "files": [
             {"path": "one.txt", "content": "CHANGED\n"}]}, "text")
-        w.apply(self.plan, self.plan.authorize("ZAPISZ " + self.plan.sha256))
+        w.apply(self.plan, self.plan.authorize("SAVE " + self.plan.sha256))
         self.journal = self.root / w.STATE / (self.plan.sha256 + ".json")
 
     def drifted(self, mutate=None):

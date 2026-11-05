@@ -82,12 +82,12 @@ if test "$aid_mode" = --native; and test $aid_ci -eq 0; and test $aid_e6 -eq 0
     set aid_installed $status
 end
 if test "$aid_installed" = 0
-    printf '\n=== PLAN ODBIORU NATYWNEGO (nic nie jest jeszcze wysylane) ===\n'
-    printf 'Katalog testowy: %s/ws (swieze dane syntetyczne: calc.py, README.txt, docs/notes.txt)\n' "$aid_project"
-    printf 'Zadania do Claude: 2 (przypadki B i C). Przypadek A: 0 zadan, odmowa przed sesja.\n'
-    printf 'Wysylane dane na zadanie: instrukcja + sciezka calc.py + pelna tresc calc.py (ok. 40 B). Nic wiecej.\n'
-    printf 'Zakres zapisu: tylko %s/ws/calc.py, po osobnym pytaniu przy diffie. Rollback: bez zadan do Claude.\n' "$aid_project"
-    printf 'Odpowiedzi wpisujesz Ty. Skrypt sprawdza pliki sam po kazdym przypadku.\n\n'
+    printf '\n=== NATIVE ACCEPTANCE PLAN (nothing is sent yet) ===\n'
+    printf 'Test directory: %s/ws (fresh synthetic data: calc.py, README.txt, docs/notes.txt)\n' "$aid_project"
+    printf 'Requests to Claude: 2 (cases B and C). Case A: 0 requests, refused before the session.\n'
+    printf 'Data sent per request: instruction + calc.py path + full content of calc.py (about 40 B). Nothing more.\n'
+    printf 'Write scope: only %s/ws/calc.py, after a separate question at the diff. Rollback: no requests to Claude.\n' "$aid_project"
+    printf 'You type the answers. The script checks the files itself after each case.\n\n'
     python3 -I -B "$aid_tree/scripts/e6_cycle.py" prepare
     set aid_prepare $status
 end
@@ -95,9 +95,9 @@ if test "$aid_prepare" = 0
     set -l aid_ws "$aid_project/ws"
     set -l aid_requests 0
     set -l aid_stop ""
-    printf '\n--- A: odmowa transferu ---\n'
-    printf '>>> NA PYTANIE O WYSLANIE DANYCH WPISZ DOKLADNIE: nie   (t/tak wysle dane do Claude) <<<\n'
-    /usr/bin/ai-desktop task run "Dodaj jednozdaniowy docstring do funkcji add." --workspace "$aid_ws" --file calc.py --test python-syntax
+    printf '\n--- A: transfer refused ---\n'
+    printf '>>> AT THE QUESTION ABOUT SENDING DATA TYPE EXACTLY: n   (y/yes sends the data to Claude) <<<\n'
+    /usr/bin/ai-desktop task run "Add a one-sentence docstring to the add function." --workspace "$aid_ws" --file calc.py --test python-syntax
     set -l aid_a_cli $status
     python3 -I -B "$aid_tree/scripts/e6_cycle.py" check-unchanged
     set -l aid_a_check $status
@@ -107,10 +107,10 @@ if test "$aid_prepare" = 0
         set aid_stop A
     end
     if test -z "$aid_stop"
-        printf '\n--- B: odmowa zapisu przy diffie ---\n'
-        printf '>>> WYSLANIE DANYCH: tak   ZAPIS ZMIAN (przy diffie): nie <<<\n'
+        printf '\n--- B: write refused at the diff ---\n'
+        printf '>>> SENDING DATA: y   SAVING CHANGES (at the diff): n <<<\n'
         set aid_requests (math $aid_requests + 1)
-        /usr/bin/ai-desktop task run "Dodaj jednozdaniowy docstring do funkcji add." --workspace "$aid_ws" --file calc.py --test python-syntax
+        /usr/bin/ai-desktop task run "Add a one-sentence docstring to the add function." --workspace "$aid_ws" --file calc.py --test python-syntax
         set -l aid_b_cli $status
         python3 -I -B "$aid_tree/scripts/e6_cycle.py" check-unchanged
         set -l aid_b_check $status
@@ -121,10 +121,10 @@ if test "$aid_prepare" = 0
         end
     end
     if test -z "$aid_stop"
-        printf '\n--- C: poprawny zapis ---\n'
-        printf '>>> WYSLANIE DANYCH: tak   ZAPIS ZMIAN (przy diffie): tak <<<\n'
+        printf '\n--- C: successful write ---\n'
+        printf '>>> SENDING DATA: y   SAVING CHANGES (at the diff): y <<<\n'
         set aid_requests (math $aid_requests + 1)
-        /usr/bin/ai-desktop task run "Dodaj jednozdaniowy docstring do funkcji add." --workspace "$aid_ws" --file calc.py --test python-syntax
+        /usr/bin/ai-desktop task run "Add a one-sentence docstring to the add function." --workspace "$aid_ws" --file calc.py --test python-syntax
         set -l aid_c_cli $status
         python3 -I -B "$aid_tree/scripts/e6_cycle.py" check-written
         set -l aid_c_check $status
@@ -135,8 +135,8 @@ if test "$aid_prepare" = 0
         end
     end
     if test -z "$aid_stop"
-        printf '\n--- D: cofniecie ---\n'
-        printf '>>> NA PYTANIE O COFNIECIE WPISZ: tak <<<\n'
+        printf '\n--- D: undo ---\n'
+        printf '>>> AT THE QUESTION ABOUT UNDO TYPE: y <<<\n'
         /usr/bin/ai-desktop task rollback --workspace "$aid_ws"
         set -l aid_d_cli $status
         python3 -I -B "$aid_tree/scripts/e6_cycle.py" check-rolled-back
@@ -151,11 +151,11 @@ if test "$aid_prepare" = 0
         end
     end
     if test -n "$aid_stop"
-        printf '\nPRZERWANO po przypadku %s: kolejne zadania do Claude NIE zostaly wyslane.\n' "$aid_stop"
-        printf 'Katalog %s zachowano do ogledzin. Jesli zapisano zmiane, cofnij: ai-desktop task rollback --workspace %s\n' "$aid_project" "$aid_ws"
-        printf 'Po sprawdzeniu usun katalog (cleanup odmawia, dopoki zapis nie jest cofniety) i powtorz caly odbior.\n'
+        printf '\nSTOPPED after case %s: further requests to Claude were NOT sent.\n' "$aid_stop"
+        printf 'Directory %s kept for inspection. If a change was saved, undo it: ai-desktop task rollback --workspace %s\n' "$aid_project" "$aid_ws"
+        printf 'After checking, remove the directory (cleanup refuses until the write is undone) and repeat the whole acceptance.\n'
     end
-    printf 'Zadania do Claude wyslane przez ten skrypt (poza A): %s z 2 planowanych.\n' $aid_requests
+    printf 'Requests to Claude sent by this script (outside A): %s of 2 planned.\n' $aid_requests
 end
 cd "$aid_repo"
 set -l aid_back $status
@@ -167,12 +167,12 @@ if test $aid_worktree -eq 0
 end
 set -l aid_wt_cleanup $status
 rmdir "$aid_tmp" 2>/dev/null
-printf '\n=== WYNIKI ===\n'
+printf '\n=== RESULTS ===\n'
 printf 'MODE=%s FETCH=%s SHA_MATCH=%s WORKTREE=%s SCRIPT_MATCH=%s\n' "$aid_mode" $aid_fetch $aid_sha $aid_worktree $aid_script_match
 printf 'CI=%s E6_OFFLINE=%s INSTALLED=%s PREPARE=%s\n' $aid_ci $aid_e6 $aid_installed $aid_prepare
 printf 'A_TRANSFER_REFUSED=%s B_WRITE_REFUSED=%s C_WRITE_OK=%s D_ROLLBACK_OK=%s CLEANUP=%s\n' $aid_a $aid_b $aid_c $aid_d $aid_clean
 printf 'MAIN_UNCHANGED=%s BACK=%s WORKTREE_CLEANUP=%s\n' $aid_main $aid_back $aid_wt_cleanup
-printf 'Oczekiwane: wszystko 0; w trybie --offline pola natywne maja NOT_RUN (to nie jest PASS natywny).\n'
+printf 'Expected: all 0; in --offline mode the native fields show NOT_RUN (that is not a native PASS).\n'
 if test "$aid_mode" = --offline
     test $aid_ci -eq 0; and test $aid_e6 -eq 0; and test $aid_main -eq 0; and test $aid_back -eq 0; and exit 0
     exit 1

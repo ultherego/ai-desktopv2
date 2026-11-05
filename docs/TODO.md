@@ -1,69 +1,68 @@
-# Do zrobienia
+# To do
 
-Stan: pakiet `0.1.0-70`. Ograniczenia obecnej wersji opisuje [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
+Status: package `0.1.0-70`. Limitations of the current version are described in [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
 
-## Najbliżej
-Etapy i warunki ich ukończenia opisuje [ROADMAP.md](ROADMAP.md).
-- [x] `task rollback`: nie nadpisywać ani nie usuwać nowszego zapisu edytora.
-- [x] Długie polecenie zmiany: etap edycji odrzuca instrukcję powyżej 2 KiB, choć `ask` przyjmuje 128 KiB.
-- [x] Spacja przed `/` jest usuwana, więc słowa z `/` nie da się wysłać jako pytania.
-- [x] Końcowa odpowiedź po odczycie pliku dostaje wyniki poleceń i wczytane Skille.
-- [x] Pliki z BOM i końcami linii Windows dają się czytać i edytować bez zmiany formatu.
-- [x] Wynik wykonanej zmiany zostaje w pamięci mimo błędu usługi.
-- [x] Zależność od cofniętego pliku nie przechodzi na niezależne odpowiedzi.
-- [x] Zgodne limity szablonów `change` (polityka i kontrakt: 128).
-- [x] Wartość opcji nie jest brana za polecenie w szablonach (`systemctl -H host <word>` jest odrzucany).
-- [ ] Skill przy pytaniu ogólnym bez `permissions.toml`.
-- [x] Przebudowa 21 procedur Skills, niezależny przegląd treści i scenariuszy oraz regresje przekazywania pełnej treści (`improve/skills-procedures`; dowody w ROADMAP).
-- [ ] Odbiór poprawionych procedur Skills w rzeczywistej rozmowie na CachyOS po CI konkretnego head.
-- [x] Dłuższy limit oczekiwania przy najwyższym rozumowaniu i komunikat mówiący, że chodzi o czas.
-- [x] Lista `task rollback` i `task status` od najnowszych wpisów, z datą. Dziś kolejność wynika ze skrótu planu, więc łatwo wybrać nie to zadanie.
-- [x] Jasny błąd, gdy `--workspace` wskazuje plik zamiast katalogu.
-- [x] Polskie znaki w komunikatach i pomocy widocznych dla użytkownika (`task`, `cli`, `analyze`, zgody).
-- [ ] Polskie znaki w pozostałych miejscach: strona logowania Codex (`codex_admin.py`), komunikaty `executor`/`workspace`, instrukcje dla modelu w `analysis_contract.py` (zmiana wymaga ponownej oceny odpowiedzi modelu).
-- [ ] `ai-desktop task prune`: pokazuje stare zakończone wpisy, pyta o zgodę i dopiero wtedy je usuwa. Limit to 128 dzienników na katalog, a po jego osiągnięciu zapis jest blokowany.
+## Next up
+Stages and the conditions for completing them are described in [ROADMAP.md](ROADMAP.md).
+- [x] `task rollback`: do not overwrite or delete a newer editor save.
+- [x] Long change instruction: the edit stage refuses an instruction above 2 KiB, although `ask` accepts 128 KiB.
+- [x] The space before `/` is removed, so a word with `/` cannot be sent as a question.
+- [x] The final answer after a file read gets the command results and loaded Skills.
+- [x] Files with BOM and Windows line endings can be read and edited without changing their format.
+- [x] The result of a completed change stays in memory despite a service error.
+- [x] Dependence on a revoked file does not carry over to independent answers.
+- [x] Matching `change` template limits (policy and contract: 128).
+- [x] An option's value is not taken for a command in templates (`systemctl -H host <word>` is refused).
+- [ ] Skill for a general question without `permissions.toml`.
+- [x] Rebuild of the 21 Skills procedures, independent review of content and scenarios, and regressions for passing the full content (`improve/skills-procedures`; evidence in ROADMAP).
+- [ ] Acceptance of the improved Skills procedures in a real conversation on CachyOS after CI of the specific head.
+- [x] Longer wait limit at the highest reasoning level and a message saying that it is about time.
+- [x] `task rollback` and `task status` list from the newest entries, with a date. Today the order comes from the plan's hash, so it is easy to pick the wrong task.
+- [x] A clear error when `--workspace` points to a file instead of a directory.
+- [x] The interface, settings, docs and Skills are in English, and Claude answers in the language of the question.
+- [ ] `ai-desktop task prune`: shows old finished entries, asks for consent and only then removes them. The limit is 128 journals per directory, and once it is reached writing is blocked.
 
-## Bezpieczeństwo
-- [x] `material` i `project`: ponowne sprawdzenie polityki przed każdym przekazaniem danych (test na prawdziwym systemie przed scaleniem).
-- [x] Zapis istniejącego pliku nie nadpisuje równoczesnego zapisu edytora (wymiana `RENAME_EXCHANGE` z porównaniem; test na prawdziwym systemie przed scaleniem).
-- [x] `commands.change`: gdy zgoda wygaśnie lub polityka się zmieni w trakcie polecenia, wynik jest pokazany i odnotowany, a program podaje test i wycofanie do uruchomienia ręcznie.
-- [x] Błędna suma klienta: README nie uruchamia pliku, a `PKGBUILD` odmawia budowy.
-- [x] `ConversationConsent`: zgoda na rozmowę obejmuje cały `permissions.toml`.
-- [x] Pamięć rozmowy po cofnięciu dostępu: fakty kontrolera tracą szczegóły, gdy tura zależała od cofniętego pliku.
-- [ ] Odciąć w piaskownicy poleceń odczytu gniazda Unix hosta (D-Bus, Docker), bez dawania poleceniom sieci.
-- [ ] Sprawdzić ogólny filtr wywołań systemowych dla klienta.
-- [x] Przypiąć klienta Claude sumą kontrolną przy budowie pakietu.
-- [ ] Sprawdzić w CI polecenia z prawdziwym Bubblewrap; dziś te testy są pomijane na runnerze.
-- [ ] Sprawdzić warunki Anthropic dla programu uruchamiającego Claude Code z logowaniem subskrypcyjnym.
-- [ ] Niezależny przegląd bezpieczeństwa przed wersją 1.0.
+## Security
+- [x] `material` and `project`: re-check the policy before each handover of data (test on a real system before merging).
+- [x] Writing an existing file does not overwrite a concurrent editor save (`RENAME_EXCHANGE` swap with comparison; test on a real system before merging).
+- [x] `commands.change`: if consent expires or the policy changes during a command, the result is shown and recorded, and the program gives the test and the undo to run by hand.
+- [x] Wrong client sum: README does not run the file, and `PKGBUILD` refuses to build.
+- [x] `ConversationConsent`: consent for a conversation covers the whole `permissions.toml`.
+- [x] Conversation memory after access is revoked: controller facts lose their details when a turn depended on a revoked file.
+- [ ] Cut off the host's Unix sockets (D-Bus, Docker) in the sandbox for read commands, without giving commands network access.
+- [ ] Check a general system call filter for the client.
+- [x] Pin the Claude client with a checksum when the package is built.
+- [ ] Check commands with real Bubblewrap in CI; today these tests are skipped on the runner.
+- [ ] Check Anthropic's terms for a program that runs Claude Code with a subscription login.
+- [ ] Independent security review before version 1.0.
 
-## Błędy funkcjonalne
-- [x] Etap edycji w `ask` dostaje wcześniejsze ustalenia rozmowy, pamięć, wyniki poleceń i Skille.
-- [ ] To samo w `project`.
-- [x] Zapis rozmowy z wieloma zależnymi plikami: tury, które nie mieszczą się w tabeli źródeł, są redagowane zamiast odmowy zapisu.
-- [x] Kosz: 129. usunięcie jest odrzucane przed wykonaniem.
-- [x] Skill o największym dopuszczalnym rozmiarze można przypisać do agenta.
-- [ ] Codex: poprawne zakończenie logowania/wylogowania bywa zgłaszane jako błąd (`not-found` z kodem 1).
-- [ ] Skrypty odbioru: `update_candidate.fish` wymaga `0.1.0-17`; część skryptów odwołuje się do nieistniejących gałęzi.
-- [ ] Dokumentacja: `systemctl status` pokazuje wpisy dziennika, a README twierdzi, że domyślne polecenia nie wysyłają logów; README błędnie opisuje zakończenie rozmowy po timeoucie.
+## Functional bugs
+- [x] The edit stage in `ask` gets what was settled earlier in the conversation, the memory, command results and Skills.
+- [ ] The same in `project`.
+- [x] Saving a conversation with many dependent files: turns that do not fit in the source table are redacted instead of the save being refused.
+- [x] Trash: the 129th deletion is refused before it runs.
+- [x] A Skill of the largest allowed size can be assigned to an agent.
+- [ ] Codex: a correct end of login/logout is sometimes reported as an error (`not-found` with code 1).
+- [ ] Acceptance scripts: `update_candidate.fish` requires `0.1.0-17`; some scripts refer to branches that do not exist.
+- [ ] Documentation: `systemctl status` shows journal entries, while README claims that the default commands do not send logs; README wrongly describes how a conversation ends after a timeout.
 
-## Do sprawdzenia na żywo
-- [ ] Instalacja według README na czystym systemie CachyOS lub Arch.
-- [ ] Usuwanie do kosza i `task restore`.
-- [ ] `/rejestr` w `ai-desktop project` po edycji.
-- [ ] Prawdziwe awarie: wygaśnięcie logowania, brak sieci, limit usługi.
-- [ ] Codex na prawdziwym koncie.
+## To check live
+- [ ] Installation according to README on a clean CachyOS or Arch system.
+- [ ] Deleting to the trash and `task restore`.
+- [ ] `/log` in `ai-desktop project` after an edit.
+- [ ] Real failures: login expiry, no network, service limit.
+- [ ] Codex on a real account.
 
-## Porządki w kodzie
-- [ ] Połączyć powielone przepływy `material` i `project`.
-- [ ] Podzielić długie funkcje, m.in. `ask_cli.main` i `assistant_flow._run_once`.
-- [ ] Ujednolicić sprawdzanie tekstu; dziś różne moduły mają różne zasady.
-- [ ] Usunąć z pakietu moduły nieużywane przez zainstalowany program oraz stare skrypty odbioru `scripts/accept_*`.
-- [ ] Ukryć lub usunąć wewnętrzne podkomendy widoczne w `--help-all`.
+## Code cleanup
+- [ ] Merge the duplicated `material` and `project` flows.
+- [ ] Split long functions, including `ask_cli.main` and `assistant_flow._run_once`.
+- [ ] Unify text checking; today different modules have different rules.
+- [ ] Remove from the package the modules not used by the installed program, and the old acceptance scripts `scripts/accept_*`.
+- [ ] Hide or remove the internal subcommands visible in `--help-all`.
 
-## Możliwe usprawnienia
-- [ ] Skille na żądanie także w `material`, `project` i `task`.
-- [ ] Skill wczytany w rozmowie dostępny od razu w kolejnych pytaniach, bez dodatkowego wywołania modelu.
-- [ ] Wyniki poleceń rozpoznania w żądaniu edycji.
-- [ ] Strumieniowanie odpowiedzi.
-- [ ] Jedna sesja i jeden proces klienta na całą rozmowę, z limitem czasu życia.
+## Possible improvements
+- [ ] Skills on demand also in `material`, `project` and `task`.
+- [ ] A Skill loaded in a conversation available right away in later questions, without an extra model call.
+- [ ] Discovery command results in the edit request.
+- [ ] Streaming answers.
+- [ ] One client session and one client process for the whole conversation, with a lifetime limit.

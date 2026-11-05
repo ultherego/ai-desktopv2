@@ -50,7 +50,7 @@ class WebDiagnosticContractTests(unittest.TestCase):
 
     def test_valid_answer_stays_identical(self):
         self.assertEqual(web_text(stream(events())),
-                         "Python [1].\n\nŹródła:\n[1] Python — `https://www.python.org/`")
+                         "Python [1].\n\nSources:\n[1] Python — `https://www.python.org/`")
 
     def test_init_checks_distinguish_event_tools_and_mcp(self):
         for key, value, check in (("subtype", SECRET, "web-init-event"),
@@ -261,7 +261,7 @@ class WebDiagnosticIntegrationTests(unittest.TestCase):
             code = ask_cli.main(["--question", "Public synthetic question"])
         self.assertEqual(code, 2)
         self.assertIn("ANALYSIS: REFUSED reason=result check=web-init-tools", output.getvalue())
-        self.assertNotIn("DOKŁADNE DANE", output.getvalue())
+        self.assertNotIn("EXACT DATA", output.getvalue())
         self.assertNotIn(SECRET, output.getvalue())
 
 
@@ -286,5 +286,5 @@ class WebDiagnosticIntegrationTests(unittest.TestCase):
                 self.assertEqual(code, 2)
                 self.assertEqual("ANALYSIS: REFUSED reason=" in output.getvalue(), verbose)
                 self.assertNotIn("check=", output.getvalue())
-                self.assertNotIn("DOKŁADNE DANE", output.getvalue())
+                self.assertNotIn("EXACT DATA", output.getvalue())
                 self.assertNotIn(SECRET, output.getvalue())

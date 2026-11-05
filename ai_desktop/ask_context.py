@@ -15,14 +15,14 @@ CITY_FORMS = {
 }
 
 WEATHER_HINTS = {
-    "not-found": "Nie znaleziono miejscowości. Podaj jej nazwę podstawową, np. --weather Warszawa.",
-    "network": "Nie udało się połączyć z Open-Meteo. Sprawdź sieć i spróbuj ponownie.",
-    "timeout": "Pobieranie pogody przekroczyło limit czasu. Spróbuj ponownie później.",
-    "rate-limit": "Open-Meteo ograniczyło liczbę zapytań. Spróbuj ponownie później.",
-    "unavailable": "Źródło pogody jest niedostępne. Spróbuj ponownie później.",
-    "stale": "Źródło zwróciło nieaktualne dane pogodowe. Nie przekazano ich do Claude.",
-    "input": "Nieprawidłowa miejscowość. Podaj nazwę, np. --weather Warszawa.",
-    "response": "Nie udało się zweryfikować danych pogodowych. Nie przekazano ich do Claude.",
+    "not-found": "City not found. Give its base name, for example --weather Warsaw.",
+    "network": "Could not connect to Open-Meteo. Check the network and try again.",
+    "timeout": "Fetching the weather timed out. Try again later.",
+    "rate-limit": "Open-Meteo limited the number of requests. Try again later.",
+    "unavailable": "The weather source is unavailable. Try again later.",
+    "stale": "The source returned out-of-date weather data. It was not passed to Claude.",
+    "input": "Invalid city. Give a name, for example --weather Warsaw.",
+    "response": "Could not verify the weather data. It was not passed to Claude.",
 }
 
 
@@ -100,46 +100,46 @@ def _weather(city, args, reader, *, check=lambda: None, question_consent=None):
     quiet = question_consent is not None and not getattr(args, "details", False)
     if args.preview and not city:
         if not quiet:
-            print("Pogoda: planowane pobranie z Open-Meteo; miejscowość trzeba wybrać przed połączeniem. "
-                  "Podgląd offline — bez połączenia i danych pogodowych.")
+            print("Weather: planned fetch from Open-Meteo; the city must be chosen before connecting. "
+                  "Offline preview: no connection and no weather data.")
         return None
     while not city:
-        city = _read("Miejscowość (np. Warszawa): ", reader)
+        city = _read("City (for example Warsaw): ", reader)
         _check_question(question_consent)
     # Validate before any terminal interpolation, DNS or HTTP request.
     weather_context.validate_city(city)
     if args.preview:
         if not quiet:
-            print("Pogoda: planowane pobranie z Open-Meteo dla " + terminal_text(city)
-                  + ". Podgląd offline — bez połączenia i danych pogodowych.")
+            print("Weather: planned fetch from Open-Meteo for " + terminal_text(city)
+                  + ". Offline preview: no connection and no weather data.")
         return None
     if not quiet:
-        print("Pogoda: Open-Meteo otrzyma miejscowość " + json.dumps(city, ensure_ascii=False)
-              + " i adres IP połączenia.")
+        print("Weather: Open-Meteo will receive the city " + json.dumps(city, ensure_ascii=False)
+              + " and the IP address of the connection.")
     if question_consent is None and not confirm("weather", reader=reader):
         raise AnalysisDenied("consent")
     _check_source(check, question_consent)
     candidates = weather_context.geocode(city)
     _check_source(check, question_consent)
     if not candidates:
-        print("Nie znaleziono miejscowości. Uruchom ponownie z --weather i nazwą, np. Warszawa.")
+        print("City not found. Run again with --weather and a name, for example Warsaw.")
         raise AnalysisDenied("input")
     if len(candidates) == 1:
         selected = candidates[0]
     else:
-        print("Wybierz miejscowość (maksymalnie 5 wyników):")
+        print("Choose a city (at most 5 results):")
         for index, candidate in enumerate(candidates, 1):
             print(str(index) + ". " + terminal_text(", ".join(filter(None, (
                 candidate["name"], candidate["admin1"], candidate["country"])))))
         while True:
-            answer = _read("Numer miejscowości lub n/nie, aby anulować: ", reader, 64)
+            answer = _read("City number, or n/no to cancel: ", reader, 64)
             _check_source(check, question_consent)
-            if answer.casefold() in ("n", "nie"):
+            if answer.casefold() in ("n", "no"):
                 raise AnalysisDenied("consent")
             if answer in {str(i) for i in range(1, len(candidates) + 1)}:
                 selected = candidates[int(answer) - 1]
                 break
-            print("Podaj numer z listy albo n/nie.")
+            print("Enter a number from the list, or n/no.")
     _check_source(check, question_consent)
     result = weather_context.current(selected)
     _check_source(check, question_consent)
@@ -158,12 +158,12 @@ def _systemd(scope, view, args, reader, *, check=lambda: None, question_consent=
         for selected in scopes:
             question_consent.require_systemd(selected)
     if not quiet:
-        print("Dostęp lokalny: /usr/bin/systemctl; zakres: " + ", ".join(scopes)
-              + "; widok: " + view + " (" + listing + ").")
-        print("Odczyt nazw i stanów jednostek; bez zmian w usługach.")
+        print("Local access: /usr/bin/systemctl; scope: " + ", ".join(scopes)
+              + "; view: " + view + " (" + listing + ").")
+        print("Reads unit names and states; services are not changed.")
     if args.preview:
         if not quiet:
-            print("Podgląd offline — odczyt systemd nie został wykonany.")
+            print("Offline preview: systemd was not read.")
         return []
     if question_consent is None and not confirm("systemd-read", reader=reader):
         raise AnalysisDenied("consent")
@@ -174,7 +174,7 @@ def _systemd(scope, view, args, reader, *, check=lambda: None, question_consent=
         _check_source(check, question_consent)
         if item["status"] != "ok":
             status = item["status"] if item["status"] in systemd_context.STATUSES else "invalid"
-            print("Nie udało się odczytać systemd — zakres: " + selected + ", stan: " + status + ".")
+            print("Could not read systemd (scope: " + selected + ", status: " + status + ").")
             raise AnalysisDenied("input")
         context.append(item)
     return context
@@ -184,30 +184,30 @@ def preview_context(context, *, details=False):
     """Show source/scope/count; exact observations are available with --details."""
     for item in context:
         if item["kind"] == "systemd":
-            print("\nSystemd — " + ("system" if item["scope"] == "system" else "użytkownik")
-                  + ", " + ("zainstalowane jednostki" if item["listing"] == "unit-files" else "załadowane jednostki")
+            print("\nSystemd: " + ("system" if item["scope"] == "system" else "user")
+                  + ", " + ("installed units" if item["listing"] == "unit-files" else "loaded units")
                   + ", " + item["view"] + "; " + item["observed_at"])
             if item["status"] != "ok":
-                print("Nie udało się odczytać tego zakresu (" + item["status"] + ").")
+                print("Could not read this scope (" + item["status"] + ").")
                 continue
             if details:
                 for unit in item["items"]:
                     print("  " + unit["name"] + "  " + unit["state"]
                           + (" / " + unit["substate"] if unit["substate"] else ""))
-            print("Do odpowiedzi: " + str(len(item["items"])) + " z " + str(item["total"])
-                  + (" — lista ograniczona." if item["truncated"] else "."))
+            print("For the answer: " + str(len(item["items"])) + " of " + str(item["total"])
+                  + (" (list shortened)." if item["truncated"] else "."))
         elif item["kind"] == "weather":
-            print("\nPogoda — " + terminal_text(", ".join(filter(None, (
+            print("\nWeather: " + terminal_text(", ".join(filter(None, (
                 item["location"]["name"], item["location"]["admin1"], item["location"]["country"])))))
-            print("Open-Meteo, oszacowanie modelu; czas danych: " + item["valid_at"])
+            print("Open-Meteo, model estimate; data time: " + item["valid_at"])
             current = item["current"]
             if details:
-                print("Temperatura: " + str(current["temperature_c"]) + " °C; odczuwalna: "
-                      + str(current["apparent_temperature_c"]) + " °C; opad: "
-                      + str(current["precipitation_mm"]) + " mm; wiatr: "
-                      + str(current["wind_kmh"]) + " km/h; kod pogody WMO: " + str(current["weather_code"]))
-                print("Okres danych: " + str(current["interval_seconds"]) + " s.")
-            print("Źródła: " + item["source_url"] + "; geokodowanie https://www.geonames.org/")
+                print("Temperature: " + str(current["temperature_c"]) + " °C; feels like: "
+                      + str(current["apparent_temperature_c"]) + " °C; precipitation: "
+                      + str(current["precipitation_mm"]) + " mm; wind: "
+                      + str(current["wind_kmh"]) + " km/h; WMO weather code: " + str(current["weather_code"]))
+                print("Data period: " + str(current["interval_seconds"]) + " s.")
+            print("Sources: " + item["source_url"] + "; geocoding https://www.geonames.org/")
     if context:
         print()
 
@@ -229,7 +229,7 @@ def prepare(question, args, *, reader=input):
         raise ValueError("state without systemd")
     if explicit_weather or weather:
         if not explicit_weather and re.search(r"\b(?:jutro|pojutrze|tydzien)\b", normalized(question)):
-            print("Źródło pogody obsługuje bieżące warunki; nie pobieram prognozy na inny dzień.")
+            print("The weather source covers current conditions only; no forecast for another day is fetched.")
         else:
             try:
                 item = _weather(explicit_weather or inferred_city, args, reader)

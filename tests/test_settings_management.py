@@ -44,9 +44,9 @@ class SettingsManagementTests(unittest.TestCase):
         self.assertEqual(stopped.exception.code, 0)
         text = management_cli.build_parser(prog="ai-desktop settings", provider_neutral=True).format_help()
         self.assertIn("ai-desktop settings", text)
-        self.assertIn("ustawienia agentów, modeli, rozumowania i Skills", text)
-        self.assertNotIn("Lokalne ustawienia Claude", text)
-        self.assertIn("bez logowania", text)
+        self.assertIn("settings for agents, models, reasoning and Skills", text)
+        self.assertNotIn("Local Claude settings", text)
+        self.assertIn("no login", text)
 
     def test_neutral_set_updates_codex_effort_and_keeps_role_authority(self):
         before = self.select_codex()
@@ -55,7 +55,7 @@ class SettingsManagementTests(unittest.TestCase):
         selected = self.store.load().config.profiles["default"]
         self.assertEqual(selected, replace(before, effort="xhigh"))
         self.assertIn("codex", output)
-        self.assertIn("bardzo wysoki", output)
+        self.assertIn("very high", output)
         self.assertEqual(self.store.path.stat().st_mode & 0o777, 0o600)
 
     def test_legacy_claude_set_still_refuses_codex_profile(self):
@@ -63,7 +63,7 @@ class SettingsManagementTests(unittest.TestCase):
         before = self.store.path.read_bytes()
         code, output = self.call(["set", "--effort", "high"], neutral=False)
         self.assertEqual(code, 2)
-        self.assertIn("dotyczy profilu Claude", output)
+        self.assertIn("applies to a Claude profile", output)
         self.assertEqual(self.store.path.read_bytes(), before)
 
     def test_invalid_codex_model_and_effort_never_publish_partial_changes(self):
@@ -82,7 +82,7 @@ class SettingsManagementTests(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn("default", text)
         self.assertIn("Codex", text)
-        self.assertIn("Rozumowanie: default, low, medium, high, xhigh.", text)
+        self.assertIn("Reasoning: default, low, medium, high, xhigh.", text)
         for alias in ("sonnet", "opus", "haiku", "max"):
             self.assertNotIn(alias, text)
         self.assertEqual(self.store.load(), before)
@@ -96,7 +96,7 @@ class SettingsManagementTests(unittest.TestCase):
                 patch.object(management_cli.sys.stdout, "isatty", return_value=False):
             code, text = self.call([])
         self.assertEqual(code, 0)
-        self.assertIn("Ustawienia: ai-desktop settings", text)
+        self.assertIn("Settings: ai-desktop settings", text)
         self.assertNotIn("claude menu", text)
         self.assertFalse(self.store.path.exists())
 
@@ -108,7 +108,7 @@ class SettingsManagementTests(unittest.TestCase):
         code, _ = self.call([], chooser=choose)
         self.assertEqual(code, 0)
         self.assertEqual(len(selections), 1)
-        self.assertIn("Ustawienia", selections[0][0])
+        self.assertIn("Settings", selections[0][0])
         self.assertFalse(self.store.path.exists())
 
     def test_neutral_injected_menu_can_select_codex_reasoning(self):
@@ -173,9 +173,9 @@ class SettingsManagementTests(unittest.TestCase):
         def choose(title, options, *, default=0):
             calls.append((title, options))
             if len(calls) == 1:
-                return next(index for index, label in enumerate(options) if label.startswith("Usługa:"))
+                return next(index for index, label in enumerate(options) if label.startswith("Service:"))
             if len(calls) == 2:
-                self.assertIn("bez logowania", title)
+                self.assertIn("no login", title)
                 return next(index for index, label in enumerate(options) if label.startswith("ChatGPT / Codex"))
             return None
         code, _ = self.call([], chooser=choose)

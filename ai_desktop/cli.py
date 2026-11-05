@@ -18,90 +18,90 @@ PUBLIC_COMMANDS = ("ask", "material", "project", "task", "status", "stop", "sett
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="ai-desktop",
-        description="AI Desktop: kontrolowane narzędzia dla CachyOS (pełna lista; krótka pomoc: ai-desktop --help)",
+        description="AI Desktop: controlled tools for CachyOS (full list; short help: ai-desktop --help)",
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
-    commands.add_parser("ask", help="Zadaj pytanie; opcjonalnie dołącz wybrany kontekst", add_help=False)
-    commands.add_parser("material", help="Pracuj z jednym lokalnym plikiem tekstowym do 5 MiB", add_help=False)
-    commands.add_parser("project", help="Pracuj z katalogiem projektu: analiza do odczytu, zmiany i usuwanie dopiero po zatwierdzeniu", add_help=False)
-    commands.add_parser("settings", help="Usługa, agent, model, rozumowanie i Skills", add_help=False)
-    commands.add_parser("claude", help="Zgodność: starsze ustawienia Claude; użyj settings", add_help=False)
-    commands.add_parser("codex", help="Zgodność: administracja Codex; logowanie przez login", add_help=False)
-    commands.add_parser("agents", help="Twórz i wybieraj profile agentów", add_help=False)
-    commands.add_parser("sessions", help="Lista i wznawianie zapisanych rozmów", add_help=False)
-    commands.add_parser("task", help="Zmień wybrane pliki, przetestuj, zatwierdź diff lub cofnij zapis")
+    commands.add_parser("ask", help="Ask a question; optionally attach chosen context", add_help=False)
+    commands.add_parser("material", help="Work with one local text file up to 5 MiB", add_help=False)
+    commands.add_parser("project", help="Work with a project directory: read-only analysis, changes and deletions only after approval", add_help=False)
+    commands.add_parser("settings", help="Service, agent, model, reasoning and Skills", add_help=False)
+    commands.add_parser("claude", help="Compatibility: older Claude settings; use settings", add_help=False)
+    commands.add_parser("codex", help="Compatibility: Codex administration; log in with login", add_help=False)
+    commands.add_parser("agents", help="Create and choose agent profiles", add_help=False)
+    commands.add_parser("sessions", help="List and resume saved conversations", add_help=False)
+    commands.add_parser("task", help="Change chosen files, test them, approve the diff or undo the save")
 
-    commands.add_parser("audit", help="Lokalny audyt tylko do odczytu")
-    diagnostic_status = commands.add_parser("doctor", help="Sprawdzenie wymagań bez uruchamiania AI")
+    commands.add_parser("audit", help="Local read-only audit")
+    diagnostic_status = commands.add_parser("doctor", help="Check requirements without starting AI")
     diagnostic_status.add_argument("--v", "--verbose", "-v", "--details", dest="details", action="store_true",
-                                   help="Pełny raport wymagań w JSON")
-    commands.add_parser("status", help="Gotowość analizy offline, bez klienta i OAuth")
-    commands.add_parser("stop", help="Zatrzymaj lub odzyskaj własną tymczasową sesję analizy")
-    analysis = commands.add_parser("analyze", help="Zatwierdź raport i odbierz analizę subskrypcji Claude")
-    analysis.add_argument("--preview", action="store_true", help="Tylko podgląd offline, bez klienta i OAuth")
+                                   help="Full requirements report as JSON")
+    commands.add_parser("status", help="Offline analysis readiness, without the client or OAuth")
+    commands.add_parser("stop", help="Stop or recover your own temporary analysis session")
+    analysis = commands.add_parser("analyze", help="Approve a report and get an analysis from your Claude subscription")
+    analysis.add_argument("--preview", action="store_true", help="Offline preview only, without the client or OAuth")
     analysis.add_argument("--v", "--verbose", "-v", "--details", dest="details", action="store_true",
-                          help="Pełny podgląd zasad i diagnostyka analizy")
+                          help="Full preview of the rules and analysis diagnostics")
     question = analysis.add_mutually_exclusive_group()
-    question.add_argument("--question", default="", help="Własne pytanie o raport (do 2048 bajtów UTF-8)")
-    question.add_argument("--ask", action="store_true", help="Wpisz pytanie w terminalu przed podglądem i zgodą")
-    analysis.add_argument("--report", help="Zapisany raport JSON AI Desktop; zamiast zbierania bieżącego stanu")
+    question.add_argument("--question", default="", help="Your own question about the report (up to 2048 UTF-8 bytes)")
+    question.add_argument("--ask", action="store_true", help="Type a question in the terminal before the preview and consent")
+    analysis.add_argument("--report", help="Saved AI Desktop JSON report, used instead of collecting the current state")
     analysis.add_argument("--format", choices=("auto", "plain", "markdown"), default="auto",
-                          help="Odpowiedź: formatowanie terminala, bez kolorów lub surowy Markdown")
+                          help="Reply: terminal formatting, no colors, or raw Markdown")
     from .run_controls import add_arguments
     add_arguments(analysis)
-    login = commands.add_parser("login", help="Logowanie i wybór aktywnej usługi Claude lub Codex")
+    login = commands.add_parser("login", help="Log in and choose the active service: Claude or Codex")
     target = login.add_mutually_exclusive_group()
-    target.add_argument("--provider", choices=("claude", "codex"), help="Pomiń menu; zaloguj i wybierz usługę")
+    target.add_argument("--provider", choices=("claude", "codex"), help="Skip the menu; log in and choose the service")
     target.add_argument("--claude", "--allow-claude-login", dest="provider", action="store_const", const="claude",
-                        help="Zaloguj i wybierz Claude")
+                        help="Log in and choose Claude")
     target.add_argument("--codex", "--allow-chatgpt-login", dest="provider", action="store_const", const="codex",
-                        help="Zaloguj i wybierz ChatGPT / Codex")
+                        help="Log in and choose ChatGPT / Codex")
     login.add_argument("--v", "--verbose", "-v", "--details", dest="details", action="store_true",
-                       help="Pokaż diagnostykę jednostki logowania")
+                       help="Show diagnostics of the login unit")
 
-    validation = commands.add_parser("validate-report", help="Waliduj istniejący plik JSON offline")
-    validation.add_argument("path", help="Lokalny raport JSON lub - dla stdin")
+    validation = commands.add_parser("validate-report", help="Validate an existing JSON file offline")
+    validation.add_argument("path", help="Local JSON report, or - for stdin")
 
-    comparison = commands.add_parser("compare", help="Porównaj dwa lokalne raporty JSON offline")
-    comparison.add_argument("before", help="Poprzedni raport JSON lub - dla stdin")
-    comparison.add_argument("after", help="Nowszy raport JSON lub - dla stdin")
+    comparison = commands.add_parser("compare", help="Compare two local JSON reports offline")
+    comparison.add_argument("before", help="Earlier JSON report, or - for stdin")
+    comparison.add_argument("after", help="Newer JSON report, or - for stdin")
     comparison.add_argument("--summary", action="store_true",
-                            help="Pokaż tylko nazwy zmienionych pól, bez wartości")
+                            help="Show only the names of changed fields, without values")
     comparison.add_argument("--exit-on-change", action="store_true",
-                            help="Zakończ kodem 3, gdy raporty są poprawne, ale się różnią")
+                            help="Exit with code 3 when the reports are valid but differ")
 
-    diagnostic = commands.add_parser("diagnose", help="Diagnostyka i opcjonalna analiza AI")
+    diagnostic = commands.add_parser("diagnose", help="Diagnostics and optional AI analysis")
     diagnostic.add_argument("action", choices=("preview", "snapshot", "save", "ask"))
-    diagnostic.add_argument("output", nargs="?", help="Nowy plik JSON wymagany dla save")
+    diagnostic.add_argument("output", nargs="?", help="New JSON file, required for save")
 
-    controlled = commands.add_parser("controller", help="Kontrolowana diagnostyka z bramą izolacji")
+    controlled = commands.add_parser("controller", help="Controlled diagnostics with an isolation gate")
     controlled.add_argument("action", choices=("preview", "approve", "ask"))
 
-    isolated = commands.add_parser("executor", help="Bezpieczny wykonawca offline Bubblewrap")
+    isolated = commands.add_parser("executor", help="Safe offline Bubblewrap executor")
     isolated.add_argument("action", choices=("self-test", "inspect"))
 
     # Isolated, one-shot local transport only. Neither action escalates UID,
     # starts Claude, performs network IO or writes host files.
-    handoff = commands.add_parser("handoff-once", help="Pokaż i zatwierdź raport do odrębnego workera")
-    handoff.add_argument("session", help="Losowy identyfikator jednorazowej sesji")
-    commands.add_parser("handoff", help="Zatwierdź raport i aktywuj offline worker przez systemd")
-    worker = commands.add_parser("worker-once", help="Odbierz jeden raport jako użytkownik ai-desktop")
-    worker.add_argument("session", help="Losowy identyfikator jednorazowej sesji")
-    worker.add_argument("desktop_uid", type=int, help="Zaufany UID aplikacji pulpitu")
+    handoff = commands.add_parser("handoff-once", help="Show and approve a report for a separate worker")
+    handoff.add_argument("session", help="Random ID of the one-time session")
+    commands.add_parser("handoff", help="Approve a report and start the offline worker through systemd")
+    worker = commands.add_parser("worker-once", help="Receive one report as the ai-desktop user")
+    worker.add_argument("session", help="Random ID of the one-time session")
+    worker.add_argument("desktop_uid", type=int, help="Trusted UID of the desktop application")
 
-    commands.add_parser("workspace", help="Plan, zatwierdzenie i zapis nowych plików w workspace",
+    commands.add_parser("workspace", help="Plan, approve and save new files in the workspace",
                         add_help=False)
 
-    skill = commands.add_parser("skills", help="Zarządzanie własnymi Skills")
+    skill = commands.add_parser("skills", help="Manage your own Skills")
     skill.add_argument("action", choices=("list", "validate", "show", "menu", "new"), nargs="?", default="list")
     skill.add_argument("name", nargs="?")
 
     for name, description, choices in (
-        ("agent", "Offline Claude z izolowanym Skill", ("version", "help")),
-        ("launcher", "Offline Claude w Bubblewrap", ("version", "help")),
-        ("sandbox", "Weryfikacja izolacji Bubblewrap", ("self-test",)),
-        ("skill-mount", "Weryfikacja izolowanego montowania Skills", ("self-test",)),
+        ("agent", "Offline Claude with an isolated Skill", ("version", "help")),
+        ("launcher", "Offline Claude in Bubblewrap", ("version", "help")),
+        ("sandbox", "Check Bubblewrap isolation", ("self-test",)),
+        ("skill-mount", "Check the isolated Skills mount", ("self-test",)),
     ):
         command = commands.add_parser(name, help=description)
         command.add_argument("action", choices=choices)
@@ -110,45 +110,45 @@ def build_parser():
     return parser
 
 
-SHORT_HELP = """AI Desktop: kontrolowane narzędzia dla CachyOS
+SHORT_HELP = """AI Desktop: controlled tools for CachyOS
 
-Codzienna praca:
-  ask        Zadaj pytanie; opcjonalnie dołącz wybrany kontekst
-  material   Analiza jednego lokalnego pliku tekstowego (do 5 MiB)
-  project    Praca z katalogiem projektu: analiza do odczytu; zmiany i usuwanie dopiero po Twoim zatwierdzeniu
-  task       Zmiana wybranych plików z testem i pełnym diffem; cofanie i przywracanie
-  status     Gotowość analizy offline, bez klienta i OAuth
-  stop       Zatrzymaj lub odzyskaj własną tymczasową sesję analizy
+Everyday work:
+  ask        Ask a question; optionally attach chosen context
+  material   Analyze one local text file (up to 5 MiB)
+  project    Work with a project directory: read-only analysis; changes and deletions only after your approval
+  task       Change chosen files with a test and a full diff; undo and restore
+  status     Offline analysis readiness, without the client or OAuth
+  stop       Stop or recover your own temporary analysis session
 
-Konfiguracja i diagnostyka:
-  settings   Usługa, agent, model, rozumowanie i Skills
-  agents     Tworzenie, kopiowanie i wybór profili agentów
-  sessions   Zapisane rozmowy: podgląd, wznowienie i usuwanie
-  skills     Lista i podgląd dostępnych Skills
-  login      Logowanie i wybór Claude lub ChatGPT / Codex
-  doctor     Sprawdzenie wymagań bez uruchamiania AI
+Setup and diagnostics:
+  settings   Service, agent, model, reasoning and Skills
+  agents     Create, copy and choose agent profiles
+  sessions   Saved conversations: preview, resume and delete
+  skills     List and preview the available Skills
+  login      Log in and choose Claude or ChatGPT / Codex
+  doctor     Check requirements without starting AI
 
-Pełna lista poleceń, także narzędzia wewnętrzne i deweloperskie: ai-desktop --help-all
-Pomoc polecenia: ai-desktop POLECENIE --help
+Full command list, including internal and developer tools: ai-desktop --help-all
+Help for a command: ai-desktop COMMAND --help
 """
 
 
 def login_menu(*, details=False):
     from .terminal_menu import choose, MenuInputError
     try:
-        selected = choose("Logowanie i wybór aktywnej usługi",
-                          ("Claude — subskrypcja", "ChatGPT / Codex — subskrypcja", "Anuluj"))
+        selected = choose("Log in and choose the active service",
+                          ("Claude — subscription", "ChatGPT / Codex — subscription", "Cancel"))
     except MenuInputError:
-        print("Nie udało się odczytać wyboru. Uruchom w interaktywnym terminalu: ai-desktop login")
+        print("Could not read your choice. Run this in an interactive terminal: ai-desktop login")
         return 2
     if selected is None or type(selected) is int and selected == 2:
-        print("Anulowano logowanie.")
+        print("Login cancelled.")
         return 0
     if type(selected) is not int or selected not in (0, 1):
-        print("Nie wybrano sposobu logowania.")
+        print("No login method was chosen.")
         return 2
     provider = "claude" if selected == 0 else "codex"
-    print("Logowanie: " + ("Claude" if selected == 0 else "ChatGPT / Codex"))
+    print("Logging in: " + ("Claude" if selected == 0 else "ChatGPT / Codex"))
     return main(["login", "--provider", provider] + (["--v"] if details else []))
 
 
@@ -191,12 +191,12 @@ def main(argv=None):
     parser = build_parser()
     if argv and not argv[0].startswith("-") and argv[0] not in parser.command_names:
         # Never echo untrusted terminal text or execute a guessed command.
-        print("Nieznane polecenie.", file=sys.stderr)
+        print("Unknown command.", file=sys.stderr)
         if re.fullmatch(r"[a-z][a-z0-9-]{0,63}", argv[0]):
             matches = difflib.get_close_matches(argv[0], PUBLIC_COMMANDS, n=1, cutoff=0.75)
             if matches:
-                print("Podpowiedź: ai-desktop " + matches[0], file=sys.stderr)
-        print("Pomoc: ai-desktop --help", file=sys.stderr)
+                print("Did you mean: ai-desktop " + matches[0], file=sys.stderr)
+        print("Help: ai-desktop --help", file=sys.stderr)
         raise SystemExit(2)
     args = parser.parse_args(argv)
 
@@ -217,7 +217,7 @@ def main(argv=None):
                 return analysis_cli.main(preview=args.preview, question=args.question, ask=args.ask,
                                          report_path=args.report, output_format=args.format, details=args.details)
         except (OSError, ValueError, TypeError, KeyError):
-            print("Niepoprawna konfiguracja agenta. Sprawdź ai-desktop agents list.")
+            print("Invalid agent configuration. Check ai-desktop agents list.")
             return 2
     if args.command == "login":
         if args.provider is None:
@@ -233,7 +233,7 @@ def main(argv=None):
         from . import analysis_admin
         result = analysis_admin.main(allow=True, **options)
         if result == 0:
-            print("Zalogowano: Claude. Usługę wybierz w ustawieniach zwykłego użytkownika.")
+            print("Logged in: Claude. Choose the service in your regular user's settings.")
         return result
     if args.command == "status":
         from .analysis_session import status
@@ -279,4 +279,4 @@ def main(argv=None):
     if args.command == "skill-mount":
         return skill_mount.main([args.action])
 
-    raise AssertionError("Nieznane polecenie")
+    raise AssertionError("Unknown command")

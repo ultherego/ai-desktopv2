@@ -9,21 +9,21 @@ from .run_controls import recipient
 from .terminal_menu import MenuInputError, choose
 
 PAGE_SIZE = 8
-EMPTY = "Brak zapisanych rozmów. Program zapyta o zapis przy wyjściu z rozmowy (albo użyj --session new)."
+EMPTY = "No saved conversations. The program asks about saving when you leave a conversation (or use --session new)."
 MANAGE_PAGE = 9                  # nine threads + up to three actions fit the twelve rows of one menu
 
 
 def build_parser():
     parser = argparse.ArgumentParser(prog="ai-desktop sessions",
-                                     description="Lokalne rozmowy zapisane przez --session; bez uruchamiania AI")
+                                     description="Local conversations saved with --session; does not start AI")
     commands = parser.add_subparsers(dest="action")
-    commands.add_parser("list", help="Pokaż zapisane rozmowy")
-    commands.add_parser("menu", help="Wybierz rozmowę i działanie strzałkami")
-    for name, description in (("show", "Pokaż ostatnie pytania i odpowiedzi"),
-                              ("resume", "Wznów rozmowę z nową kontrolą dostępu i zgodą"),
-                              ("remove", "Usuń zapis rozmowy")):
+    commands.add_parser("list", help="Show saved conversations")
+    commands.add_parser("menu", help="Choose a conversation and an action with the arrow keys")
+    for name, description in (("show", "Show the latest questions and answers"),
+                              ("resume", "Resume a conversation with a new access check and consent"),
+                              ("remove", "Delete a saved conversation")):
         command = commands.add_parser(name, help=description)
-        command.add_argument("id", help="Identyfikator z sessions list")
+        command.add_argument("id", help="ID from sessions list")
     return parser
 
 
@@ -37,14 +37,14 @@ def _safe(value, limit=1600):
         raise SessionError("session-text")
     visible = "".join(c if c in "\n\t" or unicodedata.category(c) not in ("Cc", "Cf", "Cs", "Zl", "Zp")
                       else "�" for c in value[:limit])
-    return visible + (" …[skrócono]" if len(value) > limit else "")
+    return visible + (" …[shortened]" if len(value) > limit else "")
 
 
 def _entry(value, active=False):
     profile = value["execution"]["profile"] if value["execution"] is not None else "default"
-    return "%s · %s · %s · %s · %d pytań%s" % (
+    return "%s · %s · %s · %s · questions: %d%s" % (
         value["id"], value["kind"], recipient(config=value["execution"]), profile,
-        len(value["history"]), " [aktywna]" if active else "")
+        len(value["history"]), " [active]" if active else "")
 
 
 def thread_label(value, active=False):
@@ -53,12 +53,12 @@ def thread_label(value, active=False):
     title = value.get("title") or " ".join(first.split())
     title = title if len(title) <= 60 else title[:59].rstrip() + "…"
     stamp = time.strftime("%d.%m %H:%M", time.localtime(value["updated"]))
-    return "%s · %s · %d wymian%s" % (stamp, _safe(title, 80).replace("\n", " "), len(value["history"]),
-                                     " [aktywna]" if active else "")
+    return "%s · %s · exchanges: %d%s" % (stamp, _safe(title, 80).replace("\n", " "), len(value["history"]),
+                                     " [active]" if active else "")
 
 
 def _manage(store):
-    """Tick threads with Space (they stay ticked across pages), then go down to 'Usuń zaznaczone' and confirm."""
+    """Tick threads with Space (they stay ticked across pages), then go down to 'Delete selected' and confirm."""
     marked, page = set(), 0
     while True:
         values = _values(store)
@@ -70,13 +70,13 @@ def _manage(store):
         visible = values[page * MANAGE_PAGE:(page + 1) * MANAGE_PAGE]
         local = {index for index, value in enumerate(visible) if value["id"] in marked}
         options = [thread_label(value, store.active(value["id"])) for value in visible]
-        actions = ["Usuń zaznaczone (%d)" % len(marked)]
+        actions = ["Delete selected (%d)" % len(marked)]
         if page:
-            actions.append("Poprzednia strona")
+            actions.append("Previous page")
         if page + 1 < pages:
-            actions.append("Następna strona")
-        actions.append("Wróć")
-        choice = choose("Zapisane rozmowy · strona %d/%d" % (page + 1, pages), options + actions,
+            actions.append("Next page")
+        actions.append("Back")
+        choice = choose("Saved conversations · page %d/%d" % (page + 1, pages), options + actions,
                         marks=local, markable=len(visible))
         marked -= {value["id"] for value in visible}
         marked |= {visible[index]["id"] for index in local}
@@ -86,17 +86,17 @@ def _manage(store):
             marked ^= {visible[choice]["id"]}              # Enter on a thread ticks it as well
             continue
         action = actions[choice - len(visible)]
-        if action == "Wróć":
+        if action == "Back":
             return 0
-        if action == "Poprzednia strona":
+        if action == "Previous page":
             page -= 1
-        elif action == "Następna strona":
+        elif action == "Next page":
             page += 1
         elif not marked:
-            print("Nic nie zaznaczono.")
+            print("Nothing selected.")
         else:
-            decision = choose("Usunąć %d zaznaczonych rozmów? Tego nie można cofnąć." % len(marked),
-                              ("Nie, wróć", "Tak, usuń zaznaczone"))
+            decision = choose("Delete selected conversations (%d)? This cannot be undone." % len(marked),
+                              ("No, go back", "Yes, delete selected"))
             if decision == 1:
                 removed = skipped = 0
                 for ident in sorted(marked):
@@ -106,7 +106,7 @@ def _manage(store):
                     except SessionError:
                         skipped += 1                          # active in another process, or changed meanwhile
                 marked.clear()
-                print("Usunięto rozmów: %d%s." % (removed, ", pominięto (aktywne lub zmienione): %d" % skipped if skipped else ""))
+                print("Conversations deleted: %d%s." % (removed, ", skipped (active or changed): %d" % skipped if skipped else ""))
 
 
 def select_thread(store, execution_config):
@@ -119,9 +119,9 @@ def select_thread(store, execution_config):
         if not values:
             return "new", None
         recent = values[:7]
-        options = ["Nowa rozmowa"] + [thread_label(value, store.active(value["id"])) for value in recent] \
-            + ["Zarządzaj zapisanymi rozmowami"]
-        choice = choose("Rozmowa", options)
+        options = ["New conversation"] + [thread_label(value, store.active(value["id"])) for value in recent] \
+            + ["Manage saved conversations"]
+        choice = choose("Conversation", options)
         if choice is None:
             return None
         if choice == 0:
@@ -140,21 +140,21 @@ def _pick(title, options):
 
 
 def _show(value, *, preview=False):
-    print("Rozmowa %s · %s · %s" % (value["id"], value["kind"], recipient(config=value["execution"])))
+    print("Conversation %s · %s · %s" % (value["id"], value["kind"], recipient(config=value["execution"])))
     if value["path"]:
-        print("Kontekst:", _safe(value["path"], 400 if preview else 4096))
+        print("Context:", _safe(value["path"], 400 if preview else 4096))
     if value["execution"] is not None:
         selected = value["execution"]
-        print("Agent: %s · model: %s · rozumowanie: %s" % (
+        print("Agent: %s · model: %s · reasoning: %s" % (
             selected["profile"], selected["model"], selected["effort"]))
     history = value["history"][-1:] if preview else value["history"]
     for item in history:
         print("\n> " + _safe(item["question"], 500 if preview else 2048))
         print(_safe(item["answer"], 1600 if preview else 8192 + 64))
     if not history:
-        print("Brak zakończonych pytań.")
+        print("No finished questions.")
     if preview:
-        print("Pełna historia: ai-desktop sessions show " + value["id"])
+        print("Full history: ai-desktop sessions show " + value["id"])
 
 
 def _resume(store, ident, dispatch):
@@ -178,22 +178,22 @@ def _menu(store, dispatch):
         options = [_entry(value, store.active(value["id"])) for value in visible]
         actions = []
         if page:
-            actions.append("Poprzednia strona")
+            actions.append("Previous page")
         if page + 1 < pages:
-            actions.append("Następna strona")
-        actions.append("Zaznacz i usuń wiele rozmów")
-        actions.append("Wróć")
-        selected = _pick("Zapisane rozmowy · strona %d/%d" % (page + 1, pages), options + actions)
+            actions.append("Next page")
+        actions.append("Select and delete several conversations")
+        actions.append("Back")
+        selected = _pick("Saved conversations · page %d/%d" % (page + 1, pages), options + actions)
         if selected is None:
             return 0
         if selected >= len(visible):
             action = actions[selected - len(visible)]
-            if action == "Wróć":
+            if action == "Back":
                 return 0
-            if action == "Zaznacz i usuń wiele rozmów":
+            if action == "Select and delete several conversations":
                 _manage(store)
                 continue
-            page += -1 if action == "Poprzednia strona" else 1
+            page += -1 if action == "Previous page" else 1
             continue
         ident = visible[selected]["id"]
         # Capture a fresh complete record for the reviewed deletion. A later
@@ -201,8 +201,8 @@ def _menu(store, dispatch):
         reviewed = store.read(ident)
         while True:
             selected = _pick(_entry(reviewed, store.active(ident)),
-                             ("Podgląd ostatniego pytania i odpowiedzi", "Wznów z nową kontrolą dostępu i zgodą",
-                              "Usuń zapis tej rozmowy", "Wróć"))
+                             ("Preview the latest question and answer", "Resume with a new access check and consent",
+                              "Delete this saved conversation", "Back"))
             if selected is None or selected == 3:
                 break
             if selected == 0:
@@ -213,7 +213,7 @@ def _menu(store, dispatch):
                 return _resume(store, ident, dispatch)
             else:
                 store.remove(ident, expected=reviewed)
-                print("Usunięto zapis rozmowy.")
+                print("Saved conversation deleted.")
                 break
 
 
@@ -230,11 +230,11 @@ def main(argv=None, *, store=None, dispatch=None):
             for value in values:
                 active = store.active(value["id"])
                 profile = value["execution"]["profile"] if value["execution"] is not None else "default"
-                print("%s  %s  %s  %s  %d pytań%s" % (
+                print("%s  %s  %s  %s  questions: %d%s" % (
                     value["id"], value["kind"], recipient(config=value["execution"]), profile,
-                    len(value["history"]), "  [aktywna]" if active else ""))
+                    len(value["history"]), "  [active]" if active else ""))
             for ident in store.damaged():
-                print("%s  uszkodzony zapis; usuń: ai-desktop sessions remove %s" % (ident, ident))
+                print("%s  damaged record; delete it with: ai-desktop sessions remove %s" % (ident, ident))
             return 0
         if args.action == "show":
             value = store.read(args.id)
@@ -245,24 +245,24 @@ def main(argv=None, *, store=None, dispatch=None):
                 store.remove_damaged(args.id)
             else:
                 store.remove(args.id)
-            print("Usunięto zapis rozmowy.")
+            print("Saved conversation deleted.")
             return 0
         return _resume(store, args.id, dispatch)
     except (MenuInputError, EOFError, KeyboardInterrupt):
-        print("Nie odczytano wyboru rozmowy. Użyj interaktywnego terminala lub ai-desktop sessions list.")
+        print("Could not read your conversation choice. Use an interactive terminal or ai-desktop sessions list.")
         return 2
     except (SessionError, OSError, ValueError, TypeError, KeyError) as exc:
         reason = str(exc) if isinstance(exc, SessionError) else "session-file"
         if reason == "session-active":
-            print("Rozmowa jest aktywna w innym procesie. Zakończ ją przed wznowieniem lub usunięciem.")
+            print("This conversation is active in another process. End it before resuming or deleting it.")
         elif reason == "session-binding":
-            print("Plik, projekt lub ustawienia agenta zmieniły się. Rozpocznij nową rozmowę przez --session new.")
+            print("The file, project or agent settings have changed. Start a new conversation with --session new.")
         elif reason == "session-id":
-            print("Niepoprawny identyfikator rozmowy. Sprawdź ai-desktop sessions list.")
+            print("Invalid conversation ID. Check ai-desktop sessions list.")
         elif reason == "session-conflict":
-            print("Rozmowa zmieniła się podczas wyboru. Wybierz ją ponownie.")
+            print("The conversation changed while you were choosing. Choose it again.")
         else:
-            print("Nie można odczytać lub zapisać rozmowy. Sprawdź zapis i uprawnienia katalogu sesji.")
+            print("Could not read or save the conversation. Check the saved file and the session directory permissions.")
         return 2
 
 

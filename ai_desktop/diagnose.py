@@ -56,7 +56,7 @@ def collect():
 def ask(report):
     """Fail closed until the A+ boundary and real-client consent are accepted."""
     serialize_report(report)
-    print("AI E2: BLOCKED (brak zatwierdzonej izolacji Claude/OAuth)")
+    print("AI E2: BLOCKED (no approved Claude/OAuth isolation)")
     return 2
 
 
@@ -76,11 +76,11 @@ def main(argv=None):
               and type(args[1]) is str and bool(args[1])
               and args[1] != "-" and not args[1].startswith("--"))
     if args not in (["preview"], ["snapshot"], ["ask"]) and not saving:
-        print("Uzycie: python3 -B -m ai_desktop.diagnose preview|snapshot|save FILE|ask")
+        print("Usage: python3 -B -m ai_desktop.diagnose preview|snapshot|save FILE|ask")
         return 2
 
     if os.geteuid() == 0:
-        print("Nie uruchamiaj AI Desktop jako root")
+        print("Do not run AI Desktop as root")
         return 2
 
     try:
@@ -106,11 +106,11 @@ def main(argv=None):
         print("SNAPSHOT SAVE: PASS")
         return 0
 
-    print("=== DANE DIAGNOSTYCZNE ===", flush=True)
+    print("=== DIAGNOSTIC DATA ===", flush=True)
     print(payload, flush=True)
 
     if args == ["preview"]:
-        print("PREVIEW: PASS (nie wyslano danych do AI)")
+        print("PREVIEW: PASS (no data sent to AI)")
         return 0
 
     try:

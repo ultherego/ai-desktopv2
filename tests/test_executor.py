@@ -131,7 +131,7 @@ class ExecutorTests(unittest.TestCase):
         run.assert_called_once()
         self.assertEqual(run.call_args.args[0], "--check")
         self.assertIn("btrfs_low_space", out.getvalue())
-        self.assertNotIn("7.3.0-4-cachyos", out.getvalue())
+        self.assertNotIn("0.0.0-synthetic", out.getvalue())
 
     def test_executor_rejects_unexpected_worker_output(self):
         with patch("ai_desktop.diagnose.collect", return_value=report_fixture()):

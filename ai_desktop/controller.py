@@ -19,7 +19,7 @@ def prepare():
     payload = serialize_report(report)
 
     if executor._run("--probe") != {"probe": "PASS"}:
-        raise RuntimeError("Nie potwierdzono izolacji wykonawcy")
+        raise RuntimeError("Could not confirm the worker isolation")
 
     findings = executor.validate_assessment(executor._run("--check", payload))
     return report, payload, findings
@@ -28,7 +28,7 @@ def prepare():
 def main(argv=None):
     args = sys.argv[1:] if argv is None else argv
     if args not in (["preview"], ["approve"], ["ask"]):
-        print("Uzycie: python3 -B -m ai_desktop controller preview|approve|ask")
+        print("Usage: python3 -B -m ai_desktop controller preview|approve|ask")
         return 2
     if os.geteuid() == 0:
         print("CONTROLLER: REFUSED (root)")
@@ -37,17 +37,17 @@ def main(argv=None):
     try:
         report, payload, findings = prepare()
     except (OSError, RuntimeError, ValueError, TypeError):
-        print("CONTROLLER: FAIL (raport lub wykonawca odrzucony)")
+        print("CONTROLLER: FAIL (report or worker rejected)")
         return 1
 
-    print("=== RAPORT DOZWOLONY DO WYSŁANIA AI ===", flush=True)
+    print("=== REPORT ALLOWED TO BE SENT TO AI ===", flush=True)
     print(payload, flush=True)
-    print("=== OCENA IZOLOWANEGO WYKONAWCY (LOKALNIE) ===", flush=True)
+    print("=== ISOLATED WORKER ASSESSMENT (LOCAL) ===", flush=True)
     print(json.dumps(findings, indent=2, ensure_ascii=False), flush=True)
     print("REPORT SHA256: " + hashlib.sha256(payload.encode("utf-8")).hexdigest(), flush=True)
 
     if args == ["preview"]:
-        print("CONTROLLER PREVIEW: PASS (nie wyslano danych do AI)")
+        print("CONTROLLER PREVIEW: PASS (no data sent to AI)")
         return 0
 
     if args == ["approve"]:
@@ -56,10 +56,10 @@ def main(argv=None):
         try:
             authorization = approval_ui.confirm_transfer(report)
         except approval_ui.ApprovalDenied:
-            print("CONTROLLER APPROVE: ODMOWA (brak zatwierdzenia)")
+            print("CONTROLLER APPROVE: DENIED (not approved)")
             return 2
-        print("CONTROLLER APPROVE: ZATWIERDZONO sha256=" + authorization.sha256 +
-              " (nie wyslano danych do AI)")
+        print("CONTROLLER APPROVE: APPROVED sha256=" + authorization.sha256 +
+              " (no data sent to AI)")
         return 0
 
     # No legacy host launch: diagnose.ask refuses while E2 is unaccepted.

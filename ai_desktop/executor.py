@@ -29,14 +29,14 @@ RUNNER = (
 def build_command(source, action, host_home, host_netns):
     """Generate a fixed bwrap argv; never accept a model-supplied command."""
     if action not in ("--probe", "--check"):
-        raise ValueError("Niedozwolone dzialanie wykonawcy")
+        raise ValueError("Worker action not allowed")
     source = Path(source)
     if not source.is_absolute() or not source.is_dir() or source.is_symlink():
-        raise ValueError("Nieprawidlowy katalog kodu")
+        raise ValueError("Invalid code directory")
     for name in WORKER_FILES:
         file = source / name
         if not file.is_file() or file.is_symlink():
-            raise ValueError("Nieprawidlowy plik wykonawcy")
+            raise ValueError("Invalid worker file")
 
     argv = [
         "bwrap", "--unshare-user", "--unshare-pid", "--unshare-net",
@@ -65,11 +65,11 @@ def build_command(source, action, host_home, host_netns):
 
 def _run(action, payload=None):
     if shutil.which("bwrap") is None:
-        raise RuntimeError("Brak bwrap")
+        raise RuntimeError("bwrap is missing")
     try:
         netns = os.readlink("/proc/self/ns/net")
     except OSError as exc:
-        raise RuntimeError("Nie mozna odczytac przestrzeni sieci") from exc
+        raise RuntimeError("Could not read the network namespace") from exc
     command = build_command(PACKAGE_ROOT, action, Path.home(), netns)
     try:
         process = subprocess.run(
@@ -81,35 +81,35 @@ def _run(action, payload=None):
             timeout=20,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        raise RuntimeError("Wykonawca nie zakonczyl pracy") from exc
+        raise RuntimeError("The worker did not finish") from exc
     if process.returncode != 0 or len(process.stdout) > 4096:
-        raise RuntimeError("Wykonawca odrzucil zadanie")
+        raise RuntimeError("The worker refused the task")
     try:
         return json.loads(process.stdout)
     except (ValueError, TypeError) as exc:
-        raise RuntimeError("Wykonawca zwrocil niepoprawna odpowiedz") from exc
+        raise RuntimeError("The worker returned an invalid answer") from exc
 
 
 
 def validate_assessment(response):
     """Reject any unexpected worker output before using or displaying it."""
     if type(response) is not dict or set(response) != {"signals", "unknown"}:
-        raise RuntimeError("Niepoprawny schemat odpowiedzi")
+        raise RuntimeError("Invalid answer schema")
     for key, allowed in (("signals", ALLOWED_SIGNALS), ("unknown", ALLOWED_UNKNOWN)):
         values = response[key]
         if type(values) is not list or len(values) > len(allowed):
-            raise RuntimeError("Niepoprawna lista wynikow")
+            raise RuntimeError("Invalid result list")
         if any(type(value) is not str or value not in allowed for value in values):
-            raise RuntimeError("Niedozwolone dane z wykonawcy")
+            raise RuntimeError("Data from the worker not allowed")
         if len(set(values)) != len(values):
-            raise RuntimeError("Powtorzone dane z wykonawcy")
+            raise RuntimeError("Repeated data from the worker")
     return response
 
 
 def main(argv=None):
     args = sys.argv[1:] if argv is None else argv
     if args not in (["self-test"], ["inspect"]):
-        print("Uzycie: python3 -B -m ai_desktop executor self-test|inspect")
+        print("Usage: python3 -B -m ai_desktop executor self-test|inspect")
         return 2
     if os.geteuid() == 0:
         print("EXECUTOR: REFUSED (root)")
@@ -117,7 +117,7 @@ def main(argv=None):
     try:
         if args == ["self-test"]:
             if _run("--probe") != {"probe": "PASS"}:
-                raise RuntimeError("Izolacja nie zostala potwierdzona")
+                raise RuntimeError("The isolation was not confirmed")
             print("EXECUTOR ISOLATION: PASS")
             return 0
 
@@ -125,11 +125,11 @@ def main(argv=None):
 
         payload = serialize_report(collect())
         response = validate_assessment(_run("--check", payload))
-        print("=== WYNIK IZOLOWANEGO WYKONAWCY (bez AI) ===")
+        print("=== ISOLATED WORKER RESULT (no AI) ===")
         print(json.dumps(response, ensure_ascii=False, indent=2))
         return 0
     except (RuntimeError, ValueError, OSError):
-        print("EXECUTOR: FAIL (odmowa wykonania)")
+        print("EXECUTOR: FAIL (execution refused)")
         return 1
 
 

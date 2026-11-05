@@ -23,28 +23,28 @@ from .execution import UNSET
 
 def build_parser():
     from .run_controls import add_arguments
-    parser = argparse.ArgumentParser(prog="ai-desktop task", description="Zmiana wybranych plikow i test w odizolowanej kopii")
+    parser = argparse.ArgumentParser(prog="ai-desktop task", description="Change selected files and test them in an isolated copy")
     commands = parser.add_subparsers(dest="action", required=True)
-    run = commands.add_parser("run", help="Polecenie -> propozycja -> test -> diff -> zgoda na zapis")
+    run = commands.add_parser("run", help="Instruction -> proposal -> test -> diff -> approve the write")
     add_arguments(run)
-    run.add_argument("instruction", help="Zadanie dla wybranego asystenta, bez dowolnego terminala modelu")
-    run.add_argument("--workspace", required=True, help="Konkretny katalog projektu (nie cały HOME)")
-    run.add_argument("--file", action="append", required=True, help="Względny plik do edycji lub utworzenia; powtarzalne")
-    run.add_argument("--context", action="append", default=[], help="Plik tylko do odczytu, np. niezależne testy")
+    run.add_argument("instruction", help="Task for the selected assistant; the model gets no free terminal")
+    run.add_argument("--workspace", required=True, help="A specific project directory (not all of HOME)")
+    run.add_argument("--file", action="append", required=True, help="Relative file to edit or create; can be repeated")
+    run.add_argument("--context", action="append", default=[], help="Read-only file, for example independent tests")
     run.add_argument("--test", choices=task_sandbox.CHECKS, required=True)
-    run.add_argument("--preview", action="store_true", help="Podgląd danych offline, bez AI, testów i zapisów")
+    run.add_argument("--preview", action="store_true", help="Preview the data offline, without AI, tests or writes")
     run.add_argument("--format", choices=("auto", "plain", "markdown"), default="auto")
-    status = commands.add_parser("status", help="Odczytaj metadane dziennika zadania")
+    status = commands.add_parser("status", help="Read the task journal metadata")
     status.add_argument("--workspace", required=True)
-    undo = commands.add_parser("rollback", help="Cofnij zatwierdzone zapisy; odmowa przy późniejszej edycji")
+    undo = commands.add_parser("rollback", help="Undo approved writes; refused if the file was edited later")
     undo.add_argument("--workspace", required=True)
-    undo.add_argument("--plan", help="Opcjonalny identyfikator; bez niego wybierzesz zadanie z listy")
-    restore = commands.add_parser("restore", help="Przywróć pliki usunięte w trybie project (kosz zadania)")
+    undo.add_argument("--plan", help="Optional ID; without it you pick the task from a list")
+    restore = commands.add_parser("restore", help="Restore files deleted in project mode (task trash)")
     restore.add_argument("--workspace", required=True)
-    restore.add_argument("--plan", required=True, help="Identyfikator usunięcia z komunikatu po usunięciu")
+    restore.add_argument("--plan", required=True, help="Deletion ID from the message shown after the deletion")
     for command in (run, status, undo, restore):
         command.add_argument("--v", "--verbose", "-v", "--details", dest="details", action="store_true",
-                             help="Pokaż pełne dane, identyfikatory i diagnostykę")
+                             help="Show full data, IDs and diagnostics")
     return parser
 
 
@@ -75,24 +75,24 @@ def run_task(args, reader, *, display_state=None):
     if display_state is not None:
         display_state["execution"] = selected
     if args.details:
-        print("=== WYBRANE DANE DO %s ===" % recipient(config=selected).upper())
+        print("=== SELECTED DATA FOR %s ===" % recipient(config=selected).upper())
         print(json.dumps(source, ensure_ascii=False, indent=2))
-        print("=== INSTRUKCJA APLIKACJI ===\n" + SYSTEM_PROMPT)
-        print("=== ZASADY I ODBIORCA ===\n" + json.loads(gate.payload)["client_context"])
+        print("=== APPLICATION INSTRUCTIONS ===\n" + SYSTEM_PROMPT)
+        print("=== RULES AND RECIPIENT ===\n" + json.loads(gate.payload)["client_context"])
         print("SHA256:", gate.sha256)
     else:
-        print("Zadanie: " + source["instruction"])
-        print(recipient("Do Claude: instrukcja, wybrane ścieżki i pełna treść istniejących plików:", config=selected))
+        print("Task: " + source["instruction"])
+        print(recipient("To Claude: the instruction, the selected paths and the full content of existing files:", config=selected))
         for item in source["files"]:
-            action = ("utworzenie" if item["content"] is None else "edycja") if item["writable"] else "tylko odczyt"
+            action = ("create" if item["content"] is None else "edit") if item["writable"] else "read-only"
             size = 0 if item["content"] is None else len(item["content"].encode("utf-8"))
             print("  " + item["path"] + " — " + action + ", " + str(size) + " B")
-        print("Pełny podgląd danych: --v.")
+        print("Full data preview: --v.")
     if args.details:
-        print("Test na kopii:", args.test, "(bez sieci, HOME i zapisow do projektu)")
+        print("Test on a copy:", args.test, "(no network, no HOME, no writes to the project)")
     if args.preview:
         print("TASK PREVIEW: PASS sha256=" + gate.sha256 if args.details
-              else "Podgląd gotowy. Niczego nie wysłano ani nie zapisano.")
+              else "Preview ready. Nothing was sent or saved.")
         return 0
     installation_ready()
     if not confirm("transfer", reader=reader, config=selected):
@@ -120,34 +120,34 @@ def finish_task(before, source, response, args, reader, *, write_guard=None, con
     try:
         proposed = contract.proposal(response, source)
     except contract.UnchangedProposal:
-        print("Nie zaproponowano zmiany: plik ma już taką treść. Nic nie zapisano.")
+        print("No change was proposed: the file already has this content. Nothing was saved.")
         if args.details:
-            print("TASK: REFUSED reason=unchanged; projekt niezmieniony")
+            print("TASK: REFUSED reason=unchanged; project unchanged")
         return 2
     workspace.unchanged(before)
-    print("\n" + ("=== PROPOZYCJA %s ===" % recipient(config=config).upper() if args.details else "Propozycja:"))
+    print("\n" + ("=== PROPOSAL FROM %s ===" % recipient(config=config).upper() if args.details else "Proposal:"))
     print(render_answer(proposed["summary"], output_format=args.format))
     if args.details:
-        print("=== TEST NA ODIZOLOWANEJ KOPII ===", flush=True)
-        print("Sprawdzam zmiany na odizolowanej kopii…", flush=True)
+        print("=== TEST ON AN ISOLATED COPY ===", flush=True)
+        print("Checking the changes on an isolated copy…", flush=True)
     result = task_sandbox.run(source, proposed["files"], args.test)
     if args.details or not result["passed"]:
-        print("Niezaufany output testu:")
+        print("Untrusted test output:")
         print(terminal_text(result["output"]))
-        print("=== KONIEC OUTPUTU TESTU ===" if args.details else "Koniec wyniku testu.")
+        print("=== END OF TEST OUTPUT ===" if args.details else "End of test output.")
     if args.test == "text":
-        print("Integralność tekstu UTF-8: " + ("potwierdzona" if result["passed"] else "niepotwierdzona") + ".")
-        print("Nie sprawdzono składni ani działania tej konfiguracji lub programu.")
+        print("UTF-8 text integrity: " + ("confirmed" if result["passed"] else "not confirmed") + ".")
+        print("The syntax and behavior of this configuration or program were not checked.")
         if args.details:
             print("TASK TEXT INTEGRITY: " + ("PASS" if result["passed"] else "FAIL") + " syntax=NOT-TESTED behavior=NOT-TESTED")
     elif args.details:
         print("TASK TEST: " + ("PASS" if result["passed"] else "FAIL") + " check=" + args.test)
-        print("Test na kopii: " + ("zaliczony" if result["passed"] else "niezaliczony") + " (" + args.test + ").")
+        print("Test on a copy: " + ("passed" if result["passed"] else "failed") + " (" + args.test + ").")
     elif not result["passed"]:
-        print("Test na kopii: niezaliczony (" + args.test + ").")
+        print("Test on a copy: failed (" + args.test + ").")
     if not result["passed"]:
-        print("TASK: REFUSED reason=test; projekt niezmieniony" if args.details
-              else "Nie zapisano zmian. Popraw zadanie lub test i spróbuj ponownie.")
+        print("TASK: REFUSED reason=test; project unchanged" if args.details
+              else "The changes were not saved. Fix the task or the test and try again.")
         return 2
     if write_guard is not None:
         write_guard()
@@ -156,31 +156,31 @@ def finish_task(before, source, response, args, reader, *, write_guard=None, con
     show_diff(plan, details=args.details)
     if args.details:
         if args.test != "text":
-            print("Test obejmuje tylko wybrane pliki; nie potwierdza poprawności całego projektu.")
-        print("Zapis obejmie tylko pokazane zmiany; będzie można je cofnąć.")
-        print("Prywatne kopie cofania w .ai-desktop-tasks; bez uruchamiania ich na hoście.")
-        print("SHA256 planu:", plan.sha256)
+            print("The test covers only the selected files; it does not prove the whole project works.")
+        print("Only the changes shown will be saved, and you can undo them.")
+        print("Private undo copies are kept in .ai-desktop-tasks; they are never run on the host.")
+        print("Plan SHA256:", plan.sha256)
     if not confirm("write", reader=reader):
-        print("TASK: CANCELLED; projekt niezmieniony" if args.details else "Anulowano zapis. Projekt bez zmian.")
+        print("TASK: CANCELLED; project unchanged" if args.details else "Save cancelled. The project is unchanged.")
         return 2
     # The UI approves this exact immutable plan; the internal token never comes
     # from model text. The executor still consumes its nonce and expiry once.
     if write_guard is not None:
         write_guard()
-    approval = plan.authorize("ZAPISZ " + plan.sha256)
+    approval = plan.authorize("SAVE " + plan.sha256)
     try:
         workspace.apply(plan, approval, **({"write_guard": write_guard} if write_guard is not None else {}))
     except BaseException:
-        print("Zapis przerwany. Sprawdź ai-desktop task status i task rollback dla tego katalogu.")
+        print("The save was interrupted. Check ai-desktop task status and task rollback for this directory.")
         raise
-    print("TASK: PASS test=" + args.test if args.details else "Zapisano zmiany.")
-    print("Cofnięcie: " + shlex.join(["ai-desktop", "task", "rollback", "--workspace", args.workspace]))
+    print("TASK: PASS test=" + args.test if args.details else "Changes saved.")
+    print("Undo: " + shlex.join(["ai-desktop", "task", "rollback", "--workspace", args.workspace]))
     return 0
 
 
 def show_diff(plan, *, details=False):
     """Print every changed line verbatim, including complete new files and EOF."""
-    print("\n=== Zmiany do zapisania ===")
+    print("\n=== Changes to save ===")
     data = plan.data()
     rendered = []
     def lines(content):
@@ -197,15 +197,15 @@ def show_diff(plan, *, details=False):
         for line in difference:
             rendered.append(line if line.endswith("\n") else line + "\n")
             if not line.endswith("\n"):
-                rendered.append("\\ Brak znaku nowej linii na końcu pliku\n")
+                rendered.append("\\ No newline at end of file\n")
         if old and old["content"] != old_content:
-            rendered.append("Plik zachowa swoje końce linii Windows i znak BOM, jeśli je ma.\n")
+            rendered.append("The file keeps its Windows line endings and BOM, if it has them.\n")
         if old is None and not item["content"]:
-            rendered.append("--- /dev/null\n+++ b/" + item["path"] + "\nNowy pusty plik (0 B).\n")
+            rendered.append("--- /dev/null\n+++ b/" + item["path"] + "\nNew empty file (0 B).\n")
     print(fenced_code("".join(rendered), language="diff"))
     if details:
         for item in data["proposal"]["files"]:
-            print("Nowa tresc JSON: " + item["path"])
+            print("New content as JSON: " + item["path"])
             print(fenced_code(json.dumps(item["content"], ensure_ascii=False), language="json"))
     print()
 
@@ -223,32 +223,32 @@ def _when(record):
 
 def show_record(record, number=None, *, details=False):
     prefix = str(number) + ". " if number is not None else ""
-    states = {"applied": "zapisano", "rolled-back": "cofnięto", "prepared": "zapis niedokończony",
-              "conflict": "konflikt — wymaga sprawdzenia", "trashed": "usunięto do kosza", "restored": "przywrócono"}
+    states = {"applied": "saved", "rolled-back": "undone", "prepared": "save not finished",
+              "conflict": "conflict — needs checking", "trashed": "moved to trash", "restored": "restored"}
     if record.get("kind") == "trash" and record["status"] == "prepared":
-        states["prepared"] = "usuwanie niedokończone — sprawdź kosz zadania"
-    states["detached"] = "historia niepowiązana — cofnięcie zablokowane"
-    print(prefix + _when(record) + "Stan: " + (record["status"] if details else states.get(record["status"], record["status"])))
+        states["prepared"] = "deletion not finished — check the task trash"
+    states["detached"] = "unlinked history — undo is blocked"
+    print(prefix + _when(record) + "State: " + (record["status"] if details else states.get(record["status"], record["status"])))
     if record["status"] == "detached":
         print("  " + workspace.DETACHED_HISTORY_HINT)
     for item in record["files"]:
-        action = "Przywróć oryginał" if item["action"] == "restore" else "Usuń utworzony plik"
+        action = "Restore original" if item["action"] == "restore" else "Delete created file"
         print("  " + action + ": " + item["path"])
     if details:
         print("  Plan: " + record["plan"])
-        print("  SHA256 dziennika: " + record["journal_sha256"])
+        print("  Journal SHA256: " + record["journal_sha256"])
 
 
 def restore_deleted(args, reader):
     """Undo one deletion made by `ai-desktop project`: files return only to free names, never over newer files."""
     from . import workspace_trash
-    print("Przywrócenie plików usuniętych w: " + json.dumps(args.workspace, ensure_ascii=False))
-    print("Pliki wrócą na swoje miejsca tylko tam, gdzie nazwa jest wolna; nic nie zostanie nadpisane.")
+    print("Restoring files deleted in: " + json.dumps(args.workspace, ensure_ascii=False))
+    print("Files go back only where the name is free; nothing will be overwritten.")
     if not confirm("restore", reader=reader):
-        print("Anulowano. Nic nie przywrócono.")
+        print("Cancelled. Nothing was restored.")
         return 2
     ok = workspace_trash.restore(args.workspace, args.plan)
-    print("Przywrócono usunięte pliki." if ok else "Konflikt: nie przywrócono wszystkich plików (nazwa zajęta lub kosz zmieniony). Dziennik zachowano.")
+    print("Deleted files restored." if ok else "Conflict: not all files were restored (a name is taken or the trash changed). The journal was kept.")
     return 0 if ok else 2
 
 
@@ -263,11 +263,11 @@ def rollback_task(args, records, reader):
     if not candidates:
         if args.plan:
             raise ValueError("unknown plan")
-        print("Brak powiązanych zadań do cofnięcia." if detached else "Brak zadań do cofnięcia w tym katalogu.")
+        print("No linked tasks to undo." if detached else "No tasks to undo in this directory.")
         return 2 if detached else 0
     expires = time.monotonic() + 180
     if len(candidates) > 1 or args.details:
-        print("=== ZADANIA DO COFNIECIA ===" if args.details else "Zadania do cofnięcia:")
+        print("=== TASKS TO UNDO ===" if args.details else "Tasks to undo:")
         for index, record in enumerate(candidates, 1):
             show_record(record, index, details=args.details)
     if len(candidates) == 1:
@@ -275,29 +275,29 @@ def rollback_task(args, records, reader):
     else:
         select_reader = fresh_input if reader is input else reader
         while True:
-            answer = select_reader("Wybierz numer zadania lub wpisz n/nie, aby anulować: ").strip()
+            answer = select_reader("Choose a task number, or type n/no to cancel: ").strip()
             if time.monotonic() > expires:
                 raise ValueError("expired consent")
-            if answer.casefold() in ("n", "nie"):
-                print("TASK ROLLBACK: CANCELLED; pliki niezmienione" if args.details else "Anulowano. Pliki bez zmian.")
+            if answer.casefold() in ("n", "no"):
+                print("TASK ROLLBACK: CANCELLED; files unchanged" if args.details else "Cancelled. The files are unchanged.")
                 return 2
             if answer in {str(index) for index in range(1, len(candidates) + 1)}:
                 break
-            print("Podaj numer od 1 do " + str(len(candidates)) + " albo n/nie.")
+            print("Enter a number from 1 to " + str(len(candidates)) + " or n/no.")
         record = candidates[int(answer) - 1]
     if args.details:
-        print("=== WYBRANE COFNIECIE ===")
-    print("Cofnięcie w: " + json.dumps(args.workspace, ensure_ascii=False))
+        print("=== SELECTED UNDO ===")
+    print("Undo in: " + json.dumps(args.workspace, ensure_ascii=False))
     show_record(record, details=args.details)
-    print("Przywróci oryginalne bajty i tryb albo usunie utworzony plik. Późniejsze zmiany powodują konflikt.")
+    print("This restores the original bytes and mode, or deletes the created file. Later changes cause a conflict.")
     if not confirm("rollback", reader=reader):
-        print("TASK ROLLBACK: CANCELLED; pliki niezmienione" if args.details else "Anulowano. Pliki bez zmian.")
+        print("TASK ROLLBACK: CANCELLED; files unchanged" if args.details else "Cancelled. The files are unchanged.")
         return 2
     if time.monotonic() > expires:
         raise ValueError("expired consent")
     ok = workspace.rollback(args.workspace, record["plan"], expected_journal=record["journal_sha256"])
-    print(("TASK ROLLBACK: " + ("PASS" if ok else "CONFLICT (dziennik zachowany)")) if args.details
-          else ("Cofnięto zmiany." if ok else "Nie cofnięto: plik zmieniono po zapisie, więc zostawiono jego obecną wersję. Dziennik zachowano. Sprawdź: "
+    print(("TASK ROLLBACK: " + ("PASS" if ok else "CONFLICT (journal kept)")) if args.details
+          else ("Changes undone." if ok else "Not undone: the file changed after the save, so its current version was kept. The journal was kept. Check: "
                 + ", ".join(json.dumps(item["path"], ensure_ascii=False) for item in record["files"][:8])))
     return 0 if ok else 2
 
@@ -316,7 +316,7 @@ def main(argv=None, *, reader=input):
             raise ValueError("tty")
         if os.path.exists(args.workspace) and not os.path.isdir(args.workspace):
             print("TASK: REFUSED; workspace-not-directory" if args.details
-                  else "--workspace musi wskazywać katalog, a to jest plik. Podaj katalog projektu; pliki wybierasz przez --file i --context.")
+                  else "--workspace must point to a directory, but this is a file. Give the project directory; choose files with --file and --context.")
             return 2
         if args.action == "run":
             return run_task(args, reader, display_state=display_state)
@@ -331,25 +331,25 @@ def main(argv=None, *, reader=input):
             for index, record in enumerate(records, 1):
                 show_record(record, index, details=args.details)
                 if record.get("kind") == "trash" and record["status"] != "restored":
-                    print("  Przywrócenie: " + shlex.join(["ai-desktop", "task", "restore", "--workspace", args.workspace,
+                    print("  Restore: " + shlex.join(["ai-desktop", "task", "restore", "--workspace", args.workspace,
                                                          "--plan", record["plan"]]))
             if args.details:
                 print("TASK STATUS: PASS records=" + str(len(records)))
             elif not records:
-                print("Brak zadań w tym katalogu.")
+                print("No tasks in this directory.")
             return 0
         return rollback_task(args, newest_first(records), reader)
     except workspace.JournalLimit:
-        print("Osiągnięto limit 128 zapisanych zadań. Nowego zapisu nie wykonano; historia i cofanie pozostają dostępne.")
+        print("The limit of 128 saved tasks was reached. Nothing new was saved; history and undo are still available.")
     except AnalysisDenied as exc:
         if args.details:
             print(str(exc))
-        print(failure_hint(exc.reason, HINTS.get(exc.reason, "Zadanie zatrzymane przez bramę bezpieczeństwa."),
+        print(failure_hint(exc.reason, HINTS.get(exc.reason, "The task was stopped by a safety check."),
                            config=display_state["execution"],
                            **({"diagnostic": exc.diagnostic} if exc.diagnostic is not None else {})))
     except (EOFError, KeyboardInterrupt):
-        print("TASK: CANCELLED; brak automatycznego ponowienia" if args.details else "Anulowano. Zadanie nie zostanie ponowione automatycznie.")
+        print("TASK: CANCELLED; no automatic retry" if args.details else "Cancelled. The task will not be retried automatically.")
     except (OSError, ValueError, TypeError, KeyError, RuntimeError, RecursionError):
-        print("TASK: REFUSED; sprawdz wybor plikow, wynik modelu, test i task status" if args.details
-              else "Nie ukończono zadania. Sprawdź wybór plików i ai-desktop task status.")
+        print("TASK: REFUSED; check the file selection, model output, test and task status" if args.details
+              else "The task was not finished. Check the file selection and ai-desktop task status.")
     return 2

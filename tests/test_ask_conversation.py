@@ -76,7 +76,7 @@ class ConversationLoopTests(unittest.TestCase):
         return SimpleNamespace(code=code, out=out.getvalue(), sent=sent, histories=histories, prompts=prompts)
 
     def test_prompt_returns_and_history_is_carried_under_one_consent_for_the_conversation(self):
-        r = self.run_ui([], ["Chce undervolt do gry, uzywam LACT", "tak", "Jakie sa ustawienia?",
+        r = self.run_ui([], ["Chce undervolt do gry, uzywam LACT", "yes", "Jakie sa ustawienia?",
                              "Sprawdz wynik", ""])
         self.assertEqual(r.code, 0, r.out)
         self.assertEqual(r.prompts, [Q, C, Q, Q, Q])
@@ -89,22 +89,22 @@ class ConversationLoopTests(unittest.TestCase):
         later = json.loads(r.sent.call_args_list[2].args[0].payload)
         self.assertEqual(later["question"], "Sprawdz wynik")
         self.assertEqual(len({c.args[0].payload for c in r.sent.call_args_list}), 3)
-        self.assertNotIn("Rozmowa trwa", r.out)
+        self.assertNotIn("The conversation continues", r.out)
 
     def test_declining_sends_nothing_grants_nothing_and_keeps_the_conversation(self):
-        r = self.run_ui([], ["Pierwsze", "nie", "Drugie", "tak", "Trzecie", ""])
+        r = self.run_ui([], ["Pierwsze", "no", "Drugie", "yes", "Trzecie", ""])
         self.assertEqual(r.prompts, [Q, C, Q, C, Q, Q])                     # a no is not remembered as a yes
         self.assertEqual(r.sent.call_count, 2)
         self.assertEqual([t["question"] for t in r.histories[1]], ["Drugie"])
 
     def test_changed_permissions_ask_again_within_the_conversation(self):
         widened = dict(EMPTY, weather=True)
-        r = self.run_ui([], ["Jeden", "tak", "Dwa", "Trzy", "tak", "Cztery", ""], accesses=[EMPTY, EMPTY, widened])
+        r = self.run_ui([], ["Jeden", "yes", "Dwa", "Trzy", "yes", "Cztery", ""], accesses=[EMPTY, EMPTY, widened])
         self.assertEqual(r.prompts, [Q, C, Q, Q, C, Q, Q])
         self.assertEqual(r.sent.call_count, 4)
 
     def test_a_local_refusal_loses_only_that_turn(self):
-        for refusal, text in ((ask.ask_edit.EditDenied("input"), "Nie zapisano zmian"),
+        for refusal, text in ((ask.ask_edit.EditDenied("input"), "Nothing was saved"),
                               (ask.FileReadDenied("input"), "")):
             with self.subTest(refusal=type(refusal).__name__), \
                     patch.object(assistant_flow, "run", side_effect=[refusal, "Dalej działam"]):
@@ -120,7 +120,7 @@ class ConversationLoopTests(unittest.TestCase):
                     patch.object(assistant_flow, "run", side_effect=[ask.AnalysisDenied(reason), "Dalej działam"]):
                 r = self.run_ui([], ["Jeden", "Dwa", ""])
                 self.assertEqual(r.code, 0, r.out)
-                self.assertIn("Rozmowa trwa", r.out)
+                self.assertIn("The conversation continues", r.out)
                 self.assertIn("Dalej działam", r.out)
                 self.assertEqual(r.prompts, [Q, Q, Q])
 
@@ -135,9 +135,9 @@ class ConversationLoopTests(unittest.TestCase):
         from ai_desktop.conversation_sessions import SessionError
         conv = FakeConversation()
         conv.save_state = Mock(side_effect=SessionError("x"))
-        r = self.run_ui(["--session", "new"], ["Jeden", "tak", "Dwa", ""], conversation=conv)
+        r = self.run_ui(["--session", "new"], ["Jeden", "yes", "Dwa", ""], conversation=conv)
         self.assertEqual(r.sent.call_count, 2)
-        self.assertIn("Nie udało się zapisać tej tury", r.out)
+        self.assertIn("Could not save this turn", r.out)
 
     def test_an_empty_answer_does_not_break_the_next_turn(self):
         with patch.object(assistant_flow, "run", side_effect=["", "Druga"]):
@@ -148,17 +148,17 @@ class ConversationLoopTests(unittest.TestCase):
         with patch.object(assistant_flow, "run", side_effect=ask.ask_edit.EditDenied("input")):
             r = self.run_ui(["--question", "Utworz plik"], [])
         self.assertEqual(r.code, 2)
-        self.assertIn("Nie zapisano zmian", r.out)
+        self.assertIn("Nothing was saved", r.out)
 
     def test_declining_changed_permissions_sends_nothing(self):
         widened = dict(EMPTY, weather=True)
-        r = self.run_ui([], ["Jeden", "tak", "Dwa", "nie", ""], accesses=[EMPTY, widened])
+        r = self.run_ui([], ["Jeden", "yes", "Dwa", "no", ""], accesses=[EMPTY, widened])
         self.assertEqual(r.sent.call_count, 1)
 
     def test_history_window_stays_at_thirty_two_turns_and_the_conversation_does_not_end(self):
         replies = []
         for i in range(35):
-            replies += ["Pytanie %d" % i] + ([] if i else ["tak"])
+            replies += ["Pytanie %d" % i] + ([] if i else ["yes"])
         r = self.run_ui([], replies + [""])
         self.assertEqual(r.sent.call_count, 35)
         self.assertEqual([t["question"] for t in r.histories[34]], ["Pytanie %d" % i for i in range(2, 34)])
@@ -192,7 +192,7 @@ class ConversationLoopTests(unittest.TestCase):
         for ending in (["", ], [EOFError, EOFError], [KeyboardInterrupt],
                        [EOFError, "Dalej", EOFError, EOFError]):
             with self.subTest(ending=ending):
-                r = self.run_ui([], ["Pytanie", "tak"] + ending)
+                r = self.run_ui([], ["Pytanie", "yes"] + ending)
                 self.assertEqual(r.code, 0, r.out)
                 self.assertNotIn("Anulowano", r.out)
 
@@ -219,10 +219,10 @@ class ConversationLoopTests(unittest.TestCase):
                 stack.enter_context(patch.object(ask, "send_once", side_effect=send))
                 stack.enter_context(redirect_stdout(out))
                 return ask.main(argv, reader=lambda prompt: queue.pop(0)), out.getvalue()
-        code, text = run_with_interrupt([], ["Jeden", "tak", "Dwa", "Trzy", ""])
+        code, text = run_with_interrupt([], ["Jeden", "yes", "Dwa", "Trzy", ""])
         self.assertEqual(code, 0, text)
         self.assertEqual(calls, [0, 1, 1])             # the interrupted turn is not part of the third turn's history
-        self.assertIn("Ta tura została przerwana", text)
+        self.assertIn("This turn was stopped", text)
 
     def test_a_failed_cleanup_after_an_interrupt_ends_the_command_with_the_real_error(self):
         from ai_desktop.analysis_contract import AnalysisDenied
@@ -234,7 +234,7 @@ class ConversationLoopTests(unittest.TestCase):
         out = io.StringIO(); out.isatty = lambda: True
         policy = Mock(); policy.limits.return_value = Limits()
         snapshot = assistant_flow.AccessSnapshot(policy, {"claude": True, "systemd": [], "weather": False}, dict(EMPTY))
-        queue = ["Jeden", "tak", "NIE-POWINNO-BYC-CZYTANE"]
+        queue = ["Jeden", "yes", "MUST-NOT-BE-READ"]
         with ExitStack() as stack:
             stack.enter_context(patch("ai_desktop.agent_profiles.resolve", return_value=PROFILE))
             stack.enter_context(patch.object(ask.os, "geteuid", return_value=1000))
@@ -247,7 +247,7 @@ class ConversationLoopTests(unittest.TestCase):
             stack.enter_context(redirect_stdout(out))
             code = ask.main([], reader=lambda prompt: queue.pop(0))
         self.assertEqual(code, 2)
-        self.assertEqual(queue, ["NIE-POWINNO-BYC-CZYTANE"])   # the loop did not return to the prompt
+        self.assertEqual(queue, ["MUST-NOT-BE-READ"])   # the loop did not return to the prompt
 
     def test_a_bad_plan_loses_only_that_turn_and_prose_is_shown_as_an_answer(self):
         replies = {1: json.dumps({"action": "read", "files": [], "systemd": [{"scope": "nope", "view": "x"}],
@@ -255,11 +255,11 @@ class ConversationLoopTests(unittest.TestCase):
                    2: "To jest zwykla odpowiedz prozą, a nie plan JSON.",
                    3: json.dumps({"action": "answer", "text": "trzecia"})}
         counter = []
-        r = self.run_ui([], ["Jeden", "tak", "Dwa", "Trzy", ""])
+        r = self.run_ui([], ["Jeden", "yes", "Dwa", "Trzy", ""])
         self.assertEqual(r.code, 0, r.out)
         # run_ui's stand-in always answers JSON; drive the planner replies explicitly instead:
         out = io.StringIO(); out.isatty = lambda: True
-        queue = ["Jeden", "tak", "Dwa", "Trzy", ""]
+        queue = ["Jeden", "yes", "Dwa", "Trzy", ""]
         policy = Mock(); policy.limits.return_value = Limits()
         snapshot = assistant_flow.AccessSnapshot(policy, {"claude": True, "systemd": ["system"], "weather": False},
                                                  {"files": [], "systemd": ["system"], "weather": False})
@@ -280,7 +280,7 @@ class ConversationLoopTests(unittest.TestCase):
         text = out.getvalue()
         self.assertEqual(queue, [])
         self.assertEqual(len(counter), 3)                                   # the conversation went on after the bad plan
-        self.assertIn("Model zwrócił niepoprawny plan", text)               # turn 1: reported, not recorded
+        self.assertIn("The model returned an invalid plan", text)               # turn 1: reported, not recorded
         self.assertIn("zwykla odpowiedz prozą", text)                       # turn 2: prose shown as an answer
         self.assertEqual([t["question"] for t in counter[2]], ["Dwa"])      # turn 3 sees only the completed turn
         self.assertEqual(code, 0)
@@ -318,22 +318,22 @@ class ConversationLoopTests(unittest.TestCase):
             assistant_flow.lenient_prose.reset(token)
 
     def test_question_flag_is_one_shot_and_does_not_loop(self):
-        r = self.run_ui(["--question", "Co to DNS?"], ["tak"])
+        r = self.run_ui(["--question", "Co to DNS?"], ["yes"])
         self.assertEqual(r.prompts, [C])
         self.assertEqual(r.sent.call_count, 1)
-        self.assertNotIn("Rozmowa trwa", r.out)
+        self.assertNotIn("The conversation continues", r.out)
 
     def test_session_flag_saves_each_turn_and_feeds_history(self):
         conv = FakeConversation()
-        r = self.run_ui(["--session", "new"], ["Jeden", "tak", "Dwa", ""], conversation=conv)
+        r = self.run_ui(["--session", "new"], ["Jeden", "yes", "Dwa", ""], conversation=conv)
         self.assertEqual([q for q, _ in conv.items], ["Jeden", "Dwa"])
         self.assertEqual([t["question"] for t in r.histories[1]], ["Jeden"])
         self.assertTrue(conv.closed)
-        self.assertIn("zapis lokalny", r.out)
+        self.assertIn("saved locally", r.out)
 
     def test_no_session_means_nothing_is_persisted(self):
         with patch("ai_desktop.conversation_sessions.Store") as store:
-            r = self.run_ui([], ["Jeden", "tak", "Dwa", ""])
+            r = self.run_ui([], ["Jeden", "yes", "Dwa", ""])
         store.assert_not_called()
         self.assertEqual(r.sent.call_count, 2)
 

@@ -52,7 +52,7 @@ class TitleAndLabelTests(StoreCase):
         ident = self.thread("Chcę zrobić undervolting dla gry. Korzystam z LACT.\nDrugi wiersz", "Druga")
         record = self.store.read(ident)
         self.assertEqual(record["title"], "Chcę zrobić undervolting dla gry. Korzystam z LACT. Drugi wiersz")
-        self.assertIn("2 wymian", session_cli.thread_label(record))
+        self.assertIn("exchanges: 2", session_cli.thread_label(record))
         self.assertIn("Chcę zrobić undervolting", session_cli.thread_label(record))
         self.assertEqual(len(cs.title_of("a" * 500)), 80)
 
@@ -89,7 +89,7 @@ class SaveOfferTests(StoreCase):
         record = self.store.read(saved.session_id)
         self.assertEqual(record["title"], "Chcę ustalić, dlaczego start jest wolny")
         self.assertTrue(record["memory"]["entries"])
-        self.assertIn("zapisana lokalnie", out)
+        self.assertIn("saved locally", out)
         self.assertEqual(phases, ["session-save"])
 
     def test_a_no_writes_nothing_at_all(self):
@@ -102,7 +102,7 @@ class SaveOfferTests(StoreCase):
                 patch("ai_desktop.conversation_sessions.Store", side_effect=sessions.SessionError("session-file")), \
                 patch("ai_desktop.execution.current", return_value=PROFILE), redirect_stdout(io.StringIO()) as out:
             self.assertIsNone(ask_cli._offer_save(talk("x y"), lambda value: None))
-        self.assertIn("Nic nie zostało zapisane", out.getvalue())
+        self.assertIn("Nothing was saved", out.getvalue())
 
     def test_the_prompt_never_names_a_provider(self):
         from ai_desktop.terminal_consent import PROMPTS
@@ -130,8 +130,8 @@ class PickThreadTests(StoreCase):
         newer = self.thread("Moja nowsza")
         result, seen, _ = self.pick([2])
         options = seen[0][1]
-        self.assertEqual(options[0], "Nowa rozmowa")
-        self.assertEqual(options[-1], "Zarządzaj zapisanymi rozmowami")
+        self.assertEqual(options[0], "New conversation")
+        self.assertEqual(options[-1], "Manage saved conversations")
         self.assertEqual(len(options), 4)
         self.assertNotIn("Cudza", " ".join(options))
         self.assertEqual(result[0], "resume")
@@ -174,16 +174,16 @@ class ManageTests(StoreCase):
         ids = [self.thread("Pytanie %d" % i) for i in range(4)]
         before = {value["id"]: value["updated"] for value in self.store.list()}
         newest_first = [v["id"] for v in session_cli._values(self.store)]
-        # tick rows 0 and 2, go to the first action ('Usuń zaznaczone (0)' label is rebuilt), confirm 'Tak'
+        # tick rows 0 and 2, go to the first action ('Delete selected (0)' label is rebuilt), confirm 'Yes'
         out = self.run_manage([({0, 2}, 4), (set(), 1), (set(), 3)])
         left = {value["id"] for value in self.store.list()}
         self.assertEqual(left, {newest_first[1], newest_first[3]})
-        self.assertIn("Usunięto rozmów: 2", out)
+        self.assertIn("Conversations deleted: 2", out)
 
     def test_declining_the_confirmation_or_leaving_deletes_nothing(self):
         self.thread("Jeden")
         self.thread("Dwa")
-        self.run_manage([({0, 1}, 2), (set(), 0), (set(), 3)])                # delete -> 'Nie, wróć', then 'Wróć'
+        self.run_manage([({0, 1}, 2), (set(), 0), (set(), 3)])                # delete -> 'No, go back', then 'Back'
         self.assertEqual(len(self.store.list()), 2)
         self.run_manage([({0}, None)])                                       # Esc
         self.assertEqual(len(self.store.list()), 2)
@@ -191,7 +191,7 @@ class ManageTests(StoreCase):
     def test_deleting_with_nothing_ticked_says_so(self):
         self.thread("Jeden")
         out = self.run_manage([(set(), 1), (set(), 2)])
-        self.assertIn("Nic nie zaznaczono", out)
+        self.assertIn("Nothing selected", out)
         self.assertEqual(len(self.store.list()), 1)
 
     def test_an_active_thread_is_skipped_not_destroyed(self):
@@ -204,7 +204,7 @@ class ManageTests(StoreCase):
         finally:
             lease.close()
         self.assertEqual({v["id"] for v in self.store.list()}, {ident})
-        self.assertIn("pominięto", out)
+        self.assertIn("skipped", out)
 
 
 class MarkMenuPtyTests(unittest.TestCase):
@@ -212,7 +212,7 @@ class MarkMenuPtyTests(unittest.TestCase):
     SCRIPT = r"""
 from ai_desktop.terminal_menu import choose
 marks = set()
-choice = choose("Rozmowy", ["a", "b", "c", "Usuń zaznaczone", "Wróć"], marks=marks, markable=3)
+choice = choose("Conversations", ["a", "b", "c", "Delete selected", "Back"], marks=marks, markable=3)
 print("RESULT", choice, sorted(marks), flush=True)
 """
 
@@ -256,7 +256,7 @@ print("RESULT", choice, sorted(marks), flush=True)
         text, restored = self.run_keys([down, b" ", down, b" ", down, b"\r"])
         self.assertIn("RESULT 3 [1, 2]", text)
         self.assertIn("[x] b", text)
-        self.assertIn("Spacja zaznacza", text)
+        self.assertIn("Space ticks", text)
         self.assertTrue(restored)
 
     def test_space_on_an_action_row_does_not_tick_and_space_twice_unticks(self):
@@ -270,7 +270,7 @@ print("RESULT", choice, sorted(marks), flush=True)
         self.assertTrue(restored)
 
     def test_without_marks_the_menu_behaves_as_before(self):
-        self.assertEqual(terminal_menu._HINT, "↑/↓  Enter wybiera  Esc anuluje")
+        self.assertEqual(terminal_menu._HINT, "↑/↓  Enter selects  Esc cancels")
         with self.assertRaises(terminal_menu.MenuInputError):
             terminal_menu.choose("T", ["a"], marks=[], markable=1)
 

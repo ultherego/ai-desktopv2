@@ -1,40 +1,40 @@
 ---
 name: cachyos-packages
-description: Diagnozuje repozytoria, mirrory i podpisy pakietów CachyOS. Użyj przy błędach pobierania, różnicach wersji lub ocenie zgodności zoptymalizowanego repozytorium z CPU.
+description: Diagnoses CachyOS repositories, mirrors and package signatures. Use for download errors, version differences or judging whether an optimized repository is compatible with the CPU.
 ---
 
-# Pakiety CachyOS
+# CachyOS packages
 
-## Rozpoznanie
+## Investigation
 
-Ustal dokładny komunikat, polecenie, pakiet, czas ostatniej aktualizacji i źródło pakietu. Dla konfliktów plików i blokady bazy wykorzystaj procedurę `arch-pacman`, jeśli jest udostępniona. Tutaj rozpatruj specyfikę repozytoriów CachyOS.
+Establish the exact message, command, package, the time of the latest update and the package source. For file conflicts and a database lock, use the `arch-pacman` procedure, if it is made available. Here, consider what is specific to CachyOS repositories.
 
-Odczytaj tylko potrzebne, dozwolone fragmenty `/etc/pacman.conf`, wskazanych mirrorlist i logu transakcji. Porównaj `pacman -Qi NAZWA` z `pacman -Si NAZWA`, jeśli szablony na to pozwalają. Nie proś o źródła zawierające dane logowania; w takim przypadku potrzebny jest minimalny fragment zredagowany przez użytkownika. Nie odczytuj całego magazynu kluczy. Brak uprawnień oznacza brak danych do diagnozy.
+Read only the needed, allowed excerpts of `/etc/pacman.conf`, the referenced mirrorlists and the transaction log. Compare `pacman -Qi NAME` with `pacman -Si NAME`, if the templates allow it. Do not ask for sources containing login data; in that case you need a minimal excerpt redacted by the user. Do not read the whole keystore. Missing permissions mean no data for the diagnosis.
 
-## Decyzje
+## Decisions
 
-| Obserwacja | Dalsze sprawdzenie |
+| Observation | Further check |
 |---|---|
-| 404 lub niezgodność wersji między mirrorami | Ustal aktualność lokalnej bazy i wybranego mirrora; sprawdź ogłoszenia. Dopiero potwierdzony problem mirrora uzasadnia jego zmianę. |
-| Timeout pobierania | Oddziel błąd jednego mirrora od problemu połączenia lub DNS. Polecenie w piaskownicy bez sieci nie jest testem łączności hosta. |
-| Niepoprawny podpis | Ustal pakiet, podpisujący klucz, czas systemowy i stan odpowiedniego pakietu keyring. Nie wyłączaj weryfikacji podpisów. |
-| `local is newer than` | Sprawdź, czy to opóźniony mirror, celowy downgrade w repozytorium czy pakiet z innego źródła. Samo ostrzeżenie nie uzasadnia obniżenia wersji. |
-| Nieoczekiwana architektura lub instrukcja CPU | Sprawdź faktycznie włączone repozytoria i zgodność CPU według aktualnej dokumentacji; nie wnioskuj tylko z nazwy rodziny procesora. |
+| 404 or version mismatch between mirrors | Establish the freshness of the local database and of the chosen mirror; check the announcements. Only a confirmed mirror problem justifies changing it. |
+| Download timeout | Separate an error of one mirror from a connection or DNS problem. A command in a sandbox without network is not a test of host connectivity. |
+| Invalid signature | Establish the package, the signing key, the system time and the state of the relevant keyring package. Do not disable signature verification. |
+| `local is newer than` | Check whether this is a lagging mirror, a deliberate downgrade in the repository, or a package from another source. The warning alone does not justify a downgrade. |
+| Unexpected architecture or CPU instruction | Check the actually enabled repositories and CPU compatibility according to current documentation; do not infer only from the name of the processor family. |
 
-## Ewentualna zmiana
+## Possible change
 
-- Zmiana mirrorlist, aktualizacja keyringu i synchronizacja pakietów to oddzielne plany z zakresem transakcji i zgodą. Zachowaj poprzednią konfigurację, aby móc cofnąć konkretną zmianę.
-- Podwójne `-u` dopuszcza downgrade pakietów. Przed takim planem wyjaśnij, dlaczego wersje z repozytorium są właściwe i jakie pakiety mogą się cofnąć.
-- Nie podawaj uniwersalnej recepty kasowania keyringu, baz lub ręcznego podpisywania klucza. Przy podejrzeniu naruszenia zaufania zatrzymaj instalację i zweryfikuj aktualną procedurę oraz odcisk klucza w źródle dystrybucji.
-- Zmiana poziomu zoptymalizowanych repozytoriów obejmuje wiele pakietów. Wymaga odrębnego zadania, zgodności CPU, planu odzyskania i aktualnej dokumentacji. Nie wykonuj jej jako naprawy pojedynczego pakietu.
-- Nie dodawaj nowych uprawnień ani poleceń samodzielnie. Jeśli kontroler nie obsługuje operacji, przedstaw plan do decyzji użytkownika.
+- Changing the mirrorlist, updating the keyring and synchronizing packages are separate plans with a transaction scope and consent. Keep the previous configuration so the specific change can be undone.
+- A double `-u` allows package downgrades. Before such a plan, explain why the repository versions are the right ones and which packages may go back.
+- Do not give a universal recipe for deleting the keyring or databases or for manually signing a key. When a breach of trust is suspected, stop the installation and verify the current procedure and the key fingerprint in the distribution's source.
+- Changing the level of the optimized repositories covers many packages. It needs a separate task, CPU compatibility, a recovery plan and current documentation. Do not carry it out as a fix for a single package.
+- Do not add new permissions or commands on your own. If the controller does not support the operation, present a plan for the user's decision.
 
-## Wynik
+## Result
 
-Podaj porównane wersje i źródła, potwierdzoną przyczynę lub hipotezę oraz jeden następny krok. Po zatwierdzonej zmianie sprawdź ten sam pakiet i pierwotny błąd; zniknięcie ostrzeżenia nie dowodzi sprawności aplikacji.
+Give the compared versions and sources, the confirmed cause or hypothesis, and one next step. After an approved change, check the same package and the original error; a warning disappearing does not prove the application works.
 
-## Źródła
+## Sources
 
-- [CachyOS FAQ: błędy pacmana](https://wiki.cachyos.org/cachyos_basic/faq/).
-- [Zgodność i migracja zoptymalizowanych repozytoriów](https://wiki.cachyos.org/features/optimized_repos/#migrating-from-x86-64-v3-to-x86-64-v4-or-znver4).
-- [pacman: opcja sysupgrade](https://man.archlinux.org/man/pacman.8.en).
+- [CachyOS FAQ: pacman errors](https://wiki.cachyos.org/cachyos_basic/faq/).
+- [Compatibility and migration of optimized repositories](https://wiki.cachyos.org/features/optimized_repos/#migrating-from-x86-64-v3-to-x86-64-v4-or-znver4).
+- [pacman: the sysupgrade option](https://man.archlinux.org/man/pacman.8.en).

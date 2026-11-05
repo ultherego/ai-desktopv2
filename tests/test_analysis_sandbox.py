@@ -172,7 +172,7 @@ class AnalysisSandboxTests(unittest.TestCase):
                     patch.object(sandbox, "_Proxy", return_value=contextlib.nullcontext(proxy)), \
                     patch.object(sandbox, "bounded_process", side_effect=results) as process:
                 if expected is None:
-                    self.assertIn("Źródła:", sandbox.run_client("web", question, mode="web"))
+                    self.assertIn("Sources:", sandbox.run_client("web", question, mode="web"))
                 else:
                     with self.assertRaises(AnalysisDenied) as caught:
                         sandbox.run_client("web", question, mode="web")

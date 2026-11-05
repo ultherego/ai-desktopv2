@@ -24,44 +24,44 @@ class FileReadDenied(AnalysisDenied):
 
 
 _READ_HINTS = {
-    "files-size": f"Co najmniej jeden plik przekracza limit {permissions.MAX_FILE_BYTES} bajtów na plik.",
-    "files-total": f"Łączna treść plików przekracza limit {permissions.MAX_TOTAL_BYTES} bajtów.",
-    "files-count": f"Wybrany zakres zawiera więcej niż {permissions.MAX_FILES} plików.",
-    "discovery-required": "Wybrane ścieżki nie zostały znalezione ani wskazane przez użytkownika.",
-    "files-entries": (f"Przekroczono limit przeglądania katalogów: {permissions.MAX_DIRECTORY_ENTRIES} "
-                      f"wpisów na katalog lub {permissions.MAX_TOTAL_ENTRIES} wpisów łącznie."),
-    "files-depth": f"Przekroczono limit zagnieżdżenia katalogów: {permissions.MAX_DEPTH} poziomów.",
-    "files-empty": "W wybranym zakresie nie ma plików dopuszczonych do odczytu.",
-    "files-missing": "Wybrany plik lub katalog nie istnieje.",
-    "files-symlink": "Wybrany zakres zawiera dowiązanie symboliczne poza obsługiwanym odczytem aliasu katalogu do dozwolonego sąsiada.",
-    "files-type": "Wybrany obiekt nie jest zwykłym plikiem.",
-    "files-owner": "Właścicielem wybranego pliku nie jest bieżący użytkownik.",
-    "files-links": "Wybrany plik ma niedozwoloną liczbę dowiązań twardych; wymagane jest dokładnie jedno.",
-    "files-mode": "Wybrany plik ma niedozwolony bit setuid lub setgid.",
-    "files-directory": "Element ścieżki nie jest zwykłym katalogiem.",
-    "files-access": "Nie udało się zweryfikować dostępu do pliku lub katalogu.",
-    "files-permission": "System odmówił dostępu do wybranego pliku lub katalogu.",
-    "files-denied": "Wybrany zakres nie jest dozwolony przez politykę dostępu.",
-    "files-text": "Treść pliku nie jest poprawnym UTF-8 lub zawiera niedozwolone znaki sterujące lub formatujące.",
-    "files-private-key": "Treść pliku zawiera rozpoznany nagłówek klucza prywatnego.",
-    "files-changed": "Plik lub element jego ścieżki zmienił się podczas sprawdzania odczytu.",
-    "policy-changed": "Konfiguracja dostępu lub jej stan zmieniły się podczas pytania.",
-    "policy-missing": "Plik permissions.toml nie jest już dostępny pod ustaloną ścieżką.",
-    "policy-directory": "Katalog konfiguracji dostępu lub jego przodek nie spełnia wymagań ochrony.",
-    "policy-file": "Plik permissions.toml nie spełnia wymagań typu, właściciela, dowiązań lub trybu 0600.",
-    "policy-size": f"Plik permissions.toml przekracza limit {permissions.MAX_POLICY_BYTES} bajtów.",
-    "policy-access": "Nie można otworzyć konfiguracji dostępu zgodnie z regułami odczytu.",
-    "policy-identity": "Nie można potwierdzić tożsamości użytkownika dla odczytu.",
+    "files-size": f"At least one file is over the limit of {permissions.MAX_FILE_BYTES} bytes per file.",
+    "files-total": f"The total file contents are over the limit of {permissions.MAX_TOTAL_BYTES} bytes.",
+    "files-count": f"The selected scope has more than {permissions.MAX_FILES} files.",
+    "discovery-required": "The selected paths were neither found nor named by the user.",
+    "files-entries": (f"Over the directory listing limit: {permissions.MAX_DIRECTORY_ENTRIES} "
+                      f"entries per directory or {permissions.MAX_TOTAL_ENTRIES} entries in total."),
+    "files-depth": f"Over the directory nesting limit: {permissions.MAX_DEPTH} levels.",
+    "files-empty": "The selected scope has no files that may be read.",
+    "files-missing": "The selected file or directory does not exist.",
+    "files-symlink": "The selected scope has a symbolic link other than the supported directory alias to an allowed sibling.",
+    "files-type": "The selected item is not a regular file.",
+    "files-owner": "The selected file is not owned by the current user.",
+    "files-links": "The selected file has a disallowed number of hard links; exactly one is required.",
+    "files-mode": "The selected file has a disallowed setuid or setgid bit.",
+    "files-directory": "A part of the path is not a regular directory.",
+    "files-access": "Could not verify access to the file or directory.",
+    "files-permission": "The system refused access to the selected file or directory.",
+    "files-denied": "The selected scope is not allowed by the access policy.",
+    "files-text": "The file contents are not valid UTF-8 or contain disallowed control or formatting characters.",
+    "files-private-key": "The file contents include a recognized private key header.",
+    "files-changed": "The file or a part of its path changed while the read was being checked.",
+    "policy-changed": "The access settings or their state changed during the question.",
+    "policy-missing": "The permissions.toml file is no longer available at its expected path.",
+    "policy-directory": "The access settings directory or a parent directory does not meet the protection requirements.",
+    "policy-file": "The permissions.toml file does not meet the requirements for type, owner, links or mode 0600.",
+    "policy-size": f"The permissions.toml file is over the limit of {permissions.MAX_POLICY_BYTES} bytes.",
+    "policy-access": "Could not open the access settings under the read rules.",
+    "policy-identity": "Could not confirm the user's identity for the read.",
 }
 _SETTING_HINTS = {
-    "file_size": "Niepoprawne file_size w [files] permissions.toml: podaj od 4KiB do 16MiB, np. \"5MiB\".",
-    "part_size": "Niepoprawne part_size w [files] permissions.toml: podaj od 30KiB do 512KiB, np. \"240KiB\".",
+    "file_size": "Invalid file_size in [files] of permissions.toml: use 4KiB to 16MiB, for example \"5MiB\".",
+    "part_size": "Invalid part_size in [files] of permissions.toml: use 30KiB to 512KiB, for example \"240KiB\".",
 }
 for _name, (_kind, _low, _high) in permissions.LIMIT_SPECS.items():
-    _unit = " bajtów (lub np. \"24KiB\")" if _kind == "size" else ""
-    _SETTING_HINTS[_name] = (f"Niepoprawne {_name} w [files] permissions.toml: podaj od {_low} do {_high}{_unit}"
-                             + ("; read_file_size nie może przekraczać read_total_size." if _name == "read_file_size" else "."))
-_READ_FALLBACK = "Nie udało się zweryfikować dostępu lub odczytać wybranych plików."
+    _unit = " bytes (or for example \"24KiB\")" if _kind == "size" else ""
+    _SETTING_HINTS[_name] = (f"Invalid {_name} in [files] of permissions.toml: use {_low} to {_high}{_unit}"
+                             + ("; read_file_size cannot be larger than read_total_size." if _name == "read_file_size" else "."))
+_READ_FALLBACK = "Could not verify access to, or read, the selected files."
 
 
 def _limit_hints(policy):
@@ -70,9 +70,9 @@ def _limit_hints(policy):
         return {}
     limits = policy.limits()
     return {
-        "files-size": f"Co najmniej jeden plik przekracza read_file_size={limits.read_file_size} bajtów (permissions.toml, [files]).",
-        "files-total": f"Łączna treść plików przekracza read_total_size={limits.read_total_size} bajtów (permissions.toml, [files]).",
-        "files-count": f"Wybrany zakres zawiera więcej niż read_files={limits.read_files} plików (permissions.toml, [files]).",
+        "files-size": f"At least one file is over read_file_size={limits.read_file_size} bytes (permissions.toml, [files]).",
+        "files-total": f"The total file contents are over read_total_size={limits.read_total_size} bytes (permissions.toml, [files]).",
+        "files-count": f"The selected scope has more than read_files={limits.read_files} files (permissions.toml, [files]).",
     }
 
 
@@ -159,12 +159,12 @@ def collect(policy, scope_ids, args, reader=input, *, question_consent=None, def
                                        patterns[value["id"]] + " → " + value["path"])
                                 for value in scope_ids)
         if not quiet:
-            print("Odczyt lokalny — proponowane reguły dostępu, bez zmian w plikach:")
+            print("Local read: proposed access rules, files are not changed:")
             for scope in selected:
                 print("  " + _label(scope.pattern))
             for selection in scope_ids:
                 if type(selection) is dict:
-                    print("  Zawężenie " + _label(selection["id"]) + ": " + _label(selection["path"]))
+                    print("  Narrowed " + _label(selection["id"]) + ": " + _label(selection["path"]))
         if question_consent is None and not confirm("files-read", reader=reader):
             raise AnalysisDenied("consent")
         policy.recheck()
@@ -178,7 +178,7 @@ def collect(policy, scope_ids, args, reader=input, *, question_consent=None, def
         policy.recheck()
         check_question()
         if not quiet:
-            print("Do pytania: " + str(len(item["files"])) + " plików. Pełna treść w --details.")
+            print("For the question: " + str(len(item["files"])) + (" file" if len(item["files"]) == 1 else " files") + ". Full contents with --details.")
             for file in item["files"]:
                 print("  " + _label(file["path"]))
         permissions.recheck_selection(policy, paths)
@@ -192,9 +192,9 @@ def collect(policy, scope_ids, args, reader=input, *, question_consent=None, def
             denied = FileReadDenied("input")
             denied.code = code
             raise denied from None
-        print("Odmowa odczytu plików: " + _read_hint(exc, policy))
+        print("File read refused: " + _read_hint(exc, policy))
         if quiet and selected_labels:
-            print("Wybrano: " + "; ".join(selected_labels[:3])
-                  + ("; pozostałe zakresy: " + str(len(selected_labels) - 3) if len(selected_labels) > 3 else ""))
-        print(recipient("Treść plików nie została wysłana do Claude.", config=selected_execution))
+            print("Selected: " + "; ".join(selected_labels[:3])
+                  + ("; other scopes: " + str(len(selected_labels) - 3) if len(selected_labels) > 3 else ""))
+        print(recipient("The file contents were not sent to Claude.", config=selected_execution))
         raise FileReadDenied("input") from None

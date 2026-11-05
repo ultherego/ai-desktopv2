@@ -69,8 +69,8 @@ class AccessDiagnosticsTests(unittest.TestCase):
                     code = ask_cli.main(["--question", "Sprawdź monitory Niri DMS"] + context)
                 self.assertEqual(code, 2, output.getvalue())
                 self.assertIn("network.codex=false", output.getvalue())
-                self.assertIn("codex = true w [network]", output.getvalue())
-                self.assertNotIn("Polityka dostępu nie zezwala", output.getvalue())
+                self.assertIn("codex = true in [network]", output.getvalue())
+                self.assertNotIn("The access policy does not allow", output.getvalue())
                 for operation in (confirm, ready, session, send):
                     operation.assert_not_called()
                 self.assertNotIn("codex = true", self.path.read_text(encoding="utf-8"))
@@ -174,9 +174,9 @@ class FileRefusalDiagnosticsTests(unittest.TestCase):
             with redirect_stdout(output), self.assertRaises(file_context.FileReadDenied):
                 file_context.collect(policy, [{"id": "f0", "path": "niri/**"}], args, question_consent=permit)
         text = output.getvalue()
-        self.assertIn("dowiązanie symboliczne", text)
-        self.assertIn('Wybrano: "~/.config/** → niri/**"', text)
-        self.assertIn("Treść plików nie została wysłana do Codex.", text)
+        self.assertIn("symbolic link", text)
+        self.assertIn('Selected: "~/.config/** → niri/**"', text)
+        self.assertIn("The file contents were not sent to Codex.", text)
         self.assertNotIn("Claude", text)
         self.assertNotIn("unrelated", text)
 

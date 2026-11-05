@@ -38,7 +38,7 @@ class E6ScriptTests(unittest.TestCase):
     def test_scope_and_request_count_are_printed_before_the_first_native_run(self):
         source = SCRIPT.read_text()
         first_run = source.index("/usr/bin/ai-desktop task run")
-        for text in ("Zadania do Claude: 2", "Wysylane dane na zadanie", "Zakres zapisu", "Odpowiedzi wpisujesz Ty"):
+        for text in ("Requests to Claude: 2", "Data sent per request", "Write scope", "You type the answers"):
             self.assertLess(source.index(text), first_run)
         self.assertLess(source.index("installed_matches"), first_run)
         self.assertLess(source.index("aid_ci -eq 0"), source.index("installed_matches"))
@@ -56,13 +56,13 @@ class E6ScriptTests(unittest.TestCase):
         self.assertLess(native.index('set aid_stop A'), runs[1])
         self.assertLess(native.index('set aid_stop B'), runs[2])
         self.assertLess(native.index('set aid_stop C'), runs[3])
-        self.assertIn("kolejne zadania do Claude NIE zostaly wyslane", native)
-        self.assertIn("zachowano do ogledzin", native)
+        self.assertIn("further requests to Claude were NOT sent", native)
+        self.assertIn("kept for inspection", native)
 
     def test_literal_expected_answers_are_shown_before_each_prompt(self):
         native = SCRIPT.read_text()
         first = native.index("/usr/bin/ai-desktop task run")
-        self.assertLess(native.index("WPISZ DOKLADNIE: nie"), first)
+        self.assertLess(native.index("TYPE EXACTLY: n"), first)
         self.assertEqual(native.count(">>> "), 4)
 
     def test_refusal_case_a_has_expected_exit_and_checks_files_not_messages(self):

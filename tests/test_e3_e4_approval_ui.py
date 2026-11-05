@@ -37,7 +37,7 @@ class TerminalInput:
             return self.response[:limit]
         # Echo the digest from the actual displayed prompt, not a second plan.
         digest = self.output.getvalue().split(
-            "wpisz dokladnie: " + self.verb + " ", 1)[1].split("\n", 1)[0]
+            "type exactly: " + self.verb + " ", 1)[1].split("\n", 1)[0]
         return (self.verb + " " + digest + "\n")[:limit]
 
 
@@ -58,19 +58,19 @@ class ApprovalUITests(unittest.TestCase):
 
     def test_transfer_shows_and_authorizes_exact_snapshot(self):
         report = report_fixture()
-        source, target = self.streams("PRZEKAZ")
+        source, target = self.streams("SEND")
         authorization = confirm_transfer(
             report, input_stream=source, output_stream=target)
         payload = serialize_report(report)
         self.assertEqual(authorization.payload, payload)
         self.assertEqual(authorization.sha256, hashlib.sha256(payload.encode()).hexdigest())
         self.assertIn(payload, target.getvalue())
-        self.assertIn("Odbiorca: claude-analysis", target.getvalue())
-        self.assertIn("Cel: readonly-diagnostics", target.getvalue())
+        self.assertIn("Recipient: claude-analysis", target.getvalue())
+        self.assertIn("Purpose: readonly-diagnostics", target.getvalue())
         self.assertEqual(source.reads, 1)
 
     def test_plan_shows_workspace_state_exact_content_and_diff(self):
-        source, target = self.streams("UTWORZ")
+        source, target = self.streams("CREATE")
         session, authorization = self.plan(source, target)
         shown = target.getvalue()
         self.assertIn(self.workspace, shown)
@@ -85,7 +85,7 @@ class ApprovalUITests(unittest.TestCase):
 
     def test_non_tty_input_or_output_refuses_without_disclosure(self):
         for kind in ("source", "target"):
-            source, target = self.streams("PRZEKAZ")
+            source, target = self.streams("SEND")
             if kind == "source":
                 source = io.StringIO("yes\n")
             else:
@@ -96,10 +96,10 @@ class ApprovalUITests(unittest.TestCase):
             self.assertEqual(target.getvalue(), "")
 
     def test_all_ambiguous_responses_are_denied_without_retry(self):
-        for response in ("", "\n", "yes\n", "tak\n", "UTWORZ " + "0"*64 + "\n",
-                         "PRZEKAZ " + "0"*64 + "\n", "x"*10000,
+        for response in ("", "\n", "yes\n", "tak\n", "CREATE " + "0"*64 + "\n",
+                         "SEND " + "0"*64 + "\n", "x"*10000,
                          EOFError(), KeyboardInterrupt()):
-            for mode, verb in (("plan", "UTWORZ"), ("transfer", "PRZEKAZ")):
+            for mode, verb in (("plan", "CREATE"), ("transfer", "SEND")):
                 source, target = self.streams(verb, response=response)
                 with self.subTest(mode=mode, response=str(response)[:30]):
                     with self.assertRaisesRegex(ApprovalDenied, "^APPROVAL: REFUSED$"):
@@ -114,14 +114,14 @@ class ApprovalUITests(unittest.TestCase):
         for transform in (lambda x: x.rstrip("\n"), lambda x: " " + x,
                           lambda x: x.upper(), lambda x: x + "x",
                           lambda x: x.replace("\n", " \n")):
-            source, target = self.streams("UTWORZ")
+            source, target = self.streams("CREATE")
             original = source.readline
             source.readline = lambda limit, f=transform: f(original(limit))
             with self.subTest(transform=transform), self.assertRaises(ApprovalDenied):
                 self.plan(source, target)
 
     def test_expiration_while_waiting_refuses_both_approvals(self):
-        for mode, verb in (("plan", "UTWORZ"), ("transfer", "PRZEKAZ")):
+        for mode, verb in (("plan", "CREATE"), ("transfer", "SEND")):
             now = [100.0]
             source, target = self.streams(
                 verb, before_read=lambda: now.__setitem__(0, 281.0))
@@ -134,7 +134,7 @@ class ApprovalUITests(unittest.TestCase):
 
     def test_expired_plan_handoff_consumed_even_after_clock_goes_back(self):
         now = [100.0]
-        source, target = self.streams("UTWORZ")
+        source, target = self.streams("CREATE")
         session, authorization = self.plan(source, target, clock=lambda: now[0])
         now[0] = 281.0
         with self.assertRaises(PlanDenied):
@@ -146,20 +146,20 @@ class ApprovalUITests(unittest.TestCase):
     def test_report_mutation_while_waiting_refuses(self):
         report = report_fixture()
         source, target = self.streams(
-            "PRZEKAZ", before_read=lambda: report.__setitem__("shell", "bash"))
+            "SEND", before_read=lambda: report.__setitem__("shell", "bash"))
         with self.assertRaises(ApprovalDenied):
             confirm_transfer(report, input_stream=source, output_stream=target)
 
     def test_operations_mutation_does_not_change_displayed_plan(self):
         source, target = self.streams(
-            "UTWORZ", before_read=lambda: self.ops[0].__setitem__("content", "CHANGED"))
+            "CREATE", before_read=lambda: self.ops[0].__setitem__("content", "CHANGED"))
         _, authorization = self.plan(source, target)
         self.assertEqual(authorization.operations, (("notes/new.txt", "SYNTHETIC\n"),))
         self.assertNotIn("CHANGED", target.getvalue())
 
     def test_unicode_terminal_controls_are_escaped_in_exact_json(self):
         self.ops[0]["content"] = "test\u202e\u009b\u200d\\u202e\n"
-        source, target = self.streams("UTWORZ")
+        source, target = self.streams("CREATE")
         _, authorization = self.plan(source, target)
         self.assertEqual(authorization.operations[0][1], self.ops[0]["content"])
         self.assertIn(json.dumps(self.ops, ensure_ascii=True, indent=2), target.getvalue())
@@ -167,7 +167,7 @@ class ApprovalUITests(unittest.TestCase):
 
     def test_invalid_input_never_prompts(self):
         for mode in ("transfer", "plan"):
-            source, target = self.streams("UTWORZ")
+            source, target = self.streams("CREATE")
             with self.subTest(mode=mode), self.assertRaises(ApprovalDenied):
                 if mode == "transfer":
                     confirm_transfer({"secret": "SYNTHETIC"}, input_stream=source,
@@ -180,7 +180,7 @@ class ApprovalUITests(unittest.TestCase):
 
     def test_broken_or_short_output_refuses_before_read_or_authorization(self):
         for failure in (OSError("SYNTHETIC"), 0):
-            source, target = self.streams("UTWORZ")
+            source, target = self.streams("CREATE")
             opts = {"side_effect": failure} if isinstance(failure, Exception) else {"return_value": failure}
             with patch.object(target, "write", **opts):
                 with self.assertRaises(ApprovalDenied):

@@ -1,38 +1,38 @@
 ---
 name: arch-btrfs
-description: Diagnozuje zajętość i błędy Btrfs. Użyj przy ENOSPC, niejasnym zużyciu miejsca, błędach sum kontrolnych albo ocenie potrzeby balance lub scrub.
+description: Diagnoses Btrfs space usage and errors. Use for ENOSPC, unclear space consumption, checksum errors or judging whether balance or scrub is needed.
 ---
 
-# Diagnostyka Btrfs
+# Btrfs diagnostics
 
-## Ustal zakres
+## Establish the scope
 
-Ustal punkt montowania, liczbę urządzeń, objaw i ostatnią zmianę. Nie zakładaj, że problem dotyczy `/`. Migawki i podwolumeny mogą współdzielić dane; odczyt `df` lub `du` nie wystarcza do wyjaśnienia całej alokacji.
+Establish the mount point, the number of devices, the symptom and the latest change. Do not assume the problem concerns `/`. Snapshots and subvolumes can share data; reading `df` or `du` is not enough to explain the whole allocation.
 
-## Odczyt i interpretacja
+## Reading and interpretation
 
-Wykorzystuj tylko odczyty dozwolone przez kontroler. `btrfs filesystem usage PUNKT`, `btrfs filesystem show PUNKT`, `btrfs device stats PUNKT` i wąski fragment dziennika jądra mogą wymagać uprawnień lub danych od użytkownika. Widok montowań piaskownicy nie dowodzi układu hosta. Odmowa dostępu jest brakującym dowodem, nie awarią Btrfs.
+Use only reads allowed by the controller. `btrfs filesystem usage MOUNTPOINT`, `btrfs filesystem show MOUNTPOINT`, `btrfs device stats MOUNTPOINT` and a narrow excerpt of the kernel journal may need permissions or data from the user. The sandbox's view of mounts does not prove the host layout. A denied access is missing evidence, not a Btrfs failure.
 
-| Obserwacja | Następny krok |
+| Observation | Next step |
 |---|---|
-| Duża różnica między przydzielonym a użytym miejscem | Rozdziel dane, metadane i nieprzydzieloną przestrzeń; ustal profile i udział migawek. Sama różnica nie uzasadnia balance. |
-| Usunięcie plików nie zwalnia miejsca | Sprawdź, czy ich extenty pozostają w migawkach; przedstaw zakres ewentualnego usuwania osobno. |
-| ENOSPC przy wolnym miejscu w `df` | Sprawdź wolne miejsce robocze i alokację metadanych; nie uruchamiaj pełnego balance. |
-| Błędy I/O, brak urządzenia, rosnące liczniki błędów | Zatrzymaj strojenie; priorytetem są kopia danych i diagnoza urządzeń. Nie zeruj liczników. |
-| Brak danych o układzie lub profilu | Zakończ diagnozę wskazaniem brakującego odczytu; nie zgaduj naprawy. |
+| Large difference between allocated and used space | Separate data, metadata and unallocated space; establish the profiles and the share of snapshots. The difference alone does not justify balance. |
+| Deleting files does not free space | Check whether their extents remain in snapshots; present the scope of any deletion separately. |
+| ENOSPC with free space in `df` | Check the free working space and metadata allocation; do not start a full balance. |
+| I/O errors, missing device, growing error counters | Stop tuning; the priority is a copy of the data and a diagnosis of the devices. Do not reset the counters. |
+| No data about layout or profile | End the diagnosis by naming the missing read; do not guess a fix. |
 
-## Ewentualna zmiana
+## Possible change
 
-- Balance dobieraj do ustalonej przyczyny. Filtr `usage=0` dotyczy pustych grup bloków; inne progi wymagają uzasadnienia na podstawie zajętości. Pełny balance przenosi dane i metadane całego systemu plików, obciąża I/O i potrzebuje miejsca roboczego. `--bg` nie ogranicza tego zakresu.
-- Scrub sprawdza sumy kontrolne i może naprawiać z poprawnej repliki. Nie zastępuje pełnej kontroli struktur. Nawet scrub z `-r` na systemie zamontowanym do zapisu może powodować zapisy; nie przedstawiaj go jako zwykłego odczytu.
-- Nie proponuj `btrfs check --repair` ani zmiany profili jako ogólnej naprawy. Nie defragmentuj całego drzewa w celu odzyskania miejsca: może zerwać współdzielenie extentów.
-- Każda operacja wymaga osobnego planu, zgody, oceny obciążenia i testu wyniku. Przerwanie balance nie cofa już wykonanej relokacji; nie obiecuj rollbacku, którego nie ma.
+- Choose balance according to the established cause. The filter `usage=0` concerns empty block groups; other thresholds need a justification based on usage. A full balance moves the data and metadata of the whole filesystem, loads I/O and needs working space. `--bg` does not limit this scope.
+- Scrub verifies checksums and can repair from a good replica. It does not replace a full check of the structures. Even a scrub with `-r` on a filesystem mounted for writing can cause writes; do not present it as an ordinary read.
+- Do not propose `btrfs check --repair` or a profile change as a general fix. Do not defragment the whole tree to recover space: it can break extent sharing.
+- Every operation needs a separate plan, consent, an assessment of the load and a test of the result. Interrupting a balance does not undo relocation already done; do not promise a rollback that does not exist.
 
-## Wynik
+## Result
 
-Podaj przyczynę lub hipotezę, dowody z zajętości i błędów oraz jeden następny krok. Po zatwierdzonej operacji porównaj te same odczyty i status operacji; sam kod zakończenia nie dowodzi rozwiązania problemu.
+Give the cause or hypothesis, the evidence from usage and errors, and one next step. After an approved operation, compare the same reads and the operation's status; the exit code alone does not prove the problem is solved.
 
-## Źródła
+## Sources
 
-- [Balance: filtry, koszt i ENOSPC](https://btrfs.readthedocs.io/en/latest/btrfs-balance.html#filters).
-- [Scrub: zakres kontroli i naprawy](https://btrfs.readthedocs.io/en/latest/btrfs-scrub.html#description).
+- [Balance: filters, cost and ENOSPC](https://btrfs.readthedocs.io/en/latest/btrfs-balance.html#filters).
+- [Scrub: scope of checking and repair](https://btrfs.readthedocs.io/en/latest/btrfs-scrub.html#description).

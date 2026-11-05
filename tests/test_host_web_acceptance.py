@@ -126,7 +126,7 @@ class WebFixtureTests(unittest.TestCase):
         policy = SimpleNamespace(access=lambda: access, sources=lambda: {
             "claude": True, "weather": False, "systemd": [], "web": True}, recheck=Mock())
         package.permissions = SimpleNamespace(_read=Mock(), read_selected=Mock(), load_policy=lambda: policy)
-        package.terminal_consent = SimpleNamespace(fresh_input=Mock(return_value="nie" if refusal else "tak"),
+        package.terminal_consent = SimpleNamespace(fresh_input=Mock(return_value="no" if refusal else "yes"),
             PROMPTS={"ask-question": "QUESTION"})
         package.assistant_flow = SimpleNamespace(collect=Mock())
         package.file_context = SimpleNamespace(collect=Mock())
@@ -142,10 +142,10 @@ class WebFixtureTests(unittest.TestCase):
             if behavior == "no-proof":
                 return "I searched, https://www.python.org/downloads/"
             if behavior == "wrong-source":
-                return "Answer\nŹródła:\n[1] Title — https://example.com/"
+                return "Answer\nSources:\n[1] Title — https://example.com/"
             if behavior == "malformed-source":
-                return "Answer\nŹródła:\n[1] Python downloads — ``https://www.python.org/downloads/``"
-            return "Answer\nŹródła:\n[1] Python downloads — `https://www.python.org/downloads/`"
+                return "Answer\nSources:\n[1] Python downloads — ``https://www.python.org/downloads/``"
+            return "Answer\nSources:\n[1] Python downloads — `https://www.python.org/downloads/`"
         def original_request(question, args, reader, **kwargs):
             data = {"mode": "web" if kwargs.get("web") else "assistant", "question": question}
             if data["mode"] == "assistant":

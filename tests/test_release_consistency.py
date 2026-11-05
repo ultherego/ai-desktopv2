@@ -28,10 +28,10 @@ class ReleaseConsistencyTests(unittest.TestCase):
 
     def test_readme_names_the_current_candidate(self):
         readme = (ROOT / "README.md").read_text()
-        self.assertIn("Aktualny pakiet kandydata ma numer **" + pkgbuild_version() + "**", readme)
+        self.assertIn("The current candidate package is **" + pkgbuild_version() + "**", readme)
 
     def test_changelog_leads_with_the_current_candidate_and_never_repeats_a_number(self):
-        headings = re.findall(r"^## (\d+\.\d+\.\d+-\d+) ", (ROOT / "CHANGELOG.md").read_text(), re.M)
+        headings = re.findall(r"^## (\d+\.\d+\.\d+-\d+):", (ROOT / "CHANGELOG.md").read_text(), re.M)
         self.assertEqual(headings[0], pkgbuild_version())
         self.assertEqual(len(headings), len(set(headings)))
         order = [tuple(int(n) for n in re.split(r"[.-]", h)) for h in headings]

@@ -46,7 +46,7 @@ class Base(unittest.TestCase):
             {"path": "one.txt", "content": before["files"]["one.txt"]["file"]["content"], "writable": True}]}
         plan = TaskPlan(before, source, {"summary": "synthetic", "files": [
             {"path": "one.txt", "content": content}]}, "text")
-        w.apply(plan, plan.authorize("ZAPISZ " + plan.sha256))
+        w.apply(plan, plan.authorize("SAVE " + plan.sha256))
         return plan
 
     def load(self):
@@ -101,7 +101,7 @@ class FsBindingTests(Base):
         before = w.snapshot(str(self.root), ["one.txt"])
         source = {"instruction": "s", "files": [{"path": "one.txt", "content": "CHANGED\n", "writable": True}]}
         plan = TaskPlan(before, source, {"summary": "s", "files": [{"path": "one.txt", "content": "N\n"}]}, "text")
-        approval = plan.authorize("ZAPISZ " + plan.sha256)
+        approval = plan.authorize("SAVE " + plan.sha256)
         self.identity = OTHER_SUBVOLUME
         with self.assertRaises(ValueError):
             w.apply(plan, approval)
@@ -260,23 +260,23 @@ class PublicCliTests(Base):
         self.drift()
         code, output, _ = self.run_cli("status")
         self.assertEqual(code, 0)
-        self.assertIn("Stan: zapisano", output)
-        self.assertIn("Przywróć oryginał: one.txt", output)
+        self.assertIn("State: saved", output)
+        self.assertIn("Restore original: one.txt", output)
         self.assertNotIn(w.DETACHED_HISTORY_HINT, output)
-        self.assertNotIn("niepowiązana", output)
+        self.assertNotIn("unlinked", output)
 
     def test_rollback_after_device_drift_restores_exact_bytes_and_mode(self):
         self.drift()
-        code, output, prompts = self.run_cli("rollback", ["TAK"])
+        code, output, prompts = self.run_cli("rollback", ["YES"])
         self.assertEqual((code, prompts), (0, [PROMPTS["rollback"]]), output)
-        self.assertIn("Cofnięto zmiany.", output)
+        self.assertIn("Changes undone.", output)
         self.assertEqual(self.state(), (b"ORIGINAL\n", 0o640))
         self.assertEqual(self.load()["status"], "rolled-back")
 
     def test_declined_rollback_after_device_drift_changes_nothing(self):
         self.drift()
         saved = self.journal.read_bytes()
-        code, output, _ = self.run_cli("rollback", ["nie"])
+        code, output, _ = self.run_cli("rollback", ["no"])
         self.assertEqual(code, 2)
         self.assertEqual(self.state(), (b"CHANGED\n", 0o640))
         self.assertEqual(self.journal.read_bytes(), saved)
@@ -291,7 +291,7 @@ class PublicCliTests(Base):
         self.assertEqual(self.state(), (b"CHANGED\n", 0o640))
         self.assertEqual(self.journal.read_bytes(), saved)
         code, output, _ = self.run_cli("status")
-        self.assertIn("historia niepowiązana", output)
+        self.assertIn("unlinked history", output)
 
 
 class JournalSchemaTests(Base):

@@ -50,11 +50,11 @@ class TaskPlan:
                 fromfile="a/" + item["path"] if old else "/dev/null",
                 tofile="b/" + item["path"])))
             # Explicit exact text covers missing final-newline ambiguity.
-            result.append("\nNowa tresc JSON: " + canonical(item["content"]) + "\n")
+            result.append("\nNew content as JSON: " + canonical(item["content"]) + "\n")
         return "".join(result)
 
     def authorize(self, answer):
-        if self._used or self._issued is not None or self._clock() > self._expires or answer != "ZAPISZ " + self.sha256:
+        if self._used or self._issued is not None or self._clock() > self._expires or answer != "SAVE " + self.sha256:
             self._used = True
             raise ValueError("consent")
         self._issued = Authorization(self.sha256, self._nonce)

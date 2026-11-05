@@ -82,8 +82,8 @@ def configured_read(pattern, *, reader=input):
         selected = tuple(scope for scope in policy.scopes() if scope.pattern == pattern)
         if len(selected) != 1:
             raise ValueError("scope")
-        print("Lokalny test bez wysyłki — dokładna reguła: " + terminal_text(json.dumps(selected[0].pattern, ensure_ascii=False)))
-        print("Treści pozostaną w pamięci tego procesu; wynik pokaże wyłącznie liczby i status.")
+        print("Local test, nothing is sent. Exact rule: " + terminal_text(json.dumps(selected[0].pattern, ensure_ascii=False)))
+        print("The contents stay in the memory of this process; the result shows only numbers and status.")
         stage = "consent"
         if not confirm("files-read", reader=reader):
             raise ValueError("consent")
@@ -192,7 +192,7 @@ def create_fixture(home, data, *, systemd=False):
                  "original_input = terminal_consent.fresh_input\n"
                  "def observed_input(prompt, **kwargs):\n"
                  "    answer = original_input(prompt, **kwargs)\n"
-                 "    if type(answer) is str and answer.strip().casefold() in ('tak', 't'):\n"
+                 "    if type(answer) is str and answer.strip().casefold() in ('yes', 'y'):\n"
                  "        approvals.append(prompt)\n"
                  "    return answer\n"
                  "terminal_consent.fresh_input = observed_input\n"
@@ -267,7 +267,7 @@ def reject(fixture):
                     break
                 output.extend(raw)
             if PROMPTS["ask-question"].encode() in output and not answered:
-                os.write(master, b"nie\n")
+                os.write(master, b"no\n")
                 answered = True
             if process.poll() is not None and not select.select([master], [], [], .1)[0]:
                 break
@@ -275,8 +275,8 @@ def reject(fixture):
         if (process.returncode != 2 or not answered
                 or REFUSAL_MARKER.encode() not in output
                 or DENIED_CONTENTS.strip().encode() in output
-                or b"Uprawnienia administratora" in output
-                or "Czekam na odpowiedź".encode() in output
+                or b"Administrator permissions" in output
+                or b"Waiting for " in output
                 or FINAL_MARKER.encode() in output
                 or PROMPTS["files-read"].encode() in output
                 or PROMPTS["ask-transfer"].encode() in output):
@@ -322,9 +322,9 @@ def main(argv=None):
             reject(fixture)
             prior.check_stopped(uid, units)
             stage = "native-request"
-            print("Test używa wyłącznie tymczasowej konfiguracji i syntetycznego projektu aidfixture.")
-            print("Jedna zgoda zatwierdza całe pytanie: dobór danych i odpowiedź po odczycie, łącznie dwa zapytania Claude.")
-            print("Pięć plików: 9222 + 1096 + 1090 + 579 + 188 = 12175 bajtów; odpowiedź pozostaje na terminalu.")
+            print("The test uses only a temporary configuration and the synthetic project aidfixture.")
+            print("One approval covers the whole question: choosing the data and the answer after the read, two Claude requests in all.")
+            print("Five files: 9222 + 1096 + 1090 + 579 + 188 = 12175 bytes; the answer stays on the terminal.")
             started = True
             prior.run(*command(fixture), timeout=420)
             stage = "unchanged"

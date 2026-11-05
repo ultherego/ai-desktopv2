@@ -90,7 +90,7 @@ class TaskFilesystemTests(unittest.TestCase):
         original = "a" * 64000
         (self.root / "config.kdl").write_text(original)
         plan = plan_for(self.root, ["config.kdl", "new.kdl"], ["b" * 65536, "ą" * 32768])
-        workspace.apply(plan, plan.authorize("ZAPISZ " + plan.sha256))
+        workspace.apply(plan, plan.authorize("SAVE " + plan.sha256))
         self.assertEqual((self.root / "config.kdl").read_text(), "b" * 65536)
         self.assertEqual((self.root / "new.kdl").read_text(), "ą" * 32768)
         self.assertTrue(workspace.rollback(str(self.root), plan.sha256))
@@ -114,7 +114,7 @@ class TaskFilesystemTests(unittest.TestCase):
         with patch.object(workspace.fcntl, "flock", side_effect=lock), \
                 patch.object(workspace, "_write") as write, patch.object(workspace, "_save") as save:
             with self.assertRaisesRegex(ValueError, "policy revoked"):
-                workspace.apply(plan, plan.authorize("ZAPISZ " + plan.sha256), write_guard=denied)
+                workspace.apply(plan, plan.authorize("SAVE " + plan.sha256), write_guard=denied)
             write.assert_not_called()
             save.assert_not_called()
         self.assertEqual(sorted(path.name for path in self.root.iterdir()), ["config.kdl"])
@@ -124,7 +124,7 @@ class TaskFilesystemTests(unittest.TestCase):
         plan = plan_for(self.root, ["config.kdl", "new.kdl"], ["new", "created"])
         with patch.object(workspace, "MAX_JOURNAL", 1), patch.object(workspace, "_write") as write:
             with self.assertRaises(workspace.JournalLimit):
-                workspace.apply(plan, plan.authorize("ZAPISZ " + plan.sha256))
+                workspace.apply(plan, plan.authorize("SAVE " + plan.sha256))
             write.assert_not_called()
         self.assertEqual(sorted(path.name for path in self.root.iterdir()), ["config.kdl"])
 
@@ -146,7 +146,7 @@ class TaskFilesystemTests(unittest.TestCase):
             return real_read(parent, name)
         with patch.object(workspace, "read_file", side_effect=read):
             with self.assertRaises(ValueError):
-                workspace.apply(plan, plan.authorize("ZAPISZ " + plan.sha256),
+                workspace.apply(plan, plan.authorize("SAVE " + plan.sha256),
                     write_guard=lambda: (self.root / "new.kdl").write_text("private concurrent edit"))
         self.assertEqual((self.root / "new.kdl").read_text(), "private concurrent edit")
 

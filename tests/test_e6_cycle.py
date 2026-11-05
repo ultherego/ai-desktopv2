@@ -47,7 +47,7 @@ class CycleBase(unittest.TestCase):
         self.outside = self.base / "outside.txt"
         self.outside.write_text("OUTSIDE\n")
 
-    def run_task(self, args=None, *, answers=("tak", "tak"), response=None, passed=True,
+    def run_task(self, args=None, *, answers=("yes", "yes"), response=None, passed=True,
                  before_send=None, on_prompt=None):
         args = args or ["run", "change calc", "--workspace", str(self.root), "--file", "calc.py",
                         "--test", "python-syntax"]
@@ -89,7 +89,7 @@ class CycleBase(unittest.TestCase):
 class Cycle(CycleBase):
     # --- refusals before any session ---------------------------------------------------
     def test_declined_transfer_starts_nothing_and_changes_nothing(self):
-        code, output = self.run_task(answers=("nie",))
+        code, output = self.run_task(answers=("no",))
         self.assertEqual((code, self.prompts), (2, [PROMPTS["transfer"]]))
         self.assert_model_never_started()
         self.assert_unchanged()
@@ -124,19 +124,19 @@ class Cycle(CycleBase):
     # --- cancellation --------------------------------------------------------------------
     def test_cancellation_at_each_prompt_changes_nothing_and_is_not_retried(self):
         for label, answers in (("transfer-eof", (EOFError(),)), ("transfer-ctrl-c", (KeyboardInterrupt(),)),
-                               ("write-ctrl-c", ("tak", KeyboardInterrupt())),
-                               ("write-eof", ("tak", EOFError()))):
+                               ("write-ctrl-c", ("yes", KeyboardInterrupt())),
+                               ("write-eof", ("yes", EOFError()))):
             with self.subTest(case=label):
                 code, output = self.run_task(answers=answers)
                 self.assertEqual(code, 2, output)
-                self.assertIn("Anulowano", output)
+                self.assertIn("Cancelled", output)
                 self.assertLessEqual(self.mocks[0].call_count, 1)
                 self.assertLessEqual(len(self.prompts), 2)
                 self.assert_unchanged()
 
     # --- refusals around the diff ------------------------------------------------------
     def test_declined_write_at_diff_keeps_everything(self):
-        code, output = self.run_task(answers=("tak", "nie"))
+        code, output = self.run_task(answers=("yes", "no"))
         self.assertEqual((code, self.prompts), (2, [PROMPTS["transfer"], PROMPTS["write"]]))
         self.assertIn("```diff", output)
         self.mocks[0].assert_called_once()
@@ -161,7 +161,7 @@ class Cycle(CycleBase):
                      "/etc/passwd", ".ai-desktop-tasks/x.json", "calc.py/../README.txt"):
             with self.subTest(path=path):
                 code, output = self.run_task(response=proposal([{"path": path, "content": "x\n"}]),
-                                             answers=("tak", "tak"))
+                                             answers=("yes", "yes"))
                 self.assertEqual(code, 2, output)
                 self.assertEqual(self.prompts, [PROMPTS["transfer"]])
                 self.mocks[2].assert_not_called()
@@ -170,16 +170,16 @@ class Cycle(CycleBase):
 
     def test_proposal_identical_to_the_file_says_so_and_never_offers_a_write(self):
         same = proposal([{"path": "calc.py", "content": e6.FILES["calc.py"][0]}])
-        code, output = self.run_task(response=same, answers=("tak", "tak"))
+        code, output = self.run_task(response=same, answers=("yes", "yes"))
         self.assertEqual((code, self.prompts), (2, [PROMPTS["transfer"]]))
-        self.assertIn("Nie zaproponowano zmiany: plik ma już taką treść. Nic nie zapisano.", output)
+        self.assertIn("No change was proposed: the file already has this content. Nothing was saved.", output)
         self.mocks[2].assert_not_called()
         self.assert_unchanged()
 
     def test_failed_proposal_test_never_offers_a_write(self):
         code, output = self.run_task(passed=False)
         self.assertEqual((code, self.prompts), (2, [PROMPTS["transfer"]]))
-        self.assertIn("niezaliczony", output)
+        self.assertIn("failed", output)
         self.assert_unchanged()
 
     # --- success and rollback ----------------------------------------------------------
@@ -196,7 +196,7 @@ class Cycle(CycleBase):
         out = io.StringIO()
         with contextlib.redirect_stdout(out), patch.object(cli.sys.stdin, "isatty", return_value=True), \
                 patch.object(cli.sys.stdout, "isatty", return_value=True):
-            rolled = cli.main(["rollback", "--workspace", str(self.root)], reader=lambda prompt: "tak")
+            rolled = cli.main(["rollback", "--workspace", str(self.root)], reader=lambda prompt: "yes")
         self.assertEqual(rolled, 0, out.getvalue())
         self.assertEqual(e6.check_rolled_back(self.root, self.expected), [])
         self.assertEqual((self.root / "calc.py").read_bytes(), e6.FILES["calc.py"][0].encode())
@@ -206,7 +206,7 @@ class Cycle(CycleBase):
         out = io.StringIO()
         with contextlib.redirect_stdout(out), patch.object(cli.sys.stdin, "isatty", return_value=True), \
                 patch.object(cli.sys.stdout, "isatty", return_value=True):
-            self.assertEqual(cli.main(["rollback", "--workspace", str(self.root)], reader=lambda p: "nie"), 2)
+            self.assertEqual(cli.main(["rollback", "--workspace", str(self.root)], reader=lambda p: "no"), 2)
         self.assertEqual(e6.check_written(self.root, self.expected), [])
 
     def test_rollback_after_user_edit_is_a_conflict_and_keeps_the_edit(self):
@@ -215,7 +215,7 @@ class Cycle(CycleBase):
         out = io.StringIO()
         with contextlib.redirect_stdout(out), patch.object(cli.sys.stdin, "isatty", return_value=True), \
                 patch.object(cli.sys.stdout, "isatty", return_value=True):
-            code = cli.main(["rollback", "--workspace", str(self.root)], reader=lambda p: "tak")
+            code = cli.main(["rollback", "--workspace", str(self.root)], reader=lambda p: "yes")
         self.assertEqual(code, 2)
         self.assertEqual((self.root / "calc.py").read_text(), "USER EDIT\n")
         self.assertNotEqual(e6.check_rolled_back(self.root, self.expected), [])
@@ -261,7 +261,7 @@ class CheckerSelfTests(CycleBase):
                 with contextlib.redirect_stdout(io.StringIO()), \
                         patch.object(cli.sys.stdin, "isatty", return_value=True), \
                         patch.object(cli.sys.stdout, "isatty", return_value=True):
-                    self.assertEqual(cli.main(["rollback", "--workspace", str(self.root)], reader=lambda p: "tak"), 0)
+                    self.assertEqual(cli.main(["rollback", "--workspace", str(self.root)], reader=lambda p: "yes"), 0)
                 self.assertEqual(e6.check_rolled_back(self.root, self.expected), [])
                 mutate()
                 self.assertNotEqual(e6.check_rolled_back(self.root, self.expected), [])

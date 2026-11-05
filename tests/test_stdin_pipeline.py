@@ -35,7 +35,7 @@ class StdinPipelineTests(unittest.TestCase):
         result = invoke("validate-report", "-", payload=payload)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(json.loads(result.stdout), {"field_count": 8, "valid": True})
-        self.assertNotIn("7.3.0-4-cachyos", result.stdout)
+        self.assertNotIn("0.0.0-synthetic", result.stdout)
         self.assertEqual(result.stderr, "")
 
     def test_compare_old_file_to_stdin_and_redact_values(self):

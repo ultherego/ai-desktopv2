@@ -8,72 +8,72 @@ import sys
 from . import agent_profiles as profiles, execution, model_catalog
 from .terminal_style import paint
 
-MODEL_LABELS = {"default": "Auto (domyślny klienta)", "best": "Najlepszy dostępny", "fable": "Fable",
-                "opus": "Opus", "sonnet": "Sonnet", "haiku": "Haiku", "opusplan": "Tryb planowania: Opus, wykonanie: Sonnet",
-                "custom": "Inny identyfikator (wpisz)"}
+MODEL_LABELS = {"default": "Auto (client default)", "best": "Best available", "fable": "Fable",
+                "opus": "Opus", "sonnet": "Sonnet", "haiku": "Haiku", "opusplan": "Planning: Opus, execution: Sonnet",
+                "custom": "Other ID (type it)"}
 
 
 def model_choices(provider):
     """(values, labels, note). Claude: the client's aliases. Codex: Auto, the client's own catalog, free text."""
     if provider == "claude":
         return profiles.MODELS, tuple(MODEL_LABELS[key] for key in profiles.MODELS), None
-    print("Pobieram listę modeli z klienta Codex…", flush=True)
+    print("Getting the model list from the Codex client…", flush=True)
     try:
         entries = model_catalog.fetch()
         note = None
     except model_catalog.CatalogUnavailable:
-        entries, note = (), "Lista modeli z klienta jest niedostępna; wybierz Auto albo wpisz identyfikator."
+        entries, note = (), "The client's model list is unavailable; choose Auto or type an ID."
     values = ("default", *(ident for ident, _ in entries), "custom")
     labels = (MODEL_LABELS["default"], *(label + " (" + ident + ")" for ident, label in entries), MODEL_LABELS["custom"])
     return values, labels, note
-EFFORT_LABELS = {"default": "domyślny klienta", "low": "niski", "medium": "średni", "high": "wysoki",
-                 "xhigh": "bardzo wysoki", "max": "maksymalny"}
+EFFORT_LABELS = {"default": "client default", "low": "low", "medium": "medium", "high": "high",
+                 "xhigh": "very high", "max": "maximum"}
 SERVICE_LABELS = {"claude": "Claude", "codex": "Codex"}
 
 
 def _profile_flags(parser, *, create=False):
     parser.add_argument("--provider", choices=("claude", "codex"),
-                        help="Wybierz usługę dla wszystkich agentów")
+                        help="Choose the service for all agents")
     parser.add_argument("--model", type=execution.model_argument, metavar="MODEL")
-    parser.add_argument("--effort", choices=profiles.EFFORTS, help="Poziom rozumowania")
-    parser.add_argument("--instructions", help="Własne instrukcje roli, do 4096 B")
-    parser.add_argument("--access", choices=profiles.ACCESSES, help="read-only blokuje zmiany plików")
+    parser.add_argument("--effort", choices=profiles.EFFORTS, help="Reasoning level")
+    parser.add_argument("--instructions", help="Your own role instructions, up to 4096 B")
+    parser.add_argument("--access", choices=profiles.ACCESSES, help="read-only blocks file changes")
     skill = parser.add_mutually_exclusive_group()
-    skill.add_argument("--skill", action="append", help="Skill dołączony do roli; można podać wiele razy")
-    skill.add_argument("--no-skills", action="store_true", help="Usuń przypisane Skills")
+    skill.add_argument("--skill", action="append", help="Skill attached to the role; may be given more than once")
+    skill.add_argument("--no-skills", action="store_true", help="Remove the assigned Skills")
 
 
 def build_parser(*, prog="ai-desktop claude", provider_neutral=False):
-    description = ("Lokalne ustawienia agentów, modeli, rozumowania i Skills; bez logowania i wysyłania danych"
+    description = ("Local settings for agents, models, reasoning and Skills; no login and no data sent"
                    if provider_neutral else
-                   "Lokalne ustawienia Claude i profile agentów; bez logowania i wysyłania danych")
+                   "Local Claude settings and agent profiles; no login and no data sent")
     parser = argparse.ArgumentParser(prog=prog, description=description)
     commands = parser.add_subparsers(dest="command")
-    commands.add_parser("show", help="Bieżący agent, model i poziom rozumowania")
-    commands.add_parser("models", help="Dostępne ustawienia modelu")
-    commands.add_parser("menu", help="Wybór agenta, modelu i poziomu w terminalu")
-    commands.add_parser("skills", help="Skills aktywnego profilu w terminalu")
-    settings = commands.add_parser("set", help="Zmień ustawienia aktywnego profilu")
+    commands.add_parser("show", help="Current agent, model and reasoning level")
+    commands.add_parser("models", help="Available model settings")
+    commands.add_parser("menu", help="Choose the agent, model and level in the terminal")
+    commands.add_parser("skills", help="Skills of the active profile in the terminal")
+    settings = commands.add_parser("set", help="Change the settings of the active profile")
     if provider_neutral:
         settings.add_argument("--provider", choices=("claude", "codex"),
-                              help="Wybierz usługę dla wszystkich agentów")
+                              help="Choose the service for all agents")
     settings.add_argument("--model", choices=profiles.MODELS)
     settings.add_argument("--effort", choices=profiles.EFFORTS)
-    agents = commands.add_parser("agents", help="Zarządzaj profilami")
+    agents = commands.add_parser("agents", help="Manage profiles")
     actions = agents.add_subparsers(dest="action")
-    actions.add_parser("list", help="Lista profili")
-    actions.add_parser("menu", help="Zarządzaj profilami w terminalu")
-    actions.add_parser("setup", help="Przygotuj profile i przypisz gotowe Skills")
-    show = actions.add_parser("show", help="Ustawienia i instrukcje wybranego profilu")
+    actions.add_parser("list", help="List profiles")
+    actions.add_parser("menu", help="Manage profiles in the terminal")
+    actions.add_parser("setup", help="Prepare profiles and assign the ready-made Skills")
+    show = actions.add_parser("show", help="Settings and instructions of the chosen profile")
     show.add_argument("name", nargs="?")
     for action in ("create", "update"):
-        command = actions.add_parser(action, help="Utwórz profil" if action == "create" else "Zmień profil")
+        command = actions.add_parser(action, help="Create profile" if action == "create" else "Change profile")
         command.add_argument("name")
         _profile_flags(command, create=action == "create")
     for action in ("use", "remove"):
-        command = actions.add_parser(action, help="Wybierz profil" if action == "use" else "Usuń nieaktywny profil")
+        command = actions.add_parser(action, help="Choose profile" if action == "use" else "Remove an inactive profile")
         command.add_argument("name")
-    copy = actions.add_parser("copy", help="Skopiuj profil pod nową nazwą")
+    copy = actions.add_parser("copy", help="Copy a profile under a new name")
     copy.add_argument("source")
     copy.add_argument("name")
     return parser
@@ -85,12 +85,12 @@ def _summary(config):
     print("%s %s · %s · %s %s · %s %s" % (
         paint("Agent:", "dim"), paint(config.active, "bold", "cyan"), selected.provider,
         paint("model:", "dim"), MODEL_LABELS.get(selected.model, selected.model),
-        paint("rozumowanie:", "dim"), EFFORT_LABELS[selected.effort]))
+        paint("reasoning:", "dim"), EFFORT_LABELS[selected.effort]))
     read_only = selected.access == "read-only"
     print("%s %s · %s %s" % (
-        paint("Dostęp:", "dim"),
-        paint("tylko odczyt", "green") if read_only else paint("zmiany po zatwierdzeniu", "yellow"),
-        paint("Skills:", "dim"), ", ".join(selected.skills) or "brak"))
+        paint("Access:", "dim"),
+        paint("read-only", "green") if read_only else paint("changes after approval", "yellow"),
+        paint("Skills:", "dim"), ", ".join(selected.skills) or "none"))
 
 
 def _show(config, name):
@@ -107,12 +107,12 @@ def _models(provider="claude"):
         if key != "custom":
             print("%-16s %s" % (key, label))
     if provider == "codex":
-        print("Lista pochodzi z klienta Codex; dowolny inny identyfikator podasz przez --model ID." + (" " + note if note else ""))
-    print("Rozumowanie: " + ", ".join(profiles.efforts_for(provider)) + ".")
+        print("This list comes from the Codex client; give any other ID with --model ID." + (" " + note if note else ""))
+    print("Reasoning: " + ", ".join(profiles.efforts_for(provider)) + ".")
     if provider == "claude":
-        print("Dostępność modelu i poziomu zależy od konta Claude i klienta. Brak automatycznej zmiany modelu.")
+        print("Model and level availability depends on your Claude account and the client. The model never changes automatically.")
     else:
-        print("Model domyślny wybiera klient Codex. Dostępność i poziom zależą od konta i klienta.")
+        print("The Codex client picks the default model. Availability and level depend on your account and the client.")
 
 
 def _legacy_menu(store, reader, *, provider_neutral=False):
@@ -124,7 +124,7 @@ def _legacy_menu(store, reader, *, provider_neutral=False):
 
     config = store.load().config
     _summary(config)
-    print("1. Wybierz agenta\n2. Wybierz model\n3. Poziom rozumowania\nEnter kończy")
+    print("1. Choose agent\n2. Choose model\n3. Reasoning level\nEnter exits")
     chosen = read("> ")
     if not chosen:
         return 0
@@ -162,7 +162,7 @@ def _legacy_menu(store, reader, *, provider_neutral=False):
         field = "model" if chosen == "2" else "effort"
         picked = values[int(number) - 1]
         if picked == "custom":
-            print("Identyfikator modelu Codex:")
+            print("Codex model ID:")
             picked = read("> ").strip()
         selected = replace(config.profiles[config.active], **{field: picked})
         after = store.mutate(lambda value: value.put(config.active, selected), expected=before)
@@ -199,11 +199,11 @@ class _SettingsMenu:
             count = len(shown)
             following = len(shown) if start + count < len(values) else None
             if following is not None:
-                shown.append("Następna strona")
+                shown.append("Next page")
             previous = len(shown) if page else None
             if previous is not None:
-                shown.append("Poprzednia strona")
-            shown.append("Wróć")
+                shown.append("Previous page")
+            shown.append("Back")
             selected = values.index(current) - start if current in values[start:start + 8] else 0
             answer = self.select(title, shown, default=selected)
             if answer is None or answer == len(shown) - 1:
@@ -245,10 +245,10 @@ class _SettingsMenu:
         except profiles.ProfileError as exc:
             if str(exc) != "changed":
                 raise
-            print("Ustawienia zmieniły się równolegle. Odświeżono menu.")
+            print("The settings were changed elsewhere at the same time. The menu was refreshed.")
 
     def service(self, before):
-        value = self.pick("Usługa · dla wszystkich agentów · bez logowania", ("claude", "codex"),
+        value = self.pick("Service · for all agents · no login", ("claude", "codex"),
                           labels=("Claude", "ChatGPT / Codex"), current=before.config.selected_provider)
         if value is not None:
             selected = before.config.with_provider(value)
@@ -261,7 +261,7 @@ class _SettingsMenu:
         if after != before.config:
             self.store.mutate(lambda value: after, expected=before)
 
-    def names(self, before, *, current=None, title="Wybierz agenta", values=None):
+    def names(self, before, *, current=None, title="Choose agent", values=None):
         values = tuple(before.config.profiles) if values is None else tuple(values)
         labels = tuple(name + " · " + SERVICE_LABELS[before.config.selected_provider] for name in values)
         return self.pick(title, values, labels=labels, current=current)
@@ -279,29 +279,29 @@ class _SettingsMenu:
     def edit_skills(self, selected):
         names = self.available_skills()
         if not names:
-            print("Brak zainstalowanych Skills.")
+            print("No Skills are installed.")
             return selected
         draft = selected
         while True:
-            action = self.select("Skills · " + (", ".join(draft.skills) or "brak przypisanych"),
-                                 ("Dodaj Skill", "Usuń przypisanie", "Podgląd Skill", "Zapisz", "Wróć"))
+            action = self.select("Skills · " + (", ".join(draft.skills) or "none assigned"),
+                                 ("Add Skill", "Unassign", "Preview Skill", "Save", "Back"))
             if action is None or action == 4:
                 return selected
             if action == 3:
                 profiles.instructions_for(draft)
                 return draft
             if action == 0:
-                name = self.pick("Dodaj Skill", tuple(name for name in names if name not in draft.skills))
+                name = self.pick("Add Skill", tuple(name for name in names if name not in draft.skills))
                 if name is not None:
                     candidate = replace(draft, skills=draft.skills + (name,))
                     profiles.instructions_for(candidate)
                     draft = candidate
             elif action == 1:
-                name = self.pick("Usuń przypisanie Skill", draft.skills)
+                name = self.pick("Unassign Skill", draft.skills)
                 if name is not None:
                     draft = replace(draft, skills=tuple(value for value in draft.skills if value != name))
             elif action == 2:
-                name = self.pick("Podgląd Skill", names)
+                name = self.pick("Preview Skill", names)
                 if name is not None:
                     # This same bounded text has passed the execution control-character checks.
                     print(profiles.instructions_for(profiles.Profile(skills=(name,))))
@@ -314,47 +314,47 @@ class _SettingsMenu:
             value = self.pick("Model · " + selected.provider, values, labels=labels,
                               current=selected.model if selected.model in values else None)
             if value == "custom":
-                value = self.text("Identyfikator modelu Codex: ", 96)
+                value = self.text("Codex model ID: ", 96)
                 value = value.strip() if value is not None else None
             if value is not None:
                 return replace(selected, model=value)
         elif field == "effort":
             values = profiles.efforts_for(selected.provider)
-            value = self.pick("Poziom rozumowania", values,
+            value = self.pick("Reasoning level", values,
                               labels=tuple(EFFORT_LABELS[key] for key in values), current=selected.effort)
             if value is not None:
                 return replace(selected, effort=value)
         elif field == "access":
-            value = self.pick("Dostęp", profiles.ACCESSES,
-                              labels=("Tylko odczyt", "Zmiany po zatwierdzeniu"), current=selected.access)
+            value = self.pick("Access", profiles.ACCESSES,
+                              labels=("Read-only", "Changes after approval"), current=selected.access)
             if value is not None:
                 return replace(selected, access=value)
         elif field == "skills":
             return self.edit_skills(selected)
         elif field == "instructions":
-            action = self.select("Instrukcje roli", ("Wpisz nowe instrukcje", "Podgląd", "Wyczyść", "Wróć"))
+            action = self.select("Role instructions", ("Type new instructions", "Preview", "Clear", "Back"))
             if action == 0:
-                value = self.text("Instrukcje (puste = anuluj): ", profiles.MAX_INSTRUCTIONS)
+                value = self.text("Instructions (empty = cancel): ", profiles.MAX_INSTRUCTIONS)
                 if value is not None:
                     return replace(selected, instructions=value)
             elif action == 1:
-                print(selected.instructions or "Brak własnych instrukcji.")
+                print(selected.instructions or "No custom instructions.")
             elif action == 2:
                 return replace(selected, instructions="")
         return selected
 
     def fields(self, selected):
-        return ("Usługa: " + SERVICE_LABELS[selected.provider], "Model: " + MODEL_LABELS.get(selected.model, selected.model),
-                "Rozumowanie: " + EFFORT_LABELS[selected.effort],
-                "Dostęp: " + ("tylko odczyt" if selected.access == "read-only" else "zmiany po zatwierdzeniu"),
-                "Instrukcje: " + ("własne" if selected.instructions else "brak"),
-                "Skills: " + (", ".join(selected.skills) or "brak przypisanych"))
+        return ("Service: " + SERVICE_LABELS[selected.provider], "Model: " + MODEL_LABELS.get(selected.model, selected.model),
+                "Reasoning: " + EFFORT_LABELS[selected.effort],
+                "Access: " + ("read-only" if selected.access == "read-only" else "changes after approval"),
+                "Instructions: " + ("custom" if selected.instructions else "none"),
+                "Skills: " + (", ".join(selected.skills) or "none assigned"))
 
     def draft(self, selected):
         fields = ("model", "effort", "access", "instructions", "skills")
         while True:
-            action = self.select("Nowy profil · " + SERVICE_LABELS[selected.provider],
-                                 self.fields(selected)[1:] + ("Utwórz profil", "Anuluj"))
+            action = self.select("New profile · " + SERVICE_LABELS[selected.provider],
+                                 self.fields(selected)[1:] + ("Create profile", "Cancel"))
             if action is None or action == 6:
                 return None
             if action == 5:
@@ -369,9 +369,9 @@ class _SettingsMenu:
             before = self.store.load()
             selected = before.config.with_provider(before.config.selected_provider).profiles.get(name)
             if selected is None:
-                print("Profil został usunięty. Odświeżono menu agentów.")
+                print("This profile was removed. The agents menu was refreshed.")
                 return
-            action = self.select("Profil: " + name, self.fields(selected) + ("Wróć",), default=focus)
+            action = self.select("Profile: " + name, self.fields(selected) + ("Back",), default=focus)
             if action is None or action == 6:
                 return
             focus = action
@@ -385,10 +385,10 @@ class _SettingsMenu:
         focus = 0
         while True:
             before = self.store.load()
-            action = self.select("Agenci · " + SERVICE_LABELS[before.config.selected_provider] +
-                                 " · aktywny: " + before.config.active,
-                                 ("Wybierz agenta", "Utwórz profil", "Edytuj profil", "Kopiuj profil",
-                                  "Usuń profil", "Przygotuj profile i Skills", "Wróć"), default=focus)
+            action = self.select("Agents · " + SERVICE_LABELS[before.config.selected_provider] +
+                                 " · active: " + before.config.active,
+                                 ("Choose agent", "Create profile", "Edit profile", "Copy profile",
+                                  "Remove profile", "Prepare profiles and Skills", "Back"), default=focus)
             if action is None or action == 6:
                 return
             focus = action
@@ -399,7 +399,7 @@ class _SettingsMenu:
                         self.store.mutate(lambda value: value.with_provider(before.config.selected_provider).select(name),
                                           expected=before)
                 elif action == 1:
-                    name = self.text("Nazwa nowego profilu (puste = anuluj): ", 48)
+                    name = self.text("New profile name (empty = cancel): ", 48)
                     if name is None:
                         continue
                     name = profiles.slug(name.strip())
@@ -410,14 +410,14 @@ class _SettingsMenu:
                         self.store.mutate(lambda value: value.with_provider(before.config.selected_provider).put(name, selected),
                                           expected=before)
                 elif action == 2:
-                    name = self.names(before, title="Edytuj profil")
+                    name = self.names(before, title="Edit profile")
                     if name is not None:
                         self.edit(name)
                 elif action == 3:
-                    source = self.names(before, title="Kopiuj profil")
+                    source = self.names(before, title="Copy profile")
                     if source is None:
                         continue
-                    name = self.text("Nazwa kopii (puste = anuluj): ", 48)
+                    name = self.text("Name of the copy (empty = cancel): ", 48)
                     if name is None:
                         continue
                     name = profiles.slug(name.strip())
@@ -429,8 +429,8 @@ class _SettingsMenu:
                                       expected=before)
                 elif action == 4:
                     removable = tuple(name for name in before.config.profiles if name not in ("default", before.config.active))
-                    name = self.names(before, values=removable, title="Usuń nieaktywny profil")
-                    if name is not None and self.select("Usunięcie profilu", ("Usuń: " + name, "Anuluj"), default=1) == 0:
+                    name = self.names(before, values=removable, title="Remove an inactive profile")
+                    if name is not None and self.select("Remove profile", ("Remove: " + name, "Cancel"), default=1) == 0:
                         self.store.mutate(lambda value: value.remove(name), expected=before)
                 elif action == 5:
                     self.setup()
@@ -442,9 +442,9 @@ class _SettingsMenu:
             before = self.store.load()
             config = before.config
             selected = config.profiles[config.active]
-            action = self.select("Ustawienia · agent: " + config.active,
-                                 ("Wybierz agenta",) + self.fields(selected) +
-                                 ("Zarządzaj agentami", "Przygotuj profile i Skills", "Zakończ"), default=focus)
+            action = self.select("Settings · agent: " + config.active,
+                                 ("Choose agent",) + self.fields(selected) +
+                                 ("Manage agents", "Prepare profiles and Skills", "Exit"), default=focus)
             if action is None or action == 9:
                 _summary(self.store.load().config)
                 return 0
@@ -499,14 +499,14 @@ def main(argv=None, *, reader=input, store=None, chooser=None,
                 return _menu(store, reader, chooser, provider_neutral=provider_neutral)
             _summary(store.load().config)
             if args.command is None:
-                print("Ustawienia: ai-desktop settings · profile: ai-desktop agents")
+                print("Settings: ai-desktop settings · profiles: ai-desktop agents")
             return 0
         if args.command == "set":
             updates = {name: getattr(args, name) for name in ("model", "effort") if getattr(args, name) is not None}
             provider = getattr(args, "provider", None)
             if not updates and provider is None:
-                parser.error("set wymaga --provider, --model lub --effort" if provider_neutral
-                             else "set wymaga --model lub --effort")
+                parser.error("set requires --provider, --model or --effort" if provider_neutral
+                             else "set requires --model or --effort")
             def operation(config):
                 if provider_neutral:
                     config = config.with_provider(provider or config.selected_provider)
@@ -523,7 +523,7 @@ def main(argv=None, *, reader=input, store=None, chooser=None,
             return 0
         if action == "setup":
             _SettingsMenu(store, reader, chooser).setup()
-            print("Profile i Skills są gotowe.")
+            print("Profiles and Skills are ready.")
             return 0
         if action == "list":
             config = store.load().config
@@ -531,7 +531,7 @@ def main(argv=None, *, reader=input, store=None, chooser=None,
             for name, selected in config.entries:
                 print("%s %s · %s · %s · %s" % (
                     "*" if name == config.active else " ", name, selected.provider,
-                    selected.model, "odczyt" if selected.access == "read-only" else "zmiany po zatwierdzeniu"))
+                    selected.model, "read-only" if selected.access == "read-only" else "changes after approval"))
             return 0
         if action == "show":
             config = store.load().config
@@ -543,7 +543,7 @@ def main(argv=None, *, reader=input, store=None, chooser=None,
             return 0
         if action == "remove":
             store.mutate(lambda config: config.remove(name))
-            print("Usunięto profil: " + name)
+            print("Removed profile: " + name)
             return 0
         if action == "copy":
             before = store.load()
@@ -556,7 +556,7 @@ def main(argv=None, *, reader=input, store=None, chooser=None,
             profiles.instructions_for(selected)
             store.mutate(lambda value: value.with_provider(before.config.selected_provider).copy(source, name),
                          expected=before)
-            print("Skopiowano profil: " + name)
+            print("Copied profile: " + name)
             return 0
         updates = {field: getattr(args, field) for field in ("model", "effort", "instructions", "access")
                    if getattr(args, field) is not None}
@@ -572,22 +572,22 @@ def main(argv=None, *, reader=input, store=None, chooser=None,
             profiles.instructions_for(selected)
             return config.put(name, selected)
         store.mutate(operation)
-        print(("Utworzono" if action == "create" else "Zmieniono") + " profil: " + name)
+        print(("Created" if action == "create" else "Changed") + " profile: " + name)
         return 0
     except profiles.ProfileError as exc:
-        hints = {"missing": "Nie ma takiego profilu.", "exists": "Profil już istnieje.",
-                 "name": "Nazwa profilu: małe litery, cyfry i łączniki, do 48 znaków.",
-                 "instructions": "Instrukcje zawierają niedozwolone znaki albo przekraczają limit rozmiaru.",
-                 "profile": "Niepoprawne ustawienia profilu lub model nie pasuje do wybranego klienta.",
-                 "remove": "Nie można usunąć profilu domyślnego lub aktywnego. Najpierw wybierz inny profil.",
-                 "changed": "Ustawienia zmieniły się równolegle. Uruchom polecenie ponownie.",
-                 "skill": "Nie można wczytać przypisanego Skill. Sprawdź ai-desktop skills validate.",
-                 "selection": "Niepoprawny wybór.", "provider": "To polecenie dotyczy profilu Claude."}
-        print(hints.get(str(exc), "Niepoprawna lub niedostępna konfiguracja agentów. Sprawdź ~/.config/ai-desktop/agents.json (0600)."))
+        hints = {"missing": "There is no such profile.", "exists": "This profile already exists.",
+                 "name": "Profile name: lowercase letters, digits and hyphens, up to 48 characters.",
+                 "instructions": "The instructions contain characters that are not allowed or exceed the size limit.",
+                 "profile": "Invalid profile settings, or the model does not match the chosen client.",
+                 "remove": "The default or active profile cannot be removed. Choose another profile first.",
+                 "changed": "The settings were changed elsewhere at the same time. Run the command again.",
+                 "skill": "Could not load an assigned Skill. Check ai-desktop skills validate.",
+                 "selection": "Invalid choice.", "provider": "This command applies to a Claude profile."}
+        print(hints.get(str(exc), "The agent configuration is invalid or unavailable. Check ~/.config/ai-desktop/agents.json (0600)."))
         return 2
     except (OSError, UnicodeError, EOFError, KeyboardInterrupt):
-        print("Nie ukończono bieżącej operacji. Sprawdź zapisane ustawienia.")
+        print("The current operation did not finish. Check the saved settings.")
         return 2
     except ValueError:
-        print("Nie udało się odczytać wyboru. Uruchom menu w interaktywnym terminalu.")
+        print("Could not read your choice. Run the menu in an interactive terminal.")
         return 2

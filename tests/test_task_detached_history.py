@@ -27,7 +27,7 @@ class DetachedHistoryTests(unittest.TestCase):
         self.target.write_text('original\n')
         self.target.chmod(0o600)
         self.plan = self.make_plan('first\n')
-        w.apply(self.plan, self.plan.authorize('ZAPISZ ' + self.plan.sha256))
+        w.apply(self.plan, self.plan.authorize('SAVE ' + self.plan.sha256))
         self.journal = self.root / w.STATE / (self.plan.sha256 + '.json')
 
     def make_plan(self, content):
@@ -88,7 +88,7 @@ class DetachedHistoryTests(unittest.TestCase):
         original_journal = self.journal.read_bytes()
         self.target.write_text('independent user edit\n')
         second = self.make_plan('second\n')
-        w.apply(second, second.authorize('ZAPISZ ' + second.sha256))
+        w.apply(second, second.authorize('SAVE ' + second.sha256))
         records = {r['plan']: r for r in w.recovery_records(str(self.root))}
         self.assertEqual(records[self.plan.sha256]['status'], 'detached')
         self.assertEqual(records[second.sha256]['status'], 'applied')
@@ -197,8 +197,8 @@ class DetachedHistoryTests(unittest.TestCase):
             out = io.StringIO()
             with redirect_stdout(out):
                 task_cli.show_record(records[0], details=details)
-            self.assertNotIn('Przywróć', out.getvalue())
-            self.assertNotIn('Usuń', out.getvalue())
+            self.assertNotIn('Restore', out.getvalue())
+            self.assertNotIn('Delete', out.getvalue())
             for plan in (None, self.plan.sha256):
                 reader = Mock(side_effect=AssertionError('unexpected approval'))
                 with redirect_stdout(io.StringIO()), patch.object(w, 'rollback') as undo:
@@ -215,5 +215,5 @@ class DetachedHistoryTests(unittest.TestCase):
         self.target.write_text('changed after preview\n')
         before = self.preserved()
         with self.assertRaises(ValueError):
-            w.apply(second, second.authorize('ZAPISZ ' + second.sha256))
+            w.apply(second, second.authorize('SAVE ' + second.sha256))
         self.assertEqual(self.preserved(), before)

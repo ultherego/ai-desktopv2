@@ -88,7 +88,7 @@ class RefusedPasteTests(unittest.TestCase):
 
 class QuestionLineTests(unittest.TestCase):
     def test_prompt_and_unicode_editing_preserve_complete_utf8(self):
-        self.assertEqual(editor.PROMPT, "W czym mogę pomóc?\n> ")
+        self.assertEqual(editor.PROMPT, "How can I help?\n> ")
         line = editor._Line(20)
         line.insert("ż界ółć")
         line.edit("left")
@@ -240,7 +240,7 @@ finally:
                 self.assertIn(marker, output)
                 self.assertIn(b"RESTORED=True", output)
                 self.assertNotIn(editor.PROMPT.encode(), output.replace(b"\r\n", b"\n"))
-                self.assertNotIn("Co mam zrobić zamiast tego?".encode(), output)
+                self.assertNotIn("What should I do instead?".encode(), output)
 
     def test_application_cursor_keys_and_unicode_preserve_characters(self):
         output = self.completed("ż界ć".encode() + b"\x1bOD\x7f" + "ół".encode()
@@ -378,7 +378,7 @@ class PromptSessionTerminalTests(unittest.TestCase):
         results = self.results(output)
         self.assertEqual(results[0][0], "zostaje")                      # Ctrl+C on text cleared it, the 2nd one only warned
         self.assertEqual(results[1], ["ERR", "KeyboardInterrupt"])
-        self.assertIn("(Naciśnij Ctrl+C jeszcze raz, aby zakończyć)", output)
+        self.assertIn("(Press Ctrl+C again to exit)", output)
         self.assertIn("RESTORED=True", output)
 
     def test_any_other_key_disarms_the_second_ctrl_c(self):
@@ -389,7 +389,7 @@ class PromptSessionTerminalTests(unittest.TestCase):
         paste = b"\x1b[200~def a():\n    return 1\n\x1b[201~"
         output = self.run_script(self.READS.format(attach=True, count=1), [b"co robi ten kod? ", paste, b"\r"])
         (value, pastes), = self.results(output)
-        token = "[wklejka #1: 3 wierszy, 22 B]"
+        token = "[paste #1: 3 lines, 22 B]"
         self.assertEqual(value, "co robi ten kod? " + token)
         self.assertEqual(pastes, [[1, "def a():\n    return 1\n"]])
         self.assertNotIn("\n    return 1", output.split("R=")[0].replace("\x1b", ""))        # content is not echoed to the screen
@@ -398,7 +398,7 @@ class PromptSessionTerminalTests(unittest.TestCase):
         paste = b"\x1b[200~a\nb\x1b[201~"
         output = self.run_script(self.READS.format(attach=True, count=1), [paste, b"\x7f", b"\r"])
         (value, pastes), = self.results(output)
-        self.assertNotIn("wklejka #1", value)
+        self.assertNotIn("paste #1", value)
         self.assertEqual(pastes, [])
 
     def test_oversized_attachments_are_refused_and_without_attach_a_newline_paste_is_still_refused(self):
@@ -442,7 +442,7 @@ class PromptSessionTerminalTests(unittest.TestCase):
     def test_keyboard_protocol_ctrl_c_counts_as_ctrl_c(self):
         output = self.run_script(self.READS.format(attach=False, count=1), [b"\x1b[99;5u", b"\x1b[99;5u"])
         self.assertEqual(self.results(output)[0], ["ERR", "KeyboardInterrupt"])
-        self.assertIn("(Naciśnij Ctrl+C jeszcze raz, aby zakończyć)", output)
+        self.assertIn("(Press Ctrl+C again to exit)", output)
 
     def test_the_keyboard_protocol_is_pushed_only_where_the_terminal_announced_it_and_always_popped(self):
         for flag, expected in ((True, True), (False, False)):
@@ -479,7 +479,7 @@ class PromptSessionTerminalTests(unittest.TestCase):
         self.assertEqual(self.results(output)[1][0], "a1\nb2")                 # Shift+Enter broke the line; Up/Down moved within it
         output = self.run_script(self.READS.format(attach=True, count=1), [b"text\x1b[99;133u", b"\x1b[99;133u", b"\x1b[99;133u"])
         self.assertEqual(self.results(output)[0], ["ERR", "KeyboardInterrupt"])        # 1st clears the text, 2nd warns, 3rd ends
-        self.assertIn("(Naciśnij Ctrl+C jeszcze raz, aby zakończyć)", output)
+        self.assertIn("(Press Ctrl+C again to exit)", output)
 
     def test_history_and_cursor_keys_work_with_lock_bits_and_other_modifiers_are_ignored(self):
         output = self.run_script(self.READS.format(attach=False, count=2),

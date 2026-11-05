@@ -41,7 +41,7 @@ class ThemeTests(unittest.TestCase):
 
     def test_sizes_read_like_a_person_writes_them(self):
         self.assertEqual(style.size_label(567), "567 B")
-        self.assertEqual(style.size_label(3569), "3,5 KiB")
+        self.assertEqual(style.size_label(3569), "3.5 KiB")
 
 
 if __name__ == "__main__":

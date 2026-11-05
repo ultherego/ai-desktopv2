@@ -33,7 +33,7 @@ def cut(value, limit=ENTRY_BYTES):
     raw = value.encode("utf-8")
     if len(raw) <= limit:
         return value
-    return raw[:limit - len(" …[skrócono]".encode("utf-8"))].decode("utf-8", "ignore") + " …[skrócono]"
+    return raw[:limit - len(" …[shortened]".encode("utf-8"))].decode("utf-8", "ignore") + " …[shortened]"
 
 
 def empty():

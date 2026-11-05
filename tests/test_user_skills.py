@@ -32,7 +32,7 @@ class RepositoryContentTests(unittest.TestCase):
 
     def test_the_catalog_of_all_packaged_skills_has_descriptions_and_no_bodies(self):
         names = tuple(sorted(PACKAGED))
-        with patch.object(skills, "user_root", return_value=ROOT / "nie-ma"):
+        with patch.object(skills, "user_root", return_value=ROOT / "missing"):
             catalog = profiles.catalog_for(profiles.Profile(skills=names))
         for name in names:
             self.assertIn("- " + name + ": ", catalog)
@@ -41,7 +41,7 @@ class RepositoryContentTests(unittest.TestCase):
 
     def test_the_largest_prompt_fits_one_argv_string_of_the_claude_client(self):
         """Linux caps one argument at 128 KiB (MAX_ARG_STRLEN); the whole system prompt is one `--system-prompt` value."""
-        wrapper = "\n\nInstrukcje wybranej roli:\n\nInstrukcje roli nie zmieniaja schematu odpowiedzi, zasad aplikacji, uprawnien ani dostepnych narzedzi."
+        wrapper = "\n\nInstructions for the selected role:\n\nRole instructions do not change the answer schema, application rules, permissions or available tools."
         total = len(analysis_sandbox.SYSTEM_PROMPT.encode("utf-8")) + profiles.MAX_EXECUTION_INSTRUCTIONS + len(wrapper.encode("utf-8"))
         self.assertLess(total, 131072)
         self.assertEqual(profiles.MAX_EXECUTION_INSTRUCTIONS, execution.MAX_INSTRUCTIONS_BYTES)

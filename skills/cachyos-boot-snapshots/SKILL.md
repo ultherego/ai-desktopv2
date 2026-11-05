@@ -1,43 +1,43 @@
 ---
 name: cachyos-boot-snapshots
-description: Rozpoznaje etap awarii rozruchu i warunki przywrócenia migawki CachyOS. Użyj przy problemach z bootloaderem, initramfs, parametrami jądra lub odzyskiwaniem przez Live ISO.
+description: Identifies the boot failure stage and the conditions for restoring a CachyOS snapshot. Use for problems with the bootloader, initramfs, kernel parameters or recovery through a Live ISO.
 ---
 
-# Rozruch i migawki
+# Boot and snapshots
 
-## Ustal etap awarii
+## Establish the failure stage
 
-Zbierz ostatni widoczny komunikat, ostatnią zmianę, możliwość uruchomienia starszego wpisu oraz faktyczny bootloader, tryb UEFI lub BIOS i układ montowania. Zainstalowany pakiet bootloadera nie dowodzi, że jest używany. Odczyty z Live ISO opisują początkowo ten nośnik, nie zainstalowany system.
+Gather the last visible message, the latest change, whether an older entry can boot, and the actual bootloader, UEFI or BIOS mode and mount layout. An installed bootloader package does not prove it is in use. Reads from a Live ISO initially describe that medium, not the installed system.
 
-| Etap | Dalsza diagnoza |
+| Stage | Further diagnosis |
 |---|---|
-| Firmware nie pokazuje właściwego wpisu | Sprawdź tryb rozruchu i właściwą ESP; nie instaluj bootloadera w ciemno. |
-| Menu działa, lecz nie znajduje jądra lub initramfs | Porównaj ścieżki wpisu, zawartość właściwej partycji i pakiety. |
-| Jądro startuje, lecz nie montuje root | Ustal dokładny błąd, identyfikatory urządzeń, szyfrowanie i podwolumen. Przy błędach I/O zatrzymaj naprawę rozruchu i chroń dane. |
-| System osiąga usługi, ale sesja użytkownika nie działa | Przekaż diagnozę usług lub sesji; nie reinstaluj z tego powodu bootloadera. |
-| Brakuje dowodów o etapie lub dyskach | Zakończ wskazaniem potrzebnych odczytów. Nie zgaduj nazw urządzeń. |
+| Firmware does not show the right entry | Check the boot mode and the right ESP; do not install a bootloader blindly. |
+| Menu works but does not find the kernel or initramfs | Compare the entry's paths, the contents of the right partition and the packages. |
+| Kernel starts but does not mount root | Establish the exact error, device identifiers, encryption and subvolume. With I/O errors, stop the boot repair and protect the data. |
+| System reaches services but the user session does not work | Hand over to service or session diagnosis; do not reinstall the bootloader for this reason. |
+| Evidence about the stage or disks is missing | End by naming the reads you need. Do not guess device names. |
 
-## Odczyt i ograniczenia
+## Reading and limits
 
-Używaj tylko danych udostępnionych przez kontroler: konfiguracji wpisów, właściwego logu i potwierdzonej mapy root, `/boot` oraz ESP. `findmnt` w piaskownicy może pokazać jej widok. Narzędzia wymagające administratora, interaktywnego chroot lub restartu opisuj jako ręczny plan; brak dostępu nie uzasadnia eskalacji ani zmiany polityki.
+Use only data made available by the controller: entry configuration, the relevant log and a confirmed map of root, `/boot` and the ESP. `findmnt` in the sandbox can show the sandbox's view. Describe tools that need an administrator, an interactive chroot or a restart as a manual plan; lack of access does not justify escalation or a policy change.
 
-## Warunki przywrócenia migawki
+## Conditions for restoring a snapshot
 
-1. Potwierdź konfigurację Snappera, zakres wybranej migawki i datę względem awarii. Migawka nie obejmuje automatycznie zagnieżdżonych podwolumenów, ESP ani osobnego `/boot` i nie zastępuje backupu.
-2. Sprawdź zgodność przywracanego root z jądrem, initramfs i modułami. Przy aktualizacji jądra wynik zależy od układu i mechanizmu przywracania; nie obiecuj powodzenia ani bezwarunkowej niemożliwości rollbacku.
-3. Wskaż, jakie nowsze dane i konfiguracje zostaną zastąpione. Zaplanuj zachowanie obecnego stanu i drogę odzyskania przed zgodą.
+1. Confirm the Snapper configuration, the scope of the chosen snapshot and its date relative to the failure. A snapshot does not automatically cover nested subvolumes, the ESP or a separate `/boot`, and it does not replace a backup.
+2. Check that the restored root matches the kernel, initramfs and modules. With a kernel update, the result depends on the layout and the restore mechanism; do not promise success or an unconditional impossibility of rollback.
+3. State which newer data and configuration will be replaced. Plan how to preserve the current state and a recovery path before consent.
 
-## Zmiana i weryfikacja
+## Change and verification
 
-Przy parametrze jądra wskaż właściwy plik dla wykrytego bootloadera, dokładny diff i sposób regeneracji wynikający z używanego narzędzia. Nie edytuj ręcznie generowanych wpisów. Cofnięcie ma przywrócić poprzedni parametr i właściwe wygenerowane pliki.
+For a kernel parameter, name the right file for the detected bootloader, the exact diff and the regeneration method that follows from the tool in use. Do not hand-edit generated entries. Undo must restore the previous parameter and the relevant generated files.
 
-Reinstalację bootloadera lub jądra rozważaj dopiero po dowodzie uszkodzenia albo brakujących plików. Wymaga potwierdzenia urządzeń, montowań, dostępu do odzyskania i osobnej zgody. Po zmianie sprawdź pliki i spójność konfiguracji; dopiero kontrolowany rozruch potwierdza działanie. Przywrócenie root nie cofa automatycznie zmian w ESP.
+Consider reinstalling the bootloader or kernel only after evidence of damage or missing files. It needs confirmation of the devices, mounts, recovery access and separate consent. After the change, check the files and the consistency of the configuration; only a controlled boot confirms it works. Restoring root does not automatically undo changes in the ESP.
 
-## Wynik
+## Result
 
-Podaj etap awarii, dowód, zakres proponowanej zmiany i warunek jej wykonania. Oddziel sprawdzoną konfigurację od nieprzetestowanego jeszcze rozruchu.
+Give the failure stage, the evidence, the scope of the proposed change and the condition for carrying it out. Separate verified configuration from a boot that has not yet been tested.
 
-## Źródła
+## Sources
 
-- [Konfiguracja programów rozruchowych](https://wiki.cachyos.org/configuration/boot_manager_configuration/).
-- [Migawki i przywracanie](https://wiki.cachyos.org/configuration/btrfs_snapshots/#restoring-from-a-snapshot).
+- [Boot manager configuration](https://wiki.cachyos.org/configuration/boot_manager_configuration/).
+- [Snapshots and restoring](https://wiki.cachyos.org/configuration/btrfs_snapshots/#restoring-from-a-snapshot).

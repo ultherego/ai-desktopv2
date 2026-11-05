@@ -15,8 +15,8 @@ from .execution import HISTORY_ANSWER_BYTES, HISTORY_QUESTION_BYTES, HISTORY_TOT
 MAX_TURNS = 64                 # finished turns kept for revalidation; only the last MAX_HISTORY are sent verbatim
 MAX_SOURCE_PATHS = 256         # one saved conversation's table of sources (conversation_sessions.MAX_PATHS)
 MAX_SOURCES = 8                # files remembered per turn (more are summarised as "too many": the turn is then tainted by all)
-REDACTED = "[odpowiedź usunięta: źródło, z którego korzystała, nie jest już dozwolone]"
-FACT_REDACTED = "Wykonana akcja: szczegóły usunięte, bo dostęp do użytego źródła został cofnięty."
+REDACTED = "[answer removed: the source it used is no longer allowed]"
+FACT_REDACTED = "Action taken: details removed because access to the source it used was revoked."
 _log = ContextVar("ai_desktop_turn_sources", default=None)
 
 

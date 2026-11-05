@@ -105,7 +105,7 @@ class AskEditTests(unittest.TestCase):
         self.capture.side_effect = ValueError("text")
         with self.assertRaises(ask_edit.EditDenied):
             self.prepare()
-        self.assertIn("pomieszane końce linii", self.output.getvalue())
+        self.assertIn("mixed line endings", self.output.getvalue())
 
     def test_outside_workspace_read_scope_is_refused_before_content_read(self):
         self.policy.expand.return_value = ("/home/synthetic/other/info.txt",)
@@ -227,9 +227,9 @@ class AskEditTests(unittest.TestCase):
         with self.assertRaises(AnalysisDenied):
             self.permit.claim(AnalysisConsent(None, task=prepared.source), QUESTION, **kwargs)
 
-    def run_ask(self, answer="tak", *, revoke_write=False, proposal=None):
+    def run_ask(self, answer="yes", *, revoke_write=False, proposal=None):
         reader = Mock()
-        values = iter((QUESTION, "tak", answer))
+        values = iter((QUESTION, "yes", answer))
         asked = []
         def respond(prompt):
             if prompt == ask_cli.QUESTION_PROMPT and asked:
@@ -270,7 +270,7 @@ class AskEditTests(unittest.TestCase):
         result.test.assert_called_once()
         result.apply.assert_called_once()
         self.assertTrue(callable(result.apply.call_args.kwargs["write_guard"]))
-        self.assertIn("Zapisano zmiany.", self.output.getvalue())
+        self.assertIn("Changes saved.", self.output.getvalue())
         self.assertIn("+    return a + b", self.output.getvalue())
         self.assertIn("+SYNTHETIC RESULT", self.output.getvalue())
         self.assertIn("Gotowe.", self.output.getvalue())                     # the model closes the task after the write
@@ -279,13 +279,13 @@ class AskEditTests(unittest.TestCase):
         same = {"summary": "bez zmian", "files": [{"path": "main.py", "content": ORIGINAL}]}
         result = self.run_ask(proposal=same)
         self.assertEqual(result.code, 2)
-        self.assertIn("Nie zaproponowano zmiany: plik ma już taką treść. Nic nie zapisano.", self.output.getvalue())
+        self.assertIn("No change was proposed: the file already has this content. Nothing was saved.", self.output.getvalue())
         self.assertNotIn(PROMPTS["write"], [call.args[0] for call in result.reader.call_args_list])
         result.test.assert_not_called()
         result.apply.assert_not_called()
 
     def test_write_decline_or_revocation_never_reaches_apply(self):
-        for answer, revoked in (("nie", False), ("tak", True)):
+        for answer, revoked in (("no", False), ("yes", True)):
             with self.subTest(answer=answer, revoked=revoked):
                 result = self.run_ask(answer, revoke_write=revoked)
                 self.assertEqual(result.code, 2)

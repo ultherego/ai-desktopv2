@@ -21,5 +21,5 @@ packaging/arch/pkg/
 packaging/arch/src/
 packaging/arch/*.pkg.tar.*
 
-# lokalny runner odbiorów (edytowany przez asystenta)
+# local acceptance runner (edited by the assistant)
 /local-run.fish

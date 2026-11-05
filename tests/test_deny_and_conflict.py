@@ -62,7 +62,7 @@ class ConflictTests(unittest.TestCase):
         source = {"instruction": "x", "files": [{"path": name, "content": current["content"] if current else None,
                                                  "writable": True}]}
         plan = TaskPlan(before, source, {"summary": "s", "files": [{"path": name, "content": new}]}, "text")
-        w.apply(plan, plan.authorize("ZAPISZ " + plan.sha256))
+        w.apply(plan, plan.authorize("SAVE " + plan.sha256))
         return plan.sha256
 
     def replace_with(self, text):

@@ -275,9 +275,9 @@ else: raise AssertionError("fd leaked")
     def test_tty_hash_consent_before_activation_and_no_transfer_on_refusal(self):
         report = report_fixture()
         def confirm(prompt):
-            return "UDOSTEPNIJ " + prompt.split("UDOSTEPNIJ ", 1)[1].split()[0]
-        for reader, expected in ((confirm, 0), (lambda _: "TAK", 2),
-                                 (lambda _: "UDOSTEPNIJ " + "0" * 64, 2)):
+            return "SHARE " + prompt.split("SHARE ", 1)[1].split()[0]
+        for reader, expected in ((confirm, 0), (lambda _: "YES", 2),
+                                 (lambda _: "SHARE " + "0" * 64, 2)):
             with (patch.object(e2_handoff_cli.diagnose, "collect", return_value=report),
                   patch.object(sys.stdin, "isatty", return_value=True),
                   contextlib.redirect_stdout(io.StringIO()) as out,
@@ -285,7 +285,7 @@ else: raise AssertionError("fd leaked")
                   patch.object(activation, "send_once", side_effect=lambda a: a.sha256) as send):
                 self.assertEqual(e2_handoff_cli.desktop_main(reader=reader), expected)
                 self.assertEqual(send.call_count, 1 if expected == 0 else 0)
-                self.assertIn("bez Claude i OAuth", out.getvalue())
+                self.assertIn("no Claude or OAuth", out.getvalue())
         with patch.object(sys.stdin, "isatty", return_value=False), patch.object(
                 e2_handoff_cli.diagnose, "collect") as collect, contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(e2_handoff_cli.desktop_main(reader=confirm), 2)
@@ -315,15 +315,15 @@ with patch.object(e2_handoff_cli.diagnose, "collect", return_value=report_fixtur
                 os.close(slave); slave = -1
                 seen = b""
                 deadline = time.monotonic() + 5
-                while b"aby przekazac raport:" not in seen and time.monotonic() < deadline:
+                while b"to send the report:" not in seen and time.monotonic() < deadline:
                     if select.select([master], [], [], 0.1)[0]:
                         try:
                             seen += os.read(master, 8192)
                         except OSError:
                             break
-                match = re.search(rb"UDOSTEPNIJ ([0-9a-f]{64})", seen)
+                match = re.search(rb"SHARE ([0-9a-f]{64})", seen)
                 self.assertIsNotNone(match, seen.decode(errors="replace"))
-                answer = b"UDOSTEPNIJ " + match.group(1) if approved else b"NIE"
+                answer = b"SHARE " + match.group(1) if approved else b"NO"
                 os.write(master, answer + b"\n")
                 proc.wait(timeout=5)
                 while select.select([master], [], [], 0.1)[0]:
@@ -354,7 +354,7 @@ with patch.object(e2_handoff_cli.diagnose, "collect", return_value=report_fixtur
                     report["unexpected"] = "forbidden"
                 else:
                     now[0] = 1000
-                return "UDOSTEPNIJ " + prompt.split("UDOSTEPNIJ ", 1)[1].split()[0]
+                return "SHARE " + prompt.split("SHARE ", 1)[1].split()[0]
             with (patch.object(e2_handoff_cli.diagnose, "collect", return_value=report),
                   patch.object(e2_handoff_cli, "ConsentSession", return_value=gate),
                   patch.object(sys.stdin, "isatty", return_value=True),

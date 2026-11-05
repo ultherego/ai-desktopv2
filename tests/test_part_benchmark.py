@@ -133,9 +133,9 @@ class PlanTests(unittest.TestCase):
         with contextlib.redirect_stdout(out):
             bench.main(["plan", "--limit", "45"])
         text = out.getvalue()
-        for word in ("data_bytes", "packet_bytes_max", "NIE jest mierzony"):
+        for word in ("data_bytes", "packet_bytes_max", "is NOT measured"):
             self.assertIn(word, text)
-        self.assertNotIn("na łączach", text)
+        self.assertNotIn("on the wire", text)
         self.assertNotIn("wire_bytes", text)
 
     def test_the_plan_fails_when_the_cap_sum_exceeds_the_limit(self):
@@ -284,16 +284,16 @@ class ReportTests(unittest.TestCase):
             self.full(tmp)
             text, code = self.run_report(tmp)
         self.assertEqual(code, 0)
-        self.assertIn("TRANSPORT: OK we wszystkich czterech przebiegach", text)
-        self.assertIn("PORÓWNANIE JAKOŚCI: porównywalne", text)
-        self.assertIn("nie dowód ogólnej przewagi 512 KiB", text)
+        self.assertIn("TRANSPORT: OK in all four runs", text)
+        self.assertIn("QUALITY COMPARISON: comparable", text)
+        self.assertIn("not proof of a general advantage of 512 KiB", text)
 
     def test_the_report_fails_when_there_are_no_meta_logs_at_all(self):
         with tempfile.TemporaryDirectory() as tmp:
             text, code = self.run_report(tmp)
         self.assertEqual(code, 1)
-        self.assertIn("TRANSPORT: NIEUDANY", text)
-        self.assertIn("brak meta-logu", text)
+        self.assertIn("TRANSPORT: FAILED", text)
+        self.assertIn("meta-log missing", text)
 
     def test_a_process_code_of_2_fails_the_report_even_when_the_phases_look_complete(self):
         for bad in (2, 130):
@@ -302,8 +302,8 @@ class ReportTests(unittest.TestCase):
                 self.write(Path(tmp), "json-240", ("claude-x", 200000), code=bad)
                 text, code = self.run_report(tmp)
                 self.assertEqual(code, 1)
-                self.assertIn("json-240: kod wyjścia procesu %d" % bad, text)
-                self.assertIn("NIEPEŁNY/NIEZGODNY", text)
+                self.assertIn("json-240: process exit code %d" % bad, text)
+                self.assertIn("INCOMPLETE/MISMATCH", text)
 
     def test_received_replies_are_not_accepted_notes_the_controller_result_decides(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -312,7 +312,7 @@ class ReportTests(unittest.TestCase):
             self.write(Path(tmp), "log-240", ("claude-x", 200000), result="partial", covered=row["parts"] - 1, synthesis="none")
             text, code = self.run_report(tmp)
         self.assertEqual(code, 1)
-        self.assertIn("kontroler: partial", text)
+        self.assertIn("controller: partial", text)
 
     def test_a_missing_synthesis_fails_the_transport_and_the_notes_are_still_scored(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -320,7 +320,7 @@ class ReportTests(unittest.TestCase):
             self.write(Path(tmp), "log-512", ("claude-x", 200000), complete=False)
             text, code = self.run_report(tmp)
         self.assertEqual(code, 1)
-        self.assertIn("log-512: brak odpowiedzi końcowej", text)
+        self.assertIn("log-512: final answer missing", text)
         line = [l for l in text.splitlines() if l.startswith("log-512")][0]
         self.assertIn("1.00/1.00/0/0", line)                                     # the notes carried every fact
 
@@ -331,9 +331,9 @@ class ReportTests(unittest.TestCase):
             self.write(Path(tmp), "log-240", None)
             text, code = self.run_report(tmp)
         self.assertEqual(code, 0)                                                 # complete transport, no FAIL
-        self.assertIn("PORÓWNANIE JAKOŚCI: OGRANICZONE", text)
-        self.assertIn("zmiana modelu lub okna", text)
-        self.assertIn("brak metadanych", text)
+        self.assertIn("QUALITY COMPARISON: LIMITED", text)
+        self.assertIn("model or window changed", text)
+        self.assertIn("metadata missing", text)
         self.assertIn("TRANSPORT: OK", text)
 
     def test_the_comparison_ignores_token_counters_and_looks_only_at_model_and_window(self):
@@ -346,7 +346,7 @@ class ReportTests(unittest.TestCase):
             path.write_text("\n".join(json.dumps(r) for r in lines) + "\n")
             text, code = self.run_report(tmp)
             self.assertEqual(code, 0)
-            self.assertIn("PORÓWNANIE JAKOŚCI: porównywalne", text)
+            self.assertIn("QUALITY COMPARISON: comparable", text)
 
     def test_a_run_where_the_model_did_not_choose_the_whole_file_fails(self):
         with tempfile.TemporaryDirectory() as tmp:

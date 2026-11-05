@@ -1,54 +1,54 @@
-# Agenci, modele, rozmowy i Codex
+# Agents, models, conversations and Codex
 
-Agent nigdy nie dodaje uprawnień. O plikach, poleceniach i sieci decyduje `~/.config/ai-desktop/permissions.toml`, a o zapisie Twoja zgoda.
+An agent never adds permissions. Files, commands and network are decided by `~/.config/ai-desktop/permissions.toml`, and writing by your consent.
 
-## Ustawienia i logowanie
+## Settings and login
 
-`ai-desktop settings` otwiera w terminalu menu: strzałki i Enter wybierają, Esc wraca. Menu obejmuje usługę, agenta, model, poziom rozumowania, dostęp, instrukcje i Skille.
-Zmiana ustawień nie loguje i nie wysyła niczego.
+`ai-desktop settings` opens a menu in the terminal: arrows and Enter select, Esc goes back. The menu covers the service, agent, model, reasoning level, access, instructions and Skills.
+Changing settings does not log in or send anything.
 
 ```fish
-ai-desktop settings                                  # menu (także: settings menu)
-ai-desktop settings show                             # bieżące ustawienia
-ai-desktop settings models                           # dostępne modele i poziomy
+ai-desktop settings                                  # menu (also: settings menu)
+ai-desktop settings show                             # current settings
+ai-desktop settings models                           # available models and levels
 ai-desktop settings set --provider claude --model sonnet --effort high
 ai-desktop ask --agent reviewer --model opus --effort high
 ```
 
-`ai-desktop login` otwiera menu: Claude, ChatGPT / Codex albo Anuluj. `login --claude` i `login --codex` pomijają menu. Po udanym logowaniu wybrana usługa staje się aktywna, a nieudane
-lub przerwane logowanie jej nie zmienia. Ani `settings`, ani `login` nie zmieniają `permissions.toml`. `--v` pokazuje diagnostykę bez przechwytywania danych logowania.
+`ai-desktop login` opens a menu: Claude, ChatGPT / Codex or Cancel. `login --claude` and `login --codex` skip the menu. After a successful login the chosen service becomes active, while a failed
+or interrupted login does not change it. Neither `settings` nor `login` changes `permissions.toml`. `--v` shows diagnostics without capturing login data.
 
-Usługa jest wspólna dla wszystkich agentów. Po zmianie usługi agent wraca do modelu i poziomu zapisanego dla tej usługi; instrukcje, Skille i dostęp pozostają wspólne.
+The service is shared by all agents. After a service change, an agent returns to the model and level saved for that service; instructions, Skills and access stay shared.
 
-| Usługa | Modele | Poziomy rozumowania |
+| Service | Models | Reasoning levels |
 |---|---|---|
 | Claude | `default`, `best`, `fable`, `opus`, `sonnet`, `haiku`, `opusplan` | `default`, `low`, `medium`, `high`, `xhigh`, `max` |
-| Codex | `default` lub identyfikator postaci `[a-z][a-z0-9._-]{0,95}` | `default`, `low`, `medium`, `high`, `xhigh` |
+| Codex | `default` or an identifier of the form `[a-z][a-z0-9._-]{0,95}` | `default`, `low`, `medium`, `high`, `xhigh` |
 
-`default` oznacza wybór klienta. Dostępność modelu zależy od konta i klienta: nie ma automatycznego przejścia na inny model lub usługę. Dla `xhigh` i `max` czas oczekiwania na odpowiedź to 260 s zamiast 110 s.
+`default` means the client's choice. Model availability depends on the account and the client: there is no automatic switch to another model or service. For `xhigh` and `max` the wait for an answer is 260 s instead of 110 s.
 
-## Agenci
+## Agents
 
-Agent to zapisana rola: usługa, model, poziom, dostęp (`changes` lub `read-only`), instrukcje do 4 KiB i dowolną liczbę Skilli (razem do 104 KiB). Limit to 24 profile. Agent `read-only` nie zapisuje, nie usuwa i nie dostaje
-poleceń z listy `change`.
+An agent is a saved role: service, model, level, access (`changes` or `read-only`), instructions up to 4 KiB and any number of Skills (up to 104 KiB in total). The limit is 24 profiles. A `read-only` agent does not write, does not delete and does not get
+commands from the `change` list.
 
 ```fish
-ai-desktop agents setup                  # dodaje brakujące role i Skille, nie zmienia Twoich ustawień
-ai-desktop agents                        # menu w terminalu, poza nim lista
+ai-desktop agents setup                  # adds missing roles and Skills, does not change your settings
+ai-desktop agents                        # menu in the terminal, a list outside it
 ai-desktop agents list
 ai-desktop agents show reviewer
-ai-desktop agents create python-review --model opus --effort high --access read-only --instructions 'Sprawdzaj kod Python.'
+ai-desktop agents create python-review --model opus --effort high --access read-only --instructions 'Review Python code.'
 ai-desktop agents use python-review
 ai-desktop agents update python-review --skill code-review
 ai-desktop agents update python-review --no-skills
-ai-desktop agents copy python-review kopia
+ai-desktop agents copy python-review python-copy
 ai-desktop agents use default
-ai-desktop agents remove python-review   # tylko nieaktywny, nie domyślny
+ai-desktop agents remove python-review   # only inactive, not the default
 ```
 
-Po `agents setup`:
+After `agents setup`:
 
-| Profil | Skill | Dostęp |
+| Profile | Skill | Access |
 |---|---|---|
 | `default` | `concise-assistant` | `changes` |
 | `diagnostic` | `cachyos-diagnostics` | `read-only` |
@@ -56,92 +56,92 @@ Po `agents setup`:
 | `reviewer` | `code-review` | `read-only` |
 | `analyst` | `project-analysis` | `read-only` |
 
-Profile leżą w prywatnym `~/.config/ai-desktop/agents.json`. W `material` i `project` polecenia `/ustawienia`, `/agent NAZWA`, `/model ALIAS` i `/sila POZIOM` zmieniają następne pytanie, gdy nic nie działa. Zmiana usługi wymaga nowej rozmowy.
+Profiles are in the private `~/.config/ai-desktop/agents.json`. In `material` and `project` the commands `/settings`, `/agent NAME`, `/model ALIAS` and `/effort LEVEL` change the next question when nothing is running. Changing the service requires a new conversation.
 
-Program prowadzi tylko jedną rolę na pierwszym planie. Natywni podagenci i serwery MCP klienta są wyłączone.
+The program runs only one role in the foreground. The client's native subagents and MCP servers are disabled.
 
-## Skille
+## Skills
 
 ```fish
-ai-desktop skills                 # lista; własne oznaczone
-ai-desktop skills show NAZWA
+ai-desktop skills                 # list; your own are marked
+ai-desktop skills show NAME
 ai-desktop skills validate
-ai-desktop skills menu            # przypisania aktywnego agenta
-ai-desktop skills new NAZWA       # ~/.config/ai-desktop/skills/NAZWA/SKILL.md
+ai-desktop skills menu            # assignments of the active agent
+ai-desktop skills new NAME        # ~/.config/ai-desktop/skills/NAME/SKILL.md
 ```
 
-Skill to instrukcja do 96 KiB, bez narzędzi, skryptów i dodatkowych plików. Pakiet zawiera ogólne Skille dla CachyOS (`cachyos-*`) i Arch Linux (`arch-*`), programowania i analizy oraz `desktop-documentation`, który kieruje do dokumentacji pulpitu; Skille CachyOS celowo nie opisują pulpitów i kompozytorów. Własny Skill leży poza repozytorium i pakietem, a o tej samej nazwie ma pierwszeństwo przed ogólnym.
-Nazwa to małe litery, cyfry i myślniki. Nie wpisuj sekretów: treść przypisanego Skilla trafia do modelu. Ścieżka wpisana w Skillu lub instrukcji agenta liczy się jak podana przez Ciebie, więc model może ją przeczytać bez rozpoznania; polityka i `deny` nadal decydują.
+A Skill is an instruction of up to 96 KiB, without tools, scripts or additional files. The package contains general Skills for CachyOS (`cachyos-*`) and Arch Linux (`arch-*`), for programming and analysis, and `desktop-documentation`, which points to desktop documentation; the CachyOS Skills deliberately do not describe desktops and compositors. Your own Skill lives outside the repository and the package, and with the same name it takes priority over the general one.
+A name consists of lowercase letters, digits and hyphens. Do not put secrets in it: the content of an assigned Skill goes to the model. A path written in a Skill or in an agent's instructions counts as given by you, so the model can read it without discovery; the policy and `deny` still decide.
 
-Zmiana przypisanych Skilli może wymagać nowej rozmowy, bo zapisana rozmowa jest związana z konfiguracją agenta.
+Changing assigned Skills may require a new conversation, because a saved conversation is tied to the agent's configuration.
 
-## Rozmowa w `ask`
+## Conversation in `ask`
 
-Uruchom `ai-desktop ask` raz i pracuj dalej: po odpowiedzi wraca `>`. Strzałki edytują wiersz i przywołują wcześniejsze wiadomości. Pusta linia lub dwa Ctrl-D kończą rozmowę. Ctrl-C w trakcie oczekiwania przerywa tylko bieżącą turę. `ask --question "..."` to jedno pytanie.
+Run `ai-desktop ask` once and keep working: after an answer, `>` comes back. Arrows edit the line and recall earlier messages. An empty line or two Ctrl-D end the conversation. Ctrl-C while waiting stops only the current turn. `ask --question "..."` is a single question.
 
-**Zgoda.** Jedno `Przekazać żądanie do Claude [t/n]:` na rozmowę. Ponownie po zmianie uprawnień, usługi lub agenta. Żyje tylko w pamięci procesu, więc po wznowieniu rozmowy program pyta znowu. Zapisy i zmiany mają własne zgody.
+**Consent.** One `Send this request to Claude? [y/n]:` per conversation. Asked again after a change of permissions, service or agent. It lives only in the process's memory, so after a conversation is resumed the program asks again. Writes and changes have their own consents.
 
-**Pamięć ma dwie warstwy:**
+**Memory has two layers:**
 
-1. Ostatnie 32 wymiany, razem do 128 KiB (pytanie do 128 KiB, odpowiedź do 8 KiB z widocznym ucięciem).
-2. Pamięć zadania: do 40 wpisów (po 400 B, razem 10 KiB) z celem, kryterium, próbami, wartościami, korektami i decyzjami. Model proponuje aktualizacje w odpowiedzi, a przy braku limitu najpierw wypadają najstarsze wpisy niechronione. Program sam dopisuje fakty: co uruchomił i z jakim kodem, co zastosował, co odrzucono.
+1. The last 32 exchanges, up to 128 KiB in total (question up to 128 KiB, answer up to 8 KiB with visible truncation).
+2. Task memory: up to 40 entries (400 B each, 10 KiB in total) with the goal, criterion, attempts, values, corrections and decisions. The model proposes updates in its answer, and when out of room the oldest unprotected entries are dropped first. The program adds facts itself: what it ran and with what exit code, what it applied, what was refused.
 
-Pamięć nie daje uprawnień. Przy cofnięciu dostępu do pliku zależne od niego odpowiedzi i wpisy modelu są usuwane przed następnym pytaniem, a program o tym informuje. Program nie pamięta tur starszych niż 8, poza tym co trafiło do pamięci zadania.
+Memory gives no permissions. When access to a file is revoked, the answers and model entries that depend on it are removed before the next question, and the program says so. The program does not remember turns older than 8, apart from what went into task memory.
 
-## Zapisane rozmowy
+## Saved conversations
 
-Domyślnie nic nie jest zapisywane. Na końcu rozmowy `ask` program pyta, czy ją zachować; dopiero `t` tworzy lokalny zapis. Następne `ai-desktop ask` proponuje rozmowy tego samego agenta. `--session new` zapisuje od początku, `--session ID` wznawia (także `material`, `project`).
+By default nothing is saved. At the end of an `ask` conversation the program asks whether to keep it; only `y` or `yes` creates a local save. The next `ai-desktop ask` offers conversations of the same agent. `--session new` saves from the start, `--session ID` resumes (also `material`, `project`).
 
 ```fish
-ai-desktop sessions          # menu, poza terminalem lista
+ai-desktop sessions          # menu, a list outside the terminal
 ai-desktop sessions list
 ai-desktop sessions show ID
 ai-desktop sessions resume ID
 ai-desktop sessions remove ID
 ```
 
-Zapis leży w `~/.local/state/ai-desktop/conversations` (katalog `0700`, pliki `0600`, do 64 KiB na plik, 128 rozmów). Zawiera ograniczony tekst rozmowy, pamięć i metadane, nie całe materiały, choć odpowiedź może cytować plik. Wznowienie ponownie sprawdza politykę, plik lub projekt i konfigurację agenta. Zgody, autoryzacje zapisu i sesja logowania nie są przywracane. Rozmowa otwarta w innym procesie nie zostanie usunięta. `ai-desktop stop` dotyczy tymczasowej sesji klienta, nie zapisanych rozmów.
+The save is in `~/.local/state/ai-desktop/conversations` (directory `0700`, files `0600`, up to 64 KiB per file, 128 conversations). It contains the limited text of the conversation, memory and metadata, not whole materials, although an answer may quote a file. Resuming re-checks the policy, the file or project and the agent's configuration. Consents, write authorizations and the login session are not restored. A conversation open in another process will not be removed. `ai-desktop stop` concerns the temporary client session, not saved conversations.
 
-## Polecenia i zmiany na żywym systemie
+## Commands and changes on the live system
 
-Opis `[commands]` w `permissions.toml` jest w [README](../README.md#polecenia-commands), a granice w [modelu zagrożeń](THREAT_MODEL.md#4-granica-poleceń). W skrócie: `allow` działa w piaskownicy bez pytania, do 16 poleceń w kroku i `command_rounds` na pytanie. `change` działa na żywym systemie po wpisaniu `tak`, z testem i wycofaniem. W `systemctl --user` piaskownica nie ma dostępu do sesji użytkownika, więc takie polecenia mogą nic nie zwrócić.
+The description of `[commands]` in `permissions.toml` is in [README](../README.md#commands-commands), and the boundaries are in the [threat model](THREAT_MODEL.md#4-command-boundary). In short: `allow` runs in the sandbox without asking, up to 16 commands per step and `command_rounds` per question. `change` runs on the live system after you type `yes`, with a test and an undo. With `systemctl --user` the sandbox has no access to the user session, so such commands may return nothing.
 
-## Samodzielne rozpoznanie w `ask`
+## Automatic discovery in `ask`
 
-Nie musisz podawać plików. Model w jednej zgodzie wykonuje skończony ciąg kroków:
+You do not have to name files. Within one consent the model carries out a finite series of steps:
 
-1. `list`: elementy (nazwa, typ, rozmiar) do czterech katalogów.
-2. `find`: wyszukiwanie po fragmencie nazwy, bez treści.
-3. `read`: tylko ścieżki pokazane w krokach wyżej albo wpisane przez Ciebie. Zgadnięta ścieżka to `discovery-required`.
+1. `list`: entries (name, type, size) from up to four directories.
+2. `find`: search by a fragment of the name, without content.
+3. `read`: only paths shown in the steps above or typed by you. A guessed path is `discovery-required`.
 
-`deny` działa pierwsze: nazwa objęta `deny` nie jest wymieniana, liczona ani wysyłana. Odmowy mają stałe kody i nie zawierają tekstu systemu. Przekroczenie budżetu nazywa klucz; program nie wysyła wybranej części jako całości. Budżety są w tabeli w [README](../README.md#pierwsze-uruchomienie-i-uprawnienia). Każdy krok i poprawka to dodatkowe żądanie do modelu.
+`deny` acts first: a name covered by `deny` is not listed, counted or sent. Refusals have fixed codes and contain no system text. Exceeding a budget names the key; the program does not send a selected part as if it were the whole. The budgets are in the table in [README](../README.md#first-run-and-permissions). Every step and correction is an additional request to the model.
 
-W `version = 2` nie ma ukrytej listy nazw. Jeśli `read` obejmuje `~/.config/ai-desktop/` i nie ma tego w `deny`, model może tam czytać (szablon to wyklucza).
+In `version = 2` there is no hidden list of names. If `read` covers `~/.config/ai-desktop/` and it is not in `deny`, the model can read there (the template rules this out).
 
-**Dowiązania w `version = 2`.** Dowiązanie jest śledzone tylko gdy jest jedno, należy do Ciebie, wskazuje zwykłą nazwę katalogu obok (bez `/`, `.`, `..`), katalog nadrzędny nie jest zapisywalny dla innych, a dowiązanie i cel są dozwolone. Stan jest sprawdzany przy odczycie i przed każdym wysłaniem. Pętle, łańcuchy, dowiązania do plików i pliki specjalne to `files-symlink`. Ten wyjątek nie dotyczy polityki, `material`, `project` ani zapisu.
+**Symlinks in `version = 2`.** A symlink is followed only if there is one, it belongs to you, it points to a plain directory name next to it (no `/`, `.`, `..`), the parent directory is not writable by others, and both the symlink and the target are allowed. The state is checked on read and before each send. Loops, chains, symlinks to files and special files are `files-symlink`. This exception does not apply to the policy, `material`, `project` or writing.
 
-## Codex przez subskrypcję ChatGPT
+## Codex through a ChatGPT subscription
 
-Codex jest opcjonalny i osobno włączany. Traktuj go jako eksperymentalny. Pakiet używa oficjalnego klienta **Codex 0.166.0** ([wydanie](https://github.com/openai/codex/releases/tag/rust-v0.166.0)).
+Codex is optional and enabled separately. Treat it as experimental. The package uses the official **Codex 0.166.0** client ([release](https://github.com/openai/codex/releases/tag/rust-v0.166.0)).
 
 ```fish
-cd ~/Projekty/ai-desktop
-python3 -B scripts/fetch_codex_client.py    # pobiera archiwum, sprawdza SHA-256, nie uruchamia klienta
-# przebuduj i zainstaluj pakiet
+cd ~/ai-desktop
+python3 -B scripts/fetch_codex_client.py    # downloads the archive, checks SHA-256, does not run the client
+# rebuild and install the package
 ai-desktop codex status
 ai-desktop login --codex
 ai-desktop ask --agent reviewer
 ai-desktop codex logout --allow-chatgpt-logout
 ```
 
-W `[network]` ustaw `codex = true`: pozwolenia Claude i Codexa są osobne, a polityka nie jest zmieniana za Ciebie. Skrypt zapisuje `packaging/arch/codex` i nie nadpisuje istniejącego pliku.
+In `[network]` set `codex = true`: the permissions for Claude and Codex are separate, and the policy is not changed for you. The script writes `packaging/arch/codex` and does not overwrite an existing file.
 
-Logowanie to oficjalny przepływ „Sign in with ChatGPT” obsługiwany przez zaufany komponent konta usługi. Nie kopiuje istniejących poświadczeń i nie używa klucza API. Tokeny leżą w `/var/lib/ai-desktop/codex` i zostają po odinstalowaniu pakietu, chyba że wylogujesz; wylogowanie próbuje też cofnąć poświadczenie i mówi, jeśli nie ma potwierdzenia.
+Login is the official "Sign in with ChatGPT" flow handled by a trusted component of the service account. It does not copy existing credentials and does not use an API key. Tokens are in `/var/lib/ai-desktop/codex` and remain after the package is uninstalled unless you log out; logging out also tries to revoke the credential and says so if there is no confirmation.
 
-Klient dostaje puste `HOME` i `CODEX_HOME`, pusty katalog roboczy i brak zamontowanego magazynu tokenów. Krótkotrwały token idzie prywatnym kanałem do procesu klienta i nie trafia do pytania ani argumentów. Proxy przepuszcza tylko `api.openai.com`. Powłoka, agenci, MCP, wykrywanie Skilli i wyszukiwarka klienta są wyłączone. Nieoczekiwane zdarzenie narzędzia, nieudana tura lub przekroczony budżet kończą żądanie bez ponawiania. Odrzucenie zdarzenia nie cofnie skutku, który już nastąpił, dlatego izolacja jądra pozostaje konieczna.
+The client gets an empty `HOME` and `CODEX_HOME`, an empty working directory and no mounted token store. A short-lived token goes through a private channel to the client process and does not reach the question or the arguments. The proxy lets through only `api.openai.com`. The client's shell, agents, MCP, Skill detection and search are disabled. An unexpected tool event, a failed turn or an exceeded budget ends the request without a retry. Rejecting an event will not undo an effect that has already happened, so kernel isolation remains necessary.
 
-Lista modeli w menu pochodzi od klienta, uruchamianego w zamkniętej piaskownicy bez sieci i konta. Nieznany identyfikator jest odrzucany przez klienta jako `codex-model-unavailable`. Codex nie ma wyszukiwania internetowego: wybór tej usługi usuwa tę możliwość.
+The list of models in the menu comes from the client, run in a closed sandbox with no network or account. An unknown identifier is rejected by the client as `codex-model-unavailable`. Codex has no web search: choosing this service removes that capability.
 
-## Starsze polecenia
+## Older commands
 
-`claude` i `codex` są wypisane w `ai-desktop --help-all`. Do codziennej pracy używaj `settings` i `login`. `doctor` pokazuje krótkie metadane, a `doctor --v` raport JSON; nie sprawdza logowania ani działania modelu.
+`claude` and `codex` are listed in `ai-desktop --help-all`. For daily work use `settings` and `login`. `doctor` shows brief metadata, and `doctor --v` a JSON report; it does not check login or whether the model works.

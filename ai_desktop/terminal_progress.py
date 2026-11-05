@@ -14,12 +14,12 @@ from .run_controls import recipient
 from .terminal_style import paint
 
 LABELS = {
-    "assistant": "Analizowanie pytania",
-    "web": "Szukanie i analizowanie źródeł",
-    "question": "Opracowywanie odpowiedzi",
-    "workspace": "Przygotowywanie propozycji",
-    "cleanup": "Kończenie sesji",
-    "task": "Claude pracuje",
+    "assistant": "Analyzing the question",
+    "web": "Searching and analyzing sources",
+    "question": "Writing the answer",
+    "workspace": "Preparing the proposal",
+    "cleanup": "Ending the session",
+    "task": "Claude is working",
 }
 INTERVAL = 0.3
 CLEAR_LINE = "\r\x1b[2K"
@@ -33,7 +33,7 @@ class WaitingIndicator:
         # ContextVars are not inherited by the animation thread. Capture the
         # controller's validated task recipient before creating any thread.
         name = recipient(config=config)
-        self._labels = {phase: (name + " pracuje" if phase == "task" else name + ": " + text)
+        self._labels = {phase: (name + " is working" if phase == "task" else name + ": " + text)
                         for phase, text in LABELS.items()}
         self._enabled = False
         try:

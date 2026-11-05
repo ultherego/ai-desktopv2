@@ -23,8 +23,8 @@ MAX_PASTE_BYTES = 8192
 ESCAPE_SECONDS = 0.15
 PASTE_SECONDS = 2
 _PASTE_END = b"\x1b[201~"
-_HINT = "↑/↓  Enter wybiera  Esc anuluje"
-_HINT_MARKS = "↑/↓  Spacja zaznacza  Enter wybiera  Esc anuluje"
+_HINT = "↑/↓  Enter selects  Esc cancels"
+_HINT_MARKS = "↑/↓  Space ticks  Enter selects  Esc cancels"
 
 
 class MenuInputError(ValueError):

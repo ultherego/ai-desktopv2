@@ -63,7 +63,7 @@ class Lc1CheckTests(unittest.TestCase):
         code, output = self.run_action("refusals")
         self.assertEqual(code, 0, output)
         self.assertIn("medium.log    OK   ACCEPTED", output)
-        self.assertRegex(output, r"log1m.txt\s+OK   REFUSED: Plik przekracza 512000 bajtów")
+        self.assertRegex(output, r"log1m.txt\s+OK   REFUSED: The file is over 512000 bytes")
         self.assertIn("REFUSALS=PASS", output)
 
     def test_a_policy_that_does_not_allow_the_directory_is_reported_not_misread_as_refusal(self):

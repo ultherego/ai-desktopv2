@@ -10,19 +10,17 @@ from . import material_step as step
 from . import materials
 
 SEARCH_SNIPPET = 200
-REFUSAL_TEXT = {"NEEDLE_INVALID": "niepoprawna fraza", "RANGE_INVALID": "zakres wierszy poza plikiem",
-                "TOO_LARGE": "zakres za duży na jedno żądanie", "PATH": "plik spoza indeksu projektu",
-                "CHANGED": "plik zmienił się od poprzedniego odczytu", "LIMIT": "nie ma czego kontynuować",
-                "FILE": "pliku nie da się odczytać"}
+REFUSAL_TEXT = {"NEEDLE_INVALID": "invalid phrase", "RANGE_INVALID": "line range outside the file",
+                "TOO_LARGE": "range too large for one request", "PATH": "file not in the project index",
+                "CHANGED": "file changed since the previous read", "LIMIT": "nothing to continue",
+                "FILE": "file cannot be read"}
 
 
 def count_lines(n):
-    """Polish plural of "N wiersz": 1 wiersz, 2-4 wiersze, 5+ wierszy (12-14 wierszy)."""
+    """English plural of "N line": 1 line, otherwise N lines."""
     if n == 1:
-        return "1 wiersz"
-    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
-        return "%d wiersze" % n
-    return "%d wierszy" % n
+        return "1 line"
+    return "%d lines" % n
 
 
 def span_text(spans):
@@ -30,13 +28,13 @@ def span_text(spans):
 
 
 def lines_label(spans):
-    """"wiersz 5" for one single line, otherwise "wiersze 1–3, 7"."""
+    """"line 5" for one single line, otherwise "lines 1–3, 7"."""
     spans = list(spans)
     single = len(spans) == 1 and spans[0][0] == spans[0][1]
-    return ("wiersz " if single else "wiersze ") + span_text(spans)
+    return ("line " if single else "lines ") + span_text(spans)
 
 
-ACTION_TEXT = {"search": "wyszukanie", "read": "odczyt", "list": "listę plików", "find": "wyszukanie nazw"}
+ACTION_TEXT = {"search": "a search", "read": "a read", "list": "the file list", "find": "a file name search"}
 WHOLE_BYTES = 200 * 1024         # smaller materials are handed over whole in the first request
 
 
@@ -54,7 +52,7 @@ def _cut(text, limit):
 
 def history_turn(question, answer):
     """A finished turn for later requests: the answer is shortened visibly, never silently."""
-    text = answer if len(answer.encode("utf-8")) <= step.HISTORY_TEXT else _cut(answer, step.HISTORY_TEXT) + " …[skrócono]"
+    text = answer if len(answer.encode("utf-8")) <= step.HISTORY_TEXT else _cut(answer, step.HISTORY_TEXT) + " …[shortened]"
     return {"question": question, "answer": text}
 
 
@@ -147,7 +145,7 @@ class Loop:
     def _refuse(self, action, code, what=None, detail=""):
         """Record the closed refusal for the model; the returned line explains it to the user."""
         self.observations.append({"kind": "refused", "action": action, "code": code})
-        return "%s — odmowa: %s%s" % (what or ACTION_TEXT[action], REFUSAL_TEXT[code], " (%s)" % detail if detail else "")
+        return "%s — refused: %s%s" % (what or ACTION_TEXT[action], REFUSAL_TEXT[code], " (%s)" % detail if detail else "")
 
     def _search(self, needle):
         try:
@@ -166,21 +164,21 @@ class Loop:
                 self._whole_hits.add((number, hits[-1]["text"]))
         self.observations.append({"kind": "search", "needle": needle, "complete": page.complete, "hits": hits})
         self.searches.append(needle)
-        return "wyszukano „%s”: %d trafień%s" % (needle, len(hits), "" if page.complete else " (są kolejne)")
+        return "a search for \"%s\": %d %s%s" % (needle, len(hits), "match" if len(hits) == 1 else "matches", "" if page.complete else " (more available)")
 
     def _read(self, spans, clamp=True):
         budget = step.DATA_BYTES - 4096 - self.data_bytes()
         planned = []
-        what = ("odczyt wiersza " if len(spans) == 1 and spans[0][0] == spans[0][1] else "odczyt wierszy ") + span_text(spans)
+        what = ("line " if len(spans) == 1 and spans[0][0] == spans[0][1] else "lines ") + span_text(spans)
         if any(first > self.lines or (not clamp and last > self.lines) for first, last in spans):
-            return self._refuse("read", "RANGE_INVALID", what, "materiał ma %s" % count_lines(self.lines))
+            return self._refuse("read", "RANGE_INVALID", what, "the file has %s" % count_lines(self.lines))
         spans = sorted({(first, min(last, self.lines)) for first, last in spans})   # an end past the last line is cut to it
         for first, last in spans:
             try:
                 start, end = materials.line_range(self.material, first, last)
                 parts = materials.split_range(self.material, start, end)
             except materials.MaterialError:
-                return self._refuse("read", "RANGE_INVALID", what, "materiał ma %s" % count_lines(self.lines))
+                return self._refuse("read", "RANGE_INVALID", what, "the file has %s" % count_lines(self.lines))
             planned.extend(parts)
         total = sum(b - a for a, b in planned)
         if total > max(0, budget):
@@ -196,7 +194,7 @@ class Loop:
             self.observations.append({"kind": "read", "first": first, "last": last,
                                       "ref": fragment.ref.to_json(), "text": fragment.text})
             self.read_bytes += end - start
-        return "odczyt %s (%d B)" % ("wiersza " + span_text(spans) if len(spans) == 1 and spans[0][0] == spans[0][1] else "wierszy " + span_text(spans), total)
+        return "%s (%d B)" % ("line " + span_text(spans) if len(spans) == 1 and spans[0][0] == spans[0][1] else "lines " + span_text(spans), total)
 
     def _compact_for(self, needed):
         limit = step.DATA_BYTES - 4096

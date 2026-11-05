@@ -187,9 +187,9 @@ class DoctorTests(unittest.TestCase):
         popen.assert_not_called()
         text = out.getvalue()
         self.assertEqual(len(text.splitlines()), 4)
-        self.assertIn("Wymagania offline (metadane): spełnione.", text)
-        self.assertIn("Klient Claude: znaleziony; metadane izolowanego konta: poprawne.", text)
-        self.assertIn("Logowanie i działanie AI: niesprawdzone.", text)
+        self.assertIn("Offline requirements (metadata): met.", text)
+        self.assertIn("Claude client: found; isolated account metadata: valid.", text)
+        self.assertIn("Login and AI operation: not checked.", text)
         self.assertIn("ai-desktop doctor --v", text)
         for technical in ("DOCTOR: PASS", "diagnose_prerequisites_present", "{", "READINESS"):
             self.assertNotIn(technical, text)
@@ -203,9 +203,9 @@ class DoctorTests(unittest.TestCase):
             self.assertEqual(doctor.main([]), 0)
         text = out.getvalue()
         self.assertEqual(len(text.splitlines()), 4)
-        self.assertIn("Wymagania offline (metadane): niekompletne.", text)
-        self.assertIn("Klient Claude: brak; metadane izolowanego konta: niepotwierdzone.", text)
-        self.assertIn("Logowanie i działanie AI: niesprawdzone.", text)
+        self.assertIn("Offline requirements (metadata): incomplete.", text)
+        self.assertIn("Claude client: missing; isolated account metadata: unconfirmed.", text)
+        self.assertIn("Login and AI operation: not checked.", text)
         self.assertNotIn("PASS", text)
 
     def test_verbose_aliases_preserve_complete_metadata_json_and_legacy_result(self):
@@ -219,8 +219,8 @@ class DoctorTests(unittest.TestCase):
                 self.assertEqual(doctor.main([flag]), 0)
             inspect.assert_called_once_with()
             text = out.getvalue()
-            self.assertTrue(text.startswith("=== AI DESKTOP READINESS (TYLKO ODCZYT) ===\n"))
-            result = "DOCTOR: PASS (sprawdzono wymagania; nie uruchomiono AI)\n"
+            self.assertTrue(text.startswith("=== AI DESKTOP READINESS (READ-ONLY) ===\n"))
+            result = "DOCTOR: PASS (requirements checked; AI not started)\n"
             self.assertTrue(text.endswith(result))
             self.assertEqual(json.loads(text.split("\n", 1)[1][:-len(result)]), mock_data)
 
@@ -235,7 +235,7 @@ class DoctorTests(unittest.TestCase):
             inspect.assert_not_called()
             run.assert_not_called()
             popen.assert_not_called()
-            self.assertIn("Użycie: ai-desktop doctor", out.getvalue())
+            self.assertIn("Usage: ai-desktop doctor", out.getvalue())
 
     def test_root_disallowed(self):
         with (

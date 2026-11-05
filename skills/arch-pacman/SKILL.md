@@ -1,40 +1,40 @@
 ---
 name: arch-pacman
-description: Diagnozuje błędy pacmana, konflikty plików i przerwane aktualizacje. Użyj do rozpoznania przyczyny przed planem naprawy bazy, pakietów lub pamięci podręcznej.
+description: Diagnoses pacman errors, file conflicts and interrupted updates. Use to identify the cause before planning a repair of the database, packages or cache.
 ---
 
-# Diagnostyka pacmana
+# pacman diagnostics
 
-## Dane wejściowe
+## Inputs
 
-Ustal dokładne polecenie i komunikat, nazwę pakietu, etap transakcji oraz czy działa inny menedżer pakietów. Jeśli awaria nastąpiła po aktualizacji, potrzebny jest odpowiedni fragment `/var/log/pacman.log`, nie cały raport komputera.
+Establish the exact command and message, the package name, the transaction stage, and whether another package manager is running. If the failure followed an update, you need the relevant excerpt of `/var/log/pacman.log`, not a full report of the computer.
 
-Odczyty wybieraj z aktualnych uprawnień: `pacman -Qi NAZWA`, `pacman -Qk NAZWA`, `pacman -Qo PLIK` i `pacman -Si NAZWA`. Zapytanie `-Si` opisuje lokalną bazę synchronizacji, której aktualność trzeba ustalić osobno. Odmowy nie obchodź przez `sudo`, powłokę ani polecenie z listy zmian.
+Choose reads from the current permissions: `pacman -Qi NAME`, `pacman -Qk NAME`, `pacman -Qo FILE` and `pacman -Si NAME`. The `-Si` query describes the local sync database, whose freshness must be established separately. Do not get around a denial through `sudo`, a shell or a command from the change list.
 
-## Rozpoznaj przyczynę
+## Identify the cause
 
-| Obserwacja | Następny krok |
+| Observation | Next step |
 |---|---|
-| Blokada bazy | Sam plik `db.lck` nie dowodzi osierocenia. Ustal aktywną transakcję na hoście; prywatna lista procesów piaskownicy jej nie wyklucza. Bez tego nie proponuj usuwania blokady. |
-| Konflikt pliku | Ustal właściciela przez `-Qo` i pochodzenie pliku. Nie usuwaj pliku pakietu ani nie stosuj globalnego `--overwrite`. |
-| Niepoprawny podpis lub uszkodzone archiwum | Rozdziel podpis, klucz, czas systemowy i błąd pobrania. Zachowaj weryfikację podpisów; nie wyłączaj `SigLevel`. |
-| 404 lub brak pakietu | Zweryfikuj nazwę, włączone repozytorium i stan bazy lub mirrora. Powtarzane odświeżanie nie rozwiąże wyłączonego repozytorium. |
-| Przerwanie po rozpoczęciu instalacji | Ustal pakiety i zakończone kroki z logu. Nie uznawaj poprawnego odczytu bazy za dowód spójności plików. |
-| `local is newer than` | Porównaj wersje i źródło pakietu; obniżenie wersji wymaga osobnego uzasadnienia. |
+| Database lock | The `db.lck` file alone does not prove it is orphaned. Establish whether a transaction is active on the host; the sandbox's private process list does not rule one out. Without this, do not propose removing the lock. |
+| File conflict | Establish the owner through `-Qo` and the file's origin. Do not delete a package file or use a global `--overwrite`. |
+| Invalid signature or corrupt archive | Separate signature, key, system time and a download error. Keep signature verification; do not disable `SigLevel`. |
+| 404 or missing package | Verify the name, the enabled repository and the state of the database or mirror. Repeated refreshing will not solve a disabled repository. |
+| Interruption after installation started | Establish the packages and completed steps from the log. Do not treat a correct database read as proof that the files are consistent. |
+| `local is newer than` | Compare the versions and the package source; a downgrade needs its own justification. |
 
-## Plan naprawy
+## Repair plan
 
-Arch wymaga spójnej pełnej aktualizacji; nie proponuj częściowej aktualizacji z samym odświeżeniem baz. Nie używaj `-Syyu`, resetu kluczy ani kasowania pamięci jako automatycznej eskalacji po dowolnym błędzie.
+Arch requires a consistent full upgrade; do not propose a partial upgrade with only a database refresh. Do not use `-Syyu`, a key reset or cache deletion as an automatic escalation after any error.
 
-Każda instalacja, usunięcie, downgrade, odblokowanie lub czyszczenie to osobna zmiana systemu: określ pakiety i pliki, zależności, ryzyko, zgodę i sposób odzyskania. Aktualizacja uruchamia skrypty i hooki; nie obiecuj jej atomowego cofnięcia.
+Each install, removal, downgrade, unlock or cleanup is a separate system change: state the packages and files, dependencies, risk, consent and the way to recover. An upgrade runs scripts and hooks; do not promise an atomic undo of it.
 
-Przed czyszczeniem ustal potrzebne wersje do odzyskania. Nie kasuj całej pamięci podręcznej; `.pacnew` wymaga świadomego scalenia, a pakiet osierocony nie musi być zbędny użytkownikowi.
+Before cleaning up, establish which versions are needed for recovery. Do not delete the whole cache; `.pacnew` needs a deliberate merge, and an orphaned package is not necessarily useless to the user.
 
-## Weryfikacja i wynik
+## Verification and result
 
-Sprawdź, czy pierwotny komunikat zniknął, transakcja się zakończyła i odpowiednie pliki oraz funkcja programu są poprawne. Podaj przyczynę z dowodem, zakres faktycznie wykonanej zmiany i pozostałe braki. Bez bezpiecznego planu odzyskania zakończ na diagnozie.
+Check that the original message is gone, the transaction completed, and the relevant files and the program's function are correct. Give the cause with evidence, the scope of the change actually made and the remaining gaps. Without a safe recovery plan, end at the diagnosis.
 
-## Źródła
+## Sources
 
-- [pacman: operacje i opcje](https://man.archlinux.org/man/pacman.8.en).
-- [Specyfika błędów CachyOS](https://wiki.cachyos.org/cachyos_basic/faq/).
+- [pacman: operations and options](https://man.archlinux.org/man/pacman.8.en).
+- [CachyOS-specific errors](https://wiki.cachyos.org/cachyos_basic/faq/).

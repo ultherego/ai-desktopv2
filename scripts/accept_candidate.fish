@@ -84,7 +84,7 @@ with os.fdopen(os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.
     fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
     if any(getattr(before, key) != getattr(after, key) for key in fields):
         raise SystemExit("NATIVE COPY: REFUSED changed source")
-print("Natywny klient skopiowany z przyjętego pakietu; bez uruchamiania i OAuth.")
+print("Native client copied from the accepted package; not run, no OAuth.")
 ' "$aid_tree/packaging/arch/claude-code"
     or return $status
     __aid14_step NATIVE_MATCH cmp /usr/lib/ai-desktop/claude-code "$aid_tree/packaging/arch/claude-code"
@@ -125,11 +125,11 @@ print("Natywny klient skopiowany z przyjętego pakietu; bez uruchamiania i OAuth
     cd "$aid_tree"; or return $status
     __aid14_step INSTALLED python3 -I -B -c 'import sys; sys.path.insert(0, sys.argv[1] + "/tests"); import host_analysis_acceptance as check; check.installed_matches(); print("INSTALLED MATCH: PASS")' "$aid_tree"
     or return $status
-    # Bez tee: prawdziwy lokalny odczyt i rozmowa wymagają świeżych zgód TTY.
+    # No tee: the real local read and the conversation need fresh TTY consents.
     __aid14_step HOST_FILE_LOCAL python3 -B tests/host_file_access_acceptance.py --allow-configured-file-read "$aid_scope"
     or return $status
-    printf '\nNowy odbior: 2 zapytania Claude — dobor i odpowiedz o pieciu syntetycznych plikach (12175 B).\n'
-    printf 'Jedna zgoda zatwierdza cale pytanie syntetyczne. Rzeczywiste pliki pozostaja lokalnie.\n'
+    printf '\nNew acceptance: 2 Claude requests: selection and answer about five synthetic files (12175 B).\n'
+    printf 'One consent approves the whole synthetic question. Real files stay local.\n'
     __aid14_step HOST_FILE python3 -B tests/host_file_access_acceptance.py --allow-subscription-file-test
     or return $status
     return 0
@@ -171,8 +171,8 @@ if test "$aid_return" -eq 0
     end
 end
 printf '\nCYCLE=%s RETURN=%s\n' "$aid_cycle" "$aid_return"
-printf 'Logi i worktree zachowano: %s\n' "$aid_tmp"
-printf 'Nie zapisano tresci odczytu lokalnego ani rozmowy HOST FILE; tryb Claude uzywa tylko danych syntetycznych.\n'
+printf 'Logs and worktree kept: %s\n' "$aid_tmp"
+printf 'Neither the local read content nor the HOST FILE conversation was saved; Claude mode uses only synthetic data.\n'
 if test "$aid_cycle" -ne 0
     exit "$aid_cycle"
 end

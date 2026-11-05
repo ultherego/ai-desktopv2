@@ -15,20 +15,20 @@ def login(provider, authenticate, *, store=None):
         store = store or profiles.Store()
         before = store.load()
     except (profiles.ProfileError, OSError, ValueError):
-        print("Nie można wczytać ustawień. Sprawdź ai-desktop settings show; logowanie nie zostało rozpoczęte.")
+        print("Could not load the settings. Check ai-desktop settings show; the login was not started.")
         return 2
 
     result = authenticate()
     if type(result) is not int:
-        print("Nie potwierdzono zakończenia logowania.")
+        print("Could not confirm that the login finished.")
         return 2
     if result != 0:
         return result
     try:
         store.mutate(lambda config: config.with_provider(provider), expected=before)
     except (profiles.ProfileError, OSError, ValueError):
-        print("Zalogowano do %s. Nie przełączono usługi, ponieważ ustawienia zmieniły się lub nie można ich zapisać. "
-              "Wybierz usługę w ai-desktop settings." % name)
+        print("Logged in to %s. The service was not switched because the settings changed or could not be saved. "
+              "Choose the service in ai-desktop settings." % name)
         return 3
-    print("Zalogowano. Aktywna usługa: %s." % name)
+    print("Logged in. Active service: %s." % name)
     return 0

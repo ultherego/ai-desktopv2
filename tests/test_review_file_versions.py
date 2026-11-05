@@ -73,7 +73,7 @@ class VersionedFilesTests(unittest.TestCase):
             return real(src_dir, src, dst_dir, dst)
 
         with patch.object(tw, "rename_noreplace", race), self.assertRaises(FileExistsError):
-            tw.apply(plan, plan.authorize("ZAPISZ " + plan.sha256))
+            tw.apply(plan, plan.authorize("SAVE " + plan.sha256))
         self.assertEqual((self.root / "new.txt").read_text(), "concurrent user file\n")
         self.assertFalse(tw.rollback(self.ws, plan.sha256))  # conflict: never remove the other writer
         self.assertEqual((self.root / "new.txt").read_text(), "concurrent user file\n")

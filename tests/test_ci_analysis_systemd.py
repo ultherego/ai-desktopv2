@@ -106,12 +106,12 @@ class CiAnalysisGuardTests(unittest.TestCase):
 
     def test_compact_analysis_check_rejects_missing_data_consent_and_diagnostics(self):
         question = "SYNTHETIC: analysis question"
-        output = (b'Raport do analizy:\n{"kernel": "7.3.0-4-cachyos"}\nPytanie:\n'
+        output = (b'Report to analyze:\n{"kernel": "0.0.0-synthetic"}\nQuestion:\n'
                   + question.encode() + b"\n" + driver.PROMPTS["transfer"].encode()
                   + b"\nSYNTHETIC ANALYSIS: isolation=PASS proxy-denial=PASS profile=PASS\n")
         driver.compact_analysis(output, question)
         for bad in (output.replace(question.encode(), b""),
-                    output.replace(b'"kernel": "7.3.0-4-cachyos"', b""),
+                    output.replace(b'"kernel": "0.0.0-synthetic"', b""),
                     output.replace(driver.PROMPTS["transfer"].encode(), b""),
                     output + b"ANALYSIS: PASS\n", output + b"a" * 64):
             with self.subTest(output=bad), self.assertRaises(ValueError):
@@ -137,16 +137,16 @@ class CiAnalysisGuardTests(unittest.TestCase):
 
     def test_compact_task_check_retains_fenced_diff_and_two_ordered_consents(self):
         output = (driver.PROMPTS["transfer"].encode()
-                  + b"\n=== Zmiany do zapisania ===\n```diff\n"
+                  + b"\n=== Changes to save ===\n```diff\n"
                   + b"--- a/calc.py\n+++ b/calc.py\n-    return a - b\n+    return a + b\n```\n"
-                  + driver.PROMPTS["write"].encode() + b"\nZapisano zmiany.\n")
+                  + driver.PROMPTS["write"].encode() + b"\nChanges saved.\n")
         driver.compact_task(output)
-        rollback = driver.PROMPTS["rollback"].encode() + "\nCofnięto zmiany.\n".encode()
+        rollback = driver.PROMPTS["rollback"].encode() + b"\nChanges undone.\n"
         driver.compact_task(rollback, rollback=True)
         for bad in (output.replace(b"-    return a - b", b""),
                     output.replace(b"```diff\n", b""),
                     output.replace(b"\n```", b""),
-                    output + b"Test na kopii: zaliczony (python-unittest).\n",
+                    output + b"Test on a copy: passed (python-unittest).\n",
                     output.replace(driver.PROMPTS["transfer"].encode(), b""),
                     output.replace(driver.PROMPTS["write"].encode(), b"")
                         + driver.PROMPTS["write"].encode() * 2,

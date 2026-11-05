@@ -1,42 +1,42 @@
-# Historia zmian
+# Changelog
 
-## Niewydane
+## Unreleased
 
-- `permissions.toml`: szablon `systemctl -H host <word>` jest odrzucany, bo `<word>` mógłby stać się poleceniem. Po opcji spoza listy opcji bez wartości kolejne słowo jest traktowane jako jej wartość. Lista `change` może mieć 128 szablonów także w żądaniu do modelu (było 24).
-- Przebudowane procedury 21 Skilli: interpretacja wyników, warunki dalszych kroków, rozpoznanie ograniczeń dostępu i weryfikacja zmian. Usunięte zbyt szerokie recepty, m.in. pełny balance jako domyślne sprzątanie i `systemctl revert` jako cofnięcie pojedynczej edycji.
-- Pliki ze znakiem BOM i końcami linii Windows, np. CSV z Excela, dają się czytać i edytować. Model i diff widzą zwykły tekst, a zapis zachowuje format pliku. Cofnięcie przywraca dokładnie te same bajty. Pomieszane końce linii: odczyt działa, edycja jest odrzucana.
-- `ai-desktop ask`: wynik wykonanej zmiany zostaje w pamięci, gdy następna odpowiedź modelu nie dotrze, więc model nie zaproponuje jej ponownie. Po cofnięciu dostępu nowe, niezależne odpowiedzi zostają, a szczegóły akcji zależnych od tego pliku znikają. Rozmowa z wieloma plikami zawsze się zapisuje.
-- `ai-desktop ask`: końcowa odpowiedź dostaje wyniki poleceń i wczytane Skille, a nie tylko odczytane pliki. „Ustaliliśmy zmianę, zrób to” działa: etap edycji dostaje rozmowę, pamięć zadania, wyniki poleceń i Skille.
-- `task rollback` nie nadpisuje ani nie usuwa nowszego zapisu edytora: zostawia go i zgłasza konflikt. Wcześniej mógł zgłosić sukces po utracie tej wersji.
-- Polecenie zmiany może być długie jak wiadomość w `ask` (128 KiB; było 2 KiB), także w `task run` i `project`.
-- Spacja przed `/` wysyła tekst jako pytanie. Pełny kosz odmawia przed usunięciem, a lista odzyskiwania nadal działa.
-- `ai-desktop ask`: zgoda na rozmowę obejmuje cały `permissions.toml`. Usunięcie reguły `deny`, zmiana limitu albo `share_processes` wymaga nowej zgody. Wcześniej stara zgoda nadal obowiązywała.
-- Instalacja: `PKGBUILD` sprawdza sumę SHA-256 klienta Claude i odmawia budowy przy złym pliku. Blok w README nie uruchamia pliku przy błędnej sumie.
-- Nowe Skille `arch-*` oparte na Arch Wiki: pacman, systemd, Btrfs, amdgpu, dźwięk, sieć, Bluetooth, zram, Docker.
-- `ai-desktop ask`: Skille ładowane na żądanie. Przy każdym pytaniu idą tylko nazwy i opisy; treść idzie wtedy, gdy model o nią poprosi, a program to pokazuje. Skille CachyOS zaczynają się teraz od procedury.
-- Rozumowanie `xhigh` i `max`: model może odpowiadać do 15 minut (było 260 s). Gdy czas minie, komunikat mówi o czasie, a nie o wygasłej zgodzie.
-- Za duża wklejka jest odrzucana w całości. Wcześniej jej reszta mogła trafić do następnego wiersza.
-- `ai-desktop ask`: wiadomość do 128 KiB razem z wklejkami (było 2 KiB), pamięć 32 ostatnich wymian (było 8), odpowiedź w historii do 8 KiB (było 3 KiB). Za duża wklejka nie kończy już rozmowy. `material` i `project` zachowują swoje limity.
-- `ai-desktop ask`: polecenia `/` w trakcie rozmowy, z listą pod wierszem (`/model`, `/sila`, `/skills`, `/agent`, `/ustawienia`, `/uprawnienia`, `/pomoc`, `/koniec`). Menu zaczyna na bieżącej wartości, a długie listy mają strony. Zmiana nie kasuje rozmowy.
-- Zapisana rozmowa jest związana z usługą, agentem i poziomem dostępu. Zmiana modelu, rozumowania albo treści Skilla nie odcina jej już od wznowienia.
-- Nowe Skille dla CachyOS, każdy o jednej rzeczy: pakiety, jądra, sched-ext, rozruch i migawki, sprzęt, gry oraz rozbudowana diagnostyka. Oparte na wiki CachyOS. Skill `desktop-documentation` kieruje do dokumentacji pulpitu zamiast zgadywać.
-- Skille: bez limitu liczby na agenta, do 96 KiB na Skill i 104 KiB razem. Górny limit wynika z ograniczenia długości argumentu w Linuksie.
-- **Bezpieczeństwo:** gdy zgoda wygaśnie lub `permissions.toml` zmieni się podczas polecenia z `[commands] change`, wynik wykonanej zmiany jest pokazany i odnotowany, a program mówi wprost, że zmiana została wykonana, i podaje polecenie testu i wycofania. Kolejne kroki nie są uruchamiane i nic więcej nie jest wysyłane. Wcześniej wynik ginął bez śladu.
-- `ai-desktop task`/`ask`/`project`: zapis zmiany w istniejącym pliku nie nadpisuje już zapisu zrobionego w tym samym czasie przez edytor. Plik jest wymieniany atomowo (`renameat2` z `RENAME_EXCHANGE`), a wymieniona wersja jest porównywana z tym, co widział plan. Przy różnicy zamiana jest cofana i zapis odrzucany, a wersja edytora zostaje.
-- **Bezpieczeństwo:** `material` i `project` sprawdzają `permissions.toml` przed każdym przekazaniem danych do Claude. Zmiana pliku, wyłączenie `network.claude` albo cofnięcie dostępu do czytanych plików zatrzymuje kolejne żądania, także w analizie całego pliku. Wcześniej wystarczyło, że zgoda i pliki zostały wczytane na początku sesji.
-- Polskie znaki w komunikatach i pomocy: pytania o zapis i cofnięcie, `task`, `analyze`, `status` i opisy poleceń.
-- `ai-desktop task`: gdy `--workspace` wskazuje plik, program mówi to wprost zamiast ogólnej odmowy.
-- `ai-desktop task status` i `task rollback` wypisują wpisy od najnowszego, z datą ostatniej zmiany (czas pliku dziennika). Numer 1 to najnowsze zadanie.
+- `permissions.toml`: the template `systemctl -H host <word>` is rejected, because `<word>` could become a command. After an option outside the list of options without a value, the next word is treated as its value. The `change` list can have 128 templates also in the request to the model (it was 24).
+- Rebuilt procedures of 21 Skills: interpreting results, conditions for further steps, recognizing access restrictions and verifying changes. Removed overly broad recipes, among others a full balance as default cleanup and `systemctl revert` as the undo of a single edit.
+- Files with a BOM and Windows line endings, e.g. CSV from Excel, can be read and edited. The model and the diff see plain text, and a write keeps the file format. Undo restores exactly the same bytes. Mixed line endings: reading works, editing is rejected.
+- `ai-desktop ask`: the result of a performed change stays in memory when the model's next answer does not arrive, so the model will not propose it again. After access is revoked, new independent answers stay, and details of actions dependent on that file disappear. A conversation with many files always saves.
+- `ai-desktop ask`: the final answer gets command output and loaded Skills, not only files read. "We agreed on the change, do it" works: the edit stage gets the conversation, task memory, command output and Skills.
+- `task rollback` does not overwrite or delete a newer editor save: it leaves it and reports a conflict. Earlier it could report success after losing that version.
+- A change request can be as long as a message in `ask` (128 KiB; it was 2 KiB), also in `task run` and `project`.
+- A space before `/` sends the text as a question. A full trash refuses before deleting, and the recovery list still works.
+- `ai-desktop ask`: consent for a conversation covers the whole `permissions.toml`. Removing a `deny` rule, changing a limit or `share_processes` requires new consent. Earlier the old consent stayed valid.
+- Installation: `PKGBUILD` checks the SHA-256 of the Claude client and refuses to build with a wrong file. The README block does not run the file with a wrong checksum.
+- New `arch-*` Skills based on the Arch Wiki: pacman, systemd, Btrfs, amdgpu, audio, network, Bluetooth, zram, Docker.
+- `ai-desktop ask`: Skills loaded on demand. Only names and descriptions go with each question; the content goes when the model asks for it, and the program shows that. CachyOS Skills now start with the procedure.
+- Reasoning `xhigh` and `max`: the model can answer for up to 15 minutes (it was 260 s). When the time runs out, the message talks about time, not about an expired consent.
+- A paste that is too large is rejected whole. Earlier its remainder could end up in the next line.
+- `ai-desktop ask`: a message up to 128 KiB including pastes (it was 2 KiB), memory of the last 32 exchanges (it was 8), an answer in history up to 8 KiB (it was 3 KiB). A paste that is too large no longer ends the conversation. `material` and `project` keep their limits.
+- `ai-desktop ask`: `/` commands during a conversation, with a list under the line (`/model`, `/effort`, `/skills`, `/agent`, `/settings`, `/permissions`, `/help`, `/exit`). The menu starts on the current value, and long lists have pages. A change does not erase the conversation.
+- A saved conversation is tied to the service, agent and access level. A change of model, reasoning or Skill content no longer cuts it off from resuming.
+- New Skills for CachyOS, each about one thing: packages, kernels, sched-ext, boot and snapshots, hardware, games and extended diagnostics. Based on the CachyOS wiki. The `desktop-documentation` Skill points to the desktop documentation instead of guessing.
+- Skills: no limit on the number per agent, up to 96 KiB per Skill and 104 KiB in total. The upper limit follows from the argument length restriction in Linux.
+- **Security:** when consent expires or `permissions.toml` changes during a command from `[commands] change`, the result of the performed change is shown and recorded, and the program says plainly that the change was performed and gives the test and undo commands. Further steps are not run and nothing more is sent. Earlier the result was lost without a trace.
+- `ai-desktop task`/`ask`/`project`: saving a change to an existing file no longer overwrites a save made at the same time by an editor. The file is exchanged atomically (`renameat2` with `RENAME_EXCHANGE`), and the exchanged version is compared with what the plan saw. On a difference the exchange is reverted and the write rejected, and the editor's version stays.
+- **Security:** `material` and `project` check `permissions.toml` before each hand-over of data to Claude. A file change, turning off `network.claude` or revoking access to files being read stops further requests, also in whole-file analysis. Earlier it was enough that the consent and files were loaded at the start of the session.
+- Polish diacritics in messages and help: the save and undo prompts, `task`, `analyze`, `status` and command descriptions.
+- `ai-desktop task`: when `--workspace` points to a file, the program says so plainly instead of a general refusal.
+- `ai-desktop task status` and `task rollback` list entries from the newest, with the date of the last change (journal file time). Number 1 is the newest task.
 
-## 0.1.0-70 — poprawki
+## 0.1.0-70: fixes
 
-- `ai-desktop sessions`: uszkodzony zapis rozmowy nie ukrywa pozostałych; `sessions list` go wskazuje, a `sessions remove` usuwa.
-- `/rejestr` w `project` pokazuje też pliki przekazane do Claude przy edycji.
+- `ai-desktop sessions`: a damaged saved conversation does not hide the others; `sessions list` points to it and `sessions remove` deletes it.
+- `/log` in `project` also shows files handed to Claude during editing.
 
-## 0.1.0-69 — pierwsze wydanie publiczne (wersja rozwojowa)
+## 0.1.0-69: first public release (development version)
 
-- `ai-desktop ask`: jedna zgoda na rozmowę, odczyty i polecenia z `permissions.toml` bez dodatkowych pytań, zapis i usuwanie po pełnym diffie lub liście plików i osobnej zgodzie, cofanie zmian.
-- `ai-desktop material` do dużych plików i `ai-desktop project` do katalogów projektów.
-- Oficjalny klient Claude Code w osobnym koncie systemowym i piaskownicy; opcjonalnie Codex.
-- Ogólne Skille w pakiecie, własne w `~/.config/ai-desktop/skills/`.
-- Szablon `permissions.toml` zawiera tylko ogólne polecenia, które działają w piaskownicy i nie wysyłają logów ani nazw sieci.
+- `ai-desktop ask`: one consent per conversation, reads and commands from `permissions.toml` without extra questions, writing and deleting after a full diff or list of files and a separate consent, undo of changes.
+- `ai-desktop material` for large files and `ai-desktop project` for project directories.
+- The official Claude Code client in a separate system account and sandbox; optionally Codex.
+- General Skills in the package, your own in `~/.config/ai-desktop/skills/`.
+- The `permissions.toml` template contains only general commands that work in the sandbox and do not send logs or network names.

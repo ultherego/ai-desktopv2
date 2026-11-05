@@ -11,22 +11,23 @@ from .conversation_sessions import SessionError
 from .terminal_menu import MenuInputError, choose
 
 COMMANDS = (
-    ("/pomoc", "lista poleceń"),
-    ("/model", "zmień model"),
-    ("/sila", "zmień poziom rozumowania"),
-    ("/skills", "włącz lub wyłącz Skille w tej rozmowie"),
-    ("/agent", "zmień agenta"),
-    ("/ustawienia", "pokaż bieżące ustawienia"),
-    ("/uprawnienia", "pokaż, do czego program ma dostęp"),
-    ("/koniec", "zakończ rozmowę"),
+    ("/help", "list commands"),
+    ("/model", "change the model"),
+    ("/effort", "change the reasoning level"),
+    ("/skills", "turn Skills on or off in this conversation"),
+    ("/agent", "change the agent"),
+    ("/settings", "show the current settings"),
+    ("/permissions", "show what the program can access"),
+    ("/exit", "end the conversation"),
 )
-_ALIASES = {"/help": "/pomoc", "/?": "/pomoc", "/effort": "/sila", "/settings": "/ustawienia", "/permissions": "/uprawnienia",
-            "/exit": "/koniec", "/quit": "/koniec", "/q": "/koniec"}
-_SHAPE = re.compile(r"/[^/\s]*\Z")           # `/etc/fstab to co?` is a question, `/model` is a command
+# The older Polish command names keep working; they are simply no longer listed.
+_ALIASES = {"/pomoc": "/help", "/?": "/help", "/sila": "/effort", "/ustawienia": "/settings", "/uprawnienia": "/permissions",
+            "/koniec": "/exit", "/quit": "/exit", "/q": "/exit"}
+_SHAPE = re.compile(r"/[^/\s]*\Z")           # `/etc/fstab what is it?` is a question, `/model` is a command
 EXIT = "exit"
 PAGE = 8
-_NEXT, _PREVIOUS, _APPLY = "Następna strona", "Poprzednia strona", "Zastosuj"
-_AGAIN = "Następne pytanie poprosi o zgodę jeszcze raz, bo zmieniły się ustawienia. Rozmowa trwa dalej."
+_NEXT, _PREVIOUS, _APPLY = "Next page", "Previous page", "Apply"
+_AGAIN = "The next question will ask for consent again because the settings changed. The conversation continues."
 
 
 def _pick(title, options, default=0):
@@ -75,7 +76,7 @@ class Controls:
             _, profile, chosen = self._assigned()
             execution.select(dict(selected, instructions=profiles.catalog_for(replace(profile, skills=tuple(chosen)))))
         except (profiles.ProfileError, OSError, ValueError, KeyError):
-            print("Nie można wczytać opisów Skilli. Sprawdź ai-desktop skills validate.")
+            print("Could not load the Skill descriptions. Check ai-desktop skills validate.")
 
     def load_skill(self, name):
         """The body of one Skill the model asked for. None for anything outside this conversation's selection."""
@@ -96,36 +97,36 @@ class Controls:
         value = value.strip()
         name = _ALIASES.get(word, word)
         if name == "/":
-            chosen = _pick("Polecenia", tuple("%s  %s" % item for item in COMMANDS))
+            chosen = _pick("Commands", tuple("%s  %s" % item for item in COMMANDS))
             if chosen is None:
                 self._help()
                 return True
             name = COMMANDS[chosen][0]
-        if name == "/pomoc":
+        if name == "/help":
             self._help()
-        elif name == "/koniec":
+        elif name == "/exit":
             return EXIT
-        elif name == "/ustawienia":
+        elif name == "/settings":
             self._settings()
-        elif name == "/uprawnienia":
+        elif name == "/permissions":
             self._permissions()
         elif name == "/model":
             self._choice("/model", "model", value, execution.MODELS if self._provider() == "claude" else (), conversation)
-        elif name == "/sila":
-            self._choice("/sila", "effort", value, execution.efforts_for(self._provider()), conversation)
+        elif name == "/effort":
+            self._choice("/effort", "effort", value, execution.efforts_for(self._provider()), conversation)
         elif name == "/agent":
             self._agent(value, conversation)
         elif name == "/skills":
             self._skills(value, conversation)
         else:
-            print("Nieznane polecenie %s. Lista: /pomoc. Aby wysłać to jako pytanie, zacznij od spacji." % word)
+            print("Unknown command %s. List: /help. To send this as a question, start with a space." % word)
         return True
 
     @staticmethod
     def _help():
         for name, description in COMMANDS:
             print("%-14s %s" % (name, description))
-        print("Polecenia działają lokalnie, nic nie wysyłają i nie zmieniają przebiegu rozmowy. Zapis na stałe: ai-desktop agents.")
+        print("Commands work locally, send nothing and do not change the conversation so far. To save permanently: ai-desktop agents.")
 
     @staticmethod
     def _provider():
@@ -144,13 +145,13 @@ class Controls:
         return name, config.profiles[name]
 
     def _settings(self):
-        run_controls.conversation_command("/ustawienia")
+        run_controls.conversation_command("/settings")
         try:
             _, profile = self._profile()
         except (OSError, ValueError, KeyError):
             return
         chosen = profile.skills if self.skills is None else self.skills
-        print("Skills: " + (", ".join(chosen) or "brak"))
+        print("Skills: " + (", ".join(chosen) or "none"))
 
     @staticmethod
     def _permissions():
@@ -158,7 +159,7 @@ class Controls:
         try:
             snapshot = assistant_flow.capture_access()
         except assistant_flow.AccessDenied:
-            print("Nie można odczytać permissions.toml. Sprawdź ten plik.")
+            print("Could not read permissions.toml. Check this file.")
             return
         assistant_flow.describe_access(snapshot)
         for scope in snapshot.access["files"] + snapshot.access.get("write", []):
@@ -172,7 +173,7 @@ class Controls:
         try:
             conversation.rebind(execution.current())
         except (SessionError, OSError, ValueError):
-            print("Zmiana działa w tej rozmowie, ale nie udało się jej zapisać przy zapisanej rozmowie.")
+            print("The change works in this conversation, but could not be stored with the saved conversation.")
 
     @staticmethod
     def _active():
@@ -186,14 +187,14 @@ class Controls:
             present = None
         if not value and options:
             options = tuple(options)
-            chosen = _pick("%s · teraz: %s" % (command, present), options,
+            chosen = _pick("%s · now: %s" % (command, present), options,
                            default=options.index(present) if present in options else 0)
             if chosen is None:
                 run_controls.conversation_command(command)
                 return
             value = options[chosen]
         if value == present:
-            print("Bez zmian: %s to już %s." % (command, value))
+            print("No change: %s is already %s." % (command, value))
             return
         before = execution.current()
         run_controls.conversation_command((command + " " + value).strip())
@@ -213,7 +214,7 @@ class Controls:
                 present = self._profile()[0]
             except (OSError, ValueError, KeyError):
                 present = None
-            chosen = _pick("/agent · teraz: %s" % present, names,
+            chosen = _pick("/agent · now: %s" % present, names,
                            default=names.index(present) if present in names else 0) if names else None
             if chosen is None:
                 run_controls.conversation_command("/agent")
@@ -221,7 +222,7 @@ class Controls:
             value = names[chosen]
         try:
             if value == self._profile()[0]:
-                print("Bez zmian: /agent to już %s." % value)
+                print("No change: /agent is already %s." % value)
                 return
         except (OSError, ValueError, KeyError):
             pass
@@ -238,19 +239,19 @@ class Controls:
             name, profile = self._profile()
             available = tuple(skills.names())
         except (OSError, ValueError, KeyError):
-            print("Nie można odczytać ustawień agenta. Sprawdź ai-desktop agents list.")
+            print("Could not read the agent settings. Check ai-desktop agents list.")
             return
         chosen = list(profile.skills if self.skills is None else self.skills)
         if value:
             if value not in available:
-                print("Nie ma Skilla %s. Dostępne: %s" % (value, ", ".join(available)))
+                print("There is no Skill %s. Available: %s" % (value, ", ".join(available)))
                 return
             chosen = [item for item in chosen if item != value] if value in chosen else chosen + [value]
         else:
             result = self._skill_menu(available, chosen)
             if result is None:
-                print("Skills: " + (", ".join(chosen) or "brak") + " · dostępne: " + ", ".join(available))
-                print("Przełącz jeden: /skills NAZWA")
+                print("Skills: " + (", ".join(chosen) or "none") + " · available: " + ", ".join(available))
+                print("Switch one: /skills NAME")
                 return
             chosen = result
         selected = dict(execution.current() or profiles.resolve(profile=name))
@@ -258,11 +259,11 @@ class Controls:
             selected["instructions"] = profiles.catalog_for(replace(profile, skills=tuple(chosen)))
             execution.select(selected)
         except (profiles.ProfileError, OSError, ValueError):
-            print("Nie zmieniono Skilli: nie można ich wczytać albo razem przekraczają %d KiB."
+            print("Skills not changed: they could not be loaded, or together they are over %d KiB."
                   % (profiles.MAX_EXECUTION_INSTRUCTIONS // 1024))
             return
         self.skills = tuple(chosen)
-        print("Skills: " + (", ".join(chosen) or "brak") + " (ta rozmowa; na stałe: ai-desktop agents).")
+        print("Skills: " + (", ".join(chosen) or "none") + " (this conversation; permanently: ai-desktop agents).")
         self._rebind(conversation)
 
     @staticmethod
@@ -284,7 +285,7 @@ class Controls:
             rows.append(_APPLY)
             local = {index - start for index in marks if start <= index < start + len(names)}
             try:
-                answer = choose("Skills · spacja zaznacza · wybrane: %d" % len(marks), rows,
+                answer = choose("Skills · Space ticks · selected: %d" % len(marks), rows,
                                 default=apply if position is None else position, marks=local, markable=len(names))
             except MenuInputError:
                 return None

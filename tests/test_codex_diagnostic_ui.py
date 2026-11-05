@@ -39,7 +39,7 @@ class CodexDiagnosticUiTests(unittest.TestCase):
                 patch.object(ask_cli, "send_once", side_effect=sender) as send, \
                 patch("subprocess.run") as run, patch("subprocess.Popen") as spawn, \
                 patch("socket.socket") as socket:
-            result = ask_cli.main.__wrapped__(arguments, reader=lambda prompt: prompts.append(prompt) or "t")
+            result = ask_cli.main.__wrapped__(arguments, reader=lambda prompt: prompts.append(prompt) or "y")
         self.assertEqual(result, 2)
         send.assert_called_once()
         self.assertEqual(len(prompts), 1)
@@ -53,20 +53,20 @@ class CodexDiagnosticUiTests(unittest.TestCase):
             with self.subTest(verbose=verbose):
                 text, sent = self.ask_failure(AnalysisDenied("client", diagnostic="codex-rpc-thread"), verbose=verbose)
                 self.assertEqual(sent["execution"]["provider"], "codex")
-                self.assertIn("Codex nie rozpoczął rozmowy.", text)
+                self.assertIn("Codex did not start the conversation.", text)
                 self.assertEqual("check=codex-rpc-thread" in text, verbose)
                 self.assertEqual("ANALYSIS: REFUSED reason=client" in text, verbose)
                 self.assertNotIn(SECRET, text)
-                self.assertEqual(text.count("Codex nie rozpoczął rozmowy."), 1)
+                self.assertEqual(text.count("Codex did not start the conversation."), 1)
 
     def test_failure_hint_keeps_provider_of_exact_gate_after_ambient_change(self):
         text, sent = self.ask_failure(AnalysisDenied("client", diagnostic="codex-rpc-turn"), change_context=True)
         self.assertEqual(sent["execution"]["provider"], "codex")
-        self.assertIn("Codex nie przyjął pytania do analizy.", text)
+        self.assertIn("Codex did not accept the question.", text)
         self.assertNotIn("check=", text)
 
     def test_raw_or_mismatched_diagnostics_never_get_a_specific_hint(self):
-        fallback = "Stały komunikat aplikacji."
+        fallback = "Fixed application message."
         for diagnostic, reason in ((SECRET, "client"), ({"message": SECRET}, "client"),
                                    ("codex-http-forbidden", "client"), ("codex-launch", "network")):
             with self.subTest(diagnostic=diagnostic), execution.using(selected()):
@@ -78,12 +78,12 @@ class CodexDiagnosticUiTests(unittest.TestCase):
         self.assertNotIn("check=", text)
 
     def test_non_codex_request_never_uses_codex_specific_hint(self):
-        fallback = "Stały komunikat Claude."
+        fallback = "Fixed Claude message."
         with execution.using(selected("claude")):
             self.assertEqual(run_controls.failure_hint("client", fallback, diagnostic="codex-launch"), fallback)
         text, sent = self.ask_failure(AnalysisDenied("client", diagnostic="codex-rpc-thread"), provider="claude")
         self.assertEqual(sent["execution"]["provider"], "claude")
-        self.assertNotIn("Codex nie rozpoczął rozmowy.", text)
+        self.assertNotIn("Codex did not start the conversation.", text)
         self.assertNotIn("check=", text)
 
     def test_web_check_remains_visible_without_verbose(self):

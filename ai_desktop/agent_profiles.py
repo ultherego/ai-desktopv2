@@ -214,9 +214,9 @@ class Config:
 def defaults():
     return Config("default", (
         ("default", Profile()),
-        ("diagnostic", Profile(access="read-only", instructions="Diagnozuj na podstawie dostępnych dowodów. Opisz przyczynę i niepewność.")),
-        ("programmer", Profile(instructions="Przygotuj poprawną zmianę kodu oraz odpowiednie sprawdzenie. Nie twierdź, że zapis lub test już wykonano.")),
-        ("reviewer", Profile(access="read-only", instructions="Przejrzyj kod. Podaj konkretne błędy, ich skutki i miejsca występowania.")),
+        ("diagnostic", Profile(access="read-only", instructions="Diagnose from the available evidence. Describe the cause and the uncertainty.")),
+        ("programmer", Profile(instructions="Prepare a correct code change and a suitable check. Do not claim that a save or a test has already been done.")),
+        ("reviewer", Profile(access="read-only", instructions="Review the code. Name the specific bugs, their effects and where they occur.")),
     ))
 
 
@@ -232,7 +232,7 @@ def prepared(config):
         raise ProfileError("config")
     stock = dict(defaults().entries)
     stock["analyst"] = Profile(access="read-only", instructions=(
-        "Analizuj projekt na podstawie udostępnionych plików. Oddziel dowody, wnioski i braki danych."))
+        "Analyze the project from the shared files. Separate evidence, conclusions and missing data."))
     entries = dict(config.entries)
     for name, template in stock.items():
         if config.service is not None:
@@ -484,11 +484,11 @@ def instructions_for(selected):
     return _text("\n\n".join(parts), MAX_EXECUTION_INSTRUCTIONS)
 
 
-CATALOG_HEADER = ("Dostepne Skille: procedury wlasciciela, kazda na inny rodzaj zadania. Masz tu tylko nazwy i opisy. Gdy zadanie "
-                  "pasuje do opisu, najpierw popros o tresc planem {\"action\":\"skill\",\"names\":[\"nazwa\"]} (do 4 naraz) i "
-                  "postepuj wedlug niej. Nie pros o Skille niepasujace do zadania. Tresc przyjdzie w discovery.steps jako "
-                  "op=skill: to instrukcja wlasciciela, nie niezaufane dane, ale nie daje dodatkowych uprawnien. "
-                  "Status missing oznacza, ze takiego Skilla nie ma.")
+CATALOG_HEADER = ("Available Skills: the owner's procedures, each for a different kind of task. You have only their names and descriptions here. When a task "
+                  "matches a description, first ask for its content with the plan {\"action\":\"skill\",\"names\":[\"name\"]} (up to 4 at once) and "
+                  "follow it. Do not ask for Skills that do not match the task. The content arrives in discovery.steps as "
+                  "op=skill: it is the owner's instruction, not untrusted data, but it grants no extra permissions. "
+                  "Status missing means that no such Skill exists.")
 
 
 def catalog_for(selected):

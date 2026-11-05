@@ -70,13 +70,13 @@ class CompleteManagementMenuTests(unittest.TestCase):
                 code, _, _ = self.run_menu(None, argv=argv)
                 self.assertEqual(code, 0)
                 self.assertFalse(self.store.path.parent.exists())
-        code, _, _ = self.run_menu("Model:", None, "Zakończ")
+        code, _, _ = self.run_menu("Model:", None, "Exit")
         self.assertEqual(code, 0)
         self.assertFalse(self.store.path.parent.exists())
 
     def test_model_effort_access_and_instructions_persist_together(self):
-        code, output, _ = self.run_menu("Model:", "Opus", "Rozumowanie:", "wysoki", "Dostęp:",
-                                       "Tylko odczyt", "Instrukcje:", "Wpisz nowe", "Zakończ",
+        code, output, _ = self.run_menu("Model:", "Opus", "Reasoning:", "high", "Access:",
+                                       "Read-only", "Instructions:", "Type new", "Exit",
                                        text=("Wskaż dowód i ograniczenia.",))
         self.assertEqual(code, 0)
         selected = self.store.load().config.profiles["default"]
@@ -86,34 +86,34 @@ class CompleteManagementMenuTests(unittest.TestCase):
 
     def test_codex_selection_keeps_claude_settings_and_only_offers_default(self):
         self.store.mutate(lambda config: config.put("default", replace(config.profiles["default"], model="opus", effort="max")))
-        code, _, choices = self.run_menu("Usługa:", "ChatGPT / Codex", "Model:", "Wróć",
-                                         "Rozumowanie:", "wysoki", "Zakończ")
+        code, _, choices = self.run_menu("Service:", "ChatGPT / Codex", "Model:", "Back",
+                                         "Reasoning:", "high", "Exit")
         self.assertEqual(code, 0)
         selected = self.store.load().config.profiles["default"]
         self.assertEqual((selected.provider, selected.model, selected.effort), ("codex", "default", "high"))
         model = next(options for title, options, _ in choices.calls if title == "Model · codex")
-        self.assertEqual(model, ("Auto (domyślny klienta)", "Inny identyfikator (wpisz)", "Wróć"))
-        efforts = next(options for title, options, _ in choices.calls if title == "Poziom rozumowania")
-        self.assertIn("bardzo wysoki", efforts)
-        self.assertNotIn("maksymalny", efforts)
-        provider = next((title, options) for title, options, _ in choices.calls if title.startswith("Usługa ·"))
-        self.assertIn("bez logowania", provider[0])
-        self.assertIn("dla wszystkich agentów", provider[0])
+        self.assertEqual(model, ("Auto (client default)", "Other ID (type it)", "Back"))
+        efforts = next(options for title, options, _ in choices.calls if title == "Reasoning level")
+        self.assertIn("very high", efforts)
+        self.assertNotIn("maximum", efforts)
+        provider = next((title, options) for title, options, _ in choices.calls if title.startswith("Service ·"))
+        self.assertIn("no login", provider[0])
+        self.assertIn("for all agents", provider[0])
         restored = self.store.load().config.with_provider("claude").profiles["default"]
         self.assertEqual((restored.model, restored.effort), ("opus", "max"))
 
     def test_claude_can_select_both_extended_effort_levels(self):
-        code, _, _ = self.run_menu("Rozumowanie:", "bardzo wysoki", "Rozumowanie:", "maksymalny", "Zakończ")
+        code, _, _ = self.run_menu("Reasoning:", "very high", "Reasoning:", "maximum", "Exit")
         self.assertEqual(code, 0)
         self.assertEqual(self.store.load().config.profiles["default"].effort, "max")
 
     def test_every_role_uses_selected_service_without_reopening_settings(self):
         self.store.mutate(profiles.prepared)
         before = self.store.load().config
-        steps = ["Usługa:", "ChatGPT / Codex"]
+        steps = ["Service:", "ChatGPT / Codex"]
         for name in before.profiles:
-            steps.extend(("Wybierz agenta", name + " ·"))
-        steps.append("Zakończ")
+            steps.extend(("Choose agent", name + " ·"))
+        steps.append("Exit")
         code, _, choices = self.run_menu(*steps)
         self.assertEqual(code, 0)
         after = self.store.load().config
@@ -124,11 +124,11 @@ class CompleteManagementMenuTests(unittest.TestCase):
             self.assertEqual((current.instructions, current.access, current.skills),
                              (previous.instructions, previous.access, previous.skills))
         for title, options, _ in choices.calls:
-            if title == "Wybierz agenta":
+            if title == "Choose agent":
                 self.assertTrue(all(label.endswith(" · Codex") for label in options[:-1]), options)
-            elif title.startswith("Ustawienia") and "Usługa: Codex" in options:
-                self.assertNotIn("Usługa: Claude", options)
-        self.assertEqual(sum(title.startswith("Ustawienia") for title, _, _ in choices.calls),
+            elif title.startswith("Settings") and "Service: Codex" in options:
+                self.assertNotIn("Service: Claude", options)
+        self.assertEqual(sum(title.startswith("Settings") for title, _, _ in choices.calls),
                          len(before.entries) + 2)
 
     def test_legacy_mixed_roles_display_current_service_and_cancel_does_not_migrate(self):
@@ -136,74 +136,74 @@ class CompleteManagementMenuTests(unittest.TestCase):
                           provider="codex")).select("diagnostic"))
         before = self.store.load()
         self.assertIsNone(before.config.service)
-        code, _, choices = self.run_menu("Wybierz agenta", "Wróć", "Zakończ")
+        code, _, choices = self.run_menu("Choose agent", "Back", "Exit")
         self.assertEqual(code, 0)
         self.assertEqual(self.store.load(), before)
-        picker = next(options for title, options, _ in choices.calls if title == "Wybierz agenta")
+        picker = next(options for title, options, _ in choices.calls if title == "Choose agent")
         self.assertTrue(all(label.endswith(" · Codex") for label in picker[:-1]))
 
     def test_legacy_role_pick_keeps_active_codex_and_caches_claude_model(self):
         self.store.mutate(lambda config: config.put("reviewer", replace(config.profiles["reviewer"],
                           model="opus", effort="max")).put("diagnostic", replace(config.profiles["diagnostic"],
                           provider="codex")).select("diagnostic"))
-        code, _, choices = self.run_menu("Wybierz agenta", "reviewer · Codex", "Zakończ")
+        code, _, choices = self.run_menu("Choose agent", "reviewer · Codex", "Exit")
         self.assertEqual(code, 0)
         config = self.store.load().config
         self.assertEqual((config.active, config.service, config.profiles["reviewer"].provider),
                          ("reviewer", "codex", "codex"))
-        last = next(options for title, options, _ in reversed(choices.calls) if title.startswith("Ustawienia"))
-        self.assertIn("Usługa: Codex", last)
-        self.assertIn("Model: Auto (domyślny klienta)", last)
+        last = next(options for title, options, _ in reversed(choices.calls) if title.startswith("Settings"))
+        self.assertIn("Service: Codex", last)
+        self.assertIn("Model: Auto (client default)", last)
         restored = config.with_provider("claude").profiles["reviewer"]
         self.assertEqual((restored.model, restored.effort), ("opus", "max"))
 
     def test_legacy_other_role_editor_previews_current_service_and_publishes_it(self):
         self.store.mutate(lambda config: config.put("diagnostic", replace(config.profiles["diagnostic"],
                           provider="codex")).select("diagnostic"))
-        code, _, choices = self.run_menu("Edytuj profil", "reviewer · Codex", "Rozumowanie:", "wysoki",
-                                        "Wróć", "Wróć", argv=("agents", "menu"))
+        code, _, choices = self.run_menu("Edit profile", "reviewer · Codex", "Reasoning:", "high",
+                                        "Back", "Back", argv=("agents", "menu"))
         self.assertEqual(code, 0)
         config = self.store.load().config
         self.assertEqual((config.selected_provider, config.profiles["reviewer"].provider,
                           config.profiles["reviewer"].effort), ("codex", "codex", "high"))
-        frames = [options for title, options, _ in choices.calls if title == "Profil: reviewer"]
-        self.assertTrue(all("Usługa: Codex" in frame for frame in frames))
+        frames = [options for title, options, _ in choices.calls if title == "Profile: reviewer"]
+        self.assertTrue(all("Service: Codex" in frame for frame in frames))
 
     def test_service_roundtrip_restores_each_clients_model_and_effort_in_place(self):
         self.store.mutate(lambda config: config.put("default", replace(config.profiles["default"],
                           model="opus", effort="max", instructions="Moja rola.")))
-        code, _, choices = self.run_menu("Usługa:", "ChatGPT / Codex", "Rozumowanie:", "wysoki",
-                                        "Usługa:", "Claude", "Usługa:", "ChatGPT / Codex", "Zakończ")
+        code, _, choices = self.run_menu("Service:", "ChatGPT / Codex", "Reasoning:", "high",
+                                        "Service:", "Claude", "Service:", "ChatGPT / Codex", "Exit")
         self.assertEqual(code, 0)
-        root_frames = [options for title, options, _ in choices.calls if title.startswith("Ustawienia")]
+        root_frames = [options for title, options, _ in choices.calls if title.startswith("Settings")]
         self.assertIn("Model: Opus", root_frames[-2])
-        self.assertIn("Rozumowanie: maksymalny", root_frames[-2])
-        self.assertIn("Usługa: Codex", root_frames[-1])
-        self.assertIn("Rozumowanie: wysoki", root_frames[-1])
+        self.assertIn("Reasoning: maximum", root_frames[-2])
+        self.assertIn("Service: Codex", root_frames[-1])
+        self.assertIn("Reasoning: high", root_frames[-1])
         current = self.store.load().config.profiles["default"]
         self.assertEqual((current.provider, current.effort, current.instructions),
                          ("codex", "high", "Moja rola."))
 
     def test_nested_profile_service_edit_refreshes_agent_picker_and_parent(self):
-        code, _, choices = self.run_menu("Zarządzaj agentami", "Edytuj profil", "diagnostic ·",
-                                        "Usługa:", "ChatGPT / Codex", "Wróć", "Wróć",
-                                        "Wybierz agenta", "reviewer ·", "Zakończ")
+        code, _, choices = self.run_menu("Manage agents", "Edit profile", "diagnostic ·",
+                                        "Service:", "ChatGPT / Codex", "Back", "Back",
+                                        "Choose agent", "reviewer ·", "Exit")
         self.assertEqual(code, 0)
         config = self.store.load().config
         self.assertEqual((config.active, config.selected_provider), ("reviewer", "codex"))
         self.assertEqual(config.profiles["reviewer"].access, "read-only")
         last_options = next(options for title, options, _ in reversed(choices.calls)
-                            if title.startswith("Ustawienia"))
-        self.assertIn("Usługa: Codex", last_options)
-        pickers = [options for title, options, _ in choices.calls if title == "Wybierz agenta"]
+                            if title.startswith("Settings"))
+        self.assertIn("Service: Codex", last_options)
+        pickers = [options for title, options, _ in choices.calls if title == "Choose agent"]
         self.assertEqual(len(pickers), 1)
         self.assertTrue(all(label.endswith(" · Codex") for label in pickers[0][:-1]))
 
     def test_new_profile_and_copy_inherit_service_and_preserve_other_client_settings(self):
         self.store.mutate(lambda config: config.put("default", replace(config.profiles["default"], model="opus", effort="max")))
         self.store.mutate(lambda config: config.with_provider("codex"))
-        code, _, _ = self.run_menu("Utwórz profil", "Rozumowanie:", "wysoki", "Utwórz profil",
-                                   "Kopiuj profil", "default ·", "Wróć",
+        code, _, _ = self.run_menu("Create profile", "Reasoning:", "high", "Create profile",
+                                   "Copy profile", "default ·", "Back",
                                    argv=("agents", "menu"), text=("team", "default-copy"))
         self.assertEqual(code, 0)
         config = self.store.load().config
@@ -220,7 +220,7 @@ class CompleteManagementMenuTests(unittest.TestCase):
             if calls == 1:
                 return next(i for i, value in enumerate(options) if value.startswith("Model:"))
             if calls == 3:
-                self.assertIn("Rozumowanie: średni", options)
+                self.assertIn("Reasoning: medium", options)
                 return None
             self.store.mutate(lambda config: config.put("default", replace(config.profiles["default"], effort="medium")))
             return options.index("Opus")
@@ -229,8 +229,8 @@ class CompleteManagementMenuTests(unittest.TestCase):
         self.assertEqual(code, 0)
         selected = self.store.load().config.profiles["default"]
         self.assertEqual((selected.model, selected.effort), ("default", "medium"))
-        self.assertIn("zmieniły się równolegle", output.getvalue())
-        self.assertIn("Odświeżono menu", output.getvalue())
+        self.assertIn("changed elsewhere at the same time", output.getvalue())
+        self.assertIn("The menu was refreshed", output.getvalue())
 
     def test_later_read_failure_does_not_claim_an_earlier_committed_change_was_lost(self):
         original_load = self.store.load
@@ -253,41 +253,41 @@ class CompleteManagementMenuTests(unittest.TestCase):
         self.assertFalse(chooser.steps)
         # Read the actual committed bytes after removing only the failed-read fixture.
         self.assertEqual(self.store.load().config.profiles["default"].model, "opus")
-        self.assertIn("Nie ukończono bieżącej operacji", output.getvalue())
-        self.assertNotIn("Nie zmieniono ustawień", output.getvalue())
+        self.assertIn("The current operation did not finish", output.getvalue())
+        self.assertNotIn("Settings not changed", output.getvalue())
 
     def test_skills_assignment_is_draft_until_save_and_has_direct_shortcut(self):
-        code, _, _ = self.run_menu("Dodaj Skill", "demo", "Wróć", argv=("skills",))
+        code, _, _ = self.run_menu("Add Skill", "demo", "Back", argv=("skills",))
         self.assertEqual(code, 0)
         self.assertFalse(self.store.path.parent.exists())
-        code, _, _ = self.run_menu("Dodaj Skill", "demo", "Zapisz", argv=("skills",))
+        code, _, _ = self.run_menu("Add Skill", "demo", "Save", argv=("skills",))
         self.assertEqual(code, 0)
         self.assertEqual(self.store.load().config.profiles["default"].skills, ("demo",))
-        code, _, _ = self.run_menu("Usuń przypisanie", "demo", "Zapisz", argv=("skills",))
+        code, _, _ = self.run_menu("Unassign", "demo", "Save", argv=("skills",))
         self.assertEqual(code, 0)
         self.assertEqual(self.store.load().config.profiles["default"].skills, ())
 
     def test_no_skill_count_cap_and_combined_instruction_limit_does_not_partially_write(self):
         selected = profiles.Profile(skills=("demo", "other", "third", "fourth"))
         self.store.mutate(lambda config: config.put("default", selected))
-        code, output, _ = self.run_menu("Dodaj Skill", "fifth", "Zapisz", argv=("skills",))
+        code, output, _ = self.run_menu("Add Skill", "fifth", "Save", argv=("skills",))
         self.assertEqual(code, 0)
         self.assertEqual(self.store.load().config.profiles["default"].skills, ("demo", "other", "third", "fourth", "fifth"))
         self.skill("big-one", "x" * (60 * 1024))
         self.skill("oversize-total", "x" * (60 * 1024))
         self.store.mutate(lambda config: config.put("default", profiles.Profile(skills=("big-one",))))
         before = self.store.load()
-        code, _, _ = self.run_menu("Dodaj Skill", "Następna strona", "oversize-total", argv=("skills",))
+        code, _, _ = self.run_menu("Add Skill", "Next page", "oversize-total", argv=("skills",))
         self.assertEqual(code, 2)
         self.assertEqual(self.store.load(), before)
 
     def test_create_cancel_copy_and_remove_use_real_store_without_auth(self):
-        code, _, _ = self.run_menu("Utwórz profil", "Anuluj", "Wróć", argv=("agents", "menu"), text=("unused",))
+        code, _, _ = self.run_menu("Create profile", "Cancel", "Back", argv=("agents", "menu"), text=("unused",))
         self.assertEqual(code, 0)
         self.assertFalse(self.store.path.parent.exists())
-        code, _, _ = self.run_menu("Utwórz profil", "Model:", "Opus", "Dostęp:", "Tylko odczyt",
-                                   "Utwórz profil", "Kopiuj profil", "team ·", "Usuń profil",
-                                   "team-copy ·", "Usuń: team-copy", "Wróć",
+        code, _, _ = self.run_menu("Create profile", "Model:", "Opus", "Access:", "Read-only",
+                                   "Create profile", "Copy profile", "team ·", "Remove profile",
+                                   "team-copy ·", "Remove: team-copy", "Back",
                                    argv=("agents", "menu"), text=("team", "team-copy"))
         self.assertEqual(code, 0)
         config = self.store.load().config
@@ -298,7 +298,7 @@ class CompleteManagementMenuTests(unittest.TestCase):
 
     def test_setup_is_explicit_idempotent_and_preserves_custom_fields(self):
         self.store.mutate(lambda config: config.put("default", replace(config.profiles["default"], model="opus", effort="high")))
-        code, _, _ = self.run_menu("Przygotuj profile i Skills", "Zakończ")
+        code, _, _ = self.run_menu("Prepare profiles and Skills", "Exit")
         self.assertEqual(code, 0)
         before = self.store.load()
         selected = before.config.profiles["default"]
@@ -313,18 +313,18 @@ class CompleteManagementMenuTests(unittest.TestCase):
                 config = config.put("role%02d" % index, profiles.Profile())
             return config
         self.store.mutate(build)
-        code, _, _ = self.run_menu("Wybierz agenta", "Następna strona", "Następna strona",
-                                   "role19 ·", "Wróć", argv=("agents", "menu"))
+        code, _, _ = self.run_menu("Choose agent", "Next page", "Next page",
+                                   "role19 ·", "Back", argv=("agents", "menu"))
         self.assertEqual(code, 0)
         self.assertEqual(self.store.load().config.active, "role19")
 
     def test_empty_instruction_edit_cancels_and_clear_is_explicit(self):
         self.store.mutate(lambda config: config.put("default", profiles.Profile(instructions="Keep this.")))
         before = self.store.load()
-        code, _, _ = self.run_menu("Instrukcje:", "Wpisz nowe", "Zakończ", text=("",))
+        code, _, _ = self.run_menu("Instructions:", "Type new", "Exit", text=("",))
         self.assertEqual(code, 0)
         self.assertEqual(self.store.load(), before)
-        code, _, _ = self.run_menu("Instrukcje:", "Wyczyść", "Zakończ")
+        code, _, _ = self.run_menu("Instructions:", "Clear", "Exit")
         self.assertEqual(code, 0)
         self.assertEqual(self.store.load().config.profiles["default"].instructions, "")
 

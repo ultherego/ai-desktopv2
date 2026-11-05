@@ -42,15 +42,15 @@ def reject_question():
                     break
                 output.extend(raw)
             if PROMPTS["ask-transfer"].encode() in output and not answered:
-                os.write(master, b"nie\n")
+                os.write(master, b"no\n")
                 answered = True
             if process.poll() is not None and not select.select([master], [], [], .1)[0]:
                 break
         process.wait(timeout=2)
         if (process.returncode != 2 or not answered
-                or "Anulowano. Pytanie nie zostało wysłane.".encode() not in output
-                or b"Uprawnienia administratora" in output
-                or "Czekam na odpowiedź".encode() in output):
+                or b"Cancelled. The question was not sent." not in output
+                or b"Administrator permissions" in output
+                or b"Waiting for " in output):
             raise ValueError("ask-refusal")
         print("HOST ASK CONSENT: PASS no=REFUSED sudo=unused upstream=unused")
     finally:

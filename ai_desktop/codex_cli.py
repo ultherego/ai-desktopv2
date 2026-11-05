@@ -5,16 +5,16 @@ import subprocess
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(prog="ai-desktop codex", description="Codex z subskrypcją ChatGPT")
+    parser = argparse.ArgumentParser(prog="ai-desktop codex", description="Codex with a ChatGPT subscription")
     commands = parser.add_subparsers(dest="action")
-    commands.add_parser("status", help="Gotowość offline, bez odczytu OAuth")
-    login = commands.add_parser("login", help="Połącz osobny profil z subskrypcją ChatGPT")
-    login.add_argument("--allow-chatgpt-login", action="store_true", help="Jawna zgoda na logowanie subskrypcji")
-    logout = commands.add_parser("logout", help="Odłącz profil i odwołaj poświadczenie integracji")
-    logout.add_argument("--allow-chatgpt-logout", action="store_true", help="Jawna zgoda na odłączenie profilu")
+    commands.add_parser("status", help="Offline readiness, without reading OAuth")
+    login = commands.add_parser("login", help="Connect a separate profile to a ChatGPT subscription")
+    login.add_argument("--allow-chatgpt-login", action="store_true", help="Explicit consent to log in with the subscription")
+    logout = commands.add_parser("logout", help="Disconnect the profile and revoke the integration credential")
+    logout.add_argument("--allow-chatgpt-logout", action="store_true", help="Explicit consent to disconnect the profile")
     for command in (login, logout):
         command.add_argument("--v", "--verbose", "-v", "--details", dest="details", action="store_true",
-                             help="Pokaż diagnostykę jednostki logowania")
+                             help="Show diagnostics of the login unit")
     args = parser.parse_args(argv)
     from .analysis_contract import AnalysisDenied
     from .analysis_sandbox import INSTALL, trusted_file
@@ -22,18 +22,18 @@ def main(argv=None):
         if args.action in (None, "status"):
             from .codex_runtime import runtime_ready, CLIENT_VERSION as CODEX_VERSION
             runtime_ready()
-            print("Codex %s: pliki gotowe; konto i limity niesprawdzone offline." % CODEX_VERSION)
-            print("Logowanie: ai-desktop login (wybierz ChatGPT / Codex)")
+            print("Codex %s: files ready; account and limits are not checked offline." % CODEX_VERSION)
+            print("Log in: ai-desktop login (choose ChatGPT / Codex)")
             return 0
         allowed = getattr(args, "allow_chatgpt_" + args.action, False)
         if not allowed or not os.isatty(0) or not os.isatty(1):
-            print("Wymagany terminal i jawna flaga --allow-chatgpt-%s." % args.action)
+            print("This needs a terminal and the explicit flag --allow-chatgpt-%s." % args.action)
             return 2
         if os.geteuid() == 0:
             from .codex_admin import main as admin
             result = admin(args.action, allow=True, **({"details": True} if args.details else {}))
             if result == 0 and args.action == "login":
-                print("Zalogowano: Codex. Usługę wybierz w ustawieniach zwykłego użytkownika.")
+                print("Logged in: Codex. Choose the service in your regular user's settings.")
             return result
         if os.getuid() != os.geteuid():
             raise AnalysisDenied("identity")
@@ -50,5 +50,5 @@ def main(argv=None):
             return complete_login("codex", authenticate)
         return authenticate()
     except (AnalysisDenied, OSError, ValueError, subprocess.SubprocessError, KeyboardInterrupt):
-        print("Codex nie jest gotowy. Sprawdź klienta, instalację i uprawnienia; niczego nie ponawiam automatycznie.")
+        print("Codex is not ready. Check the client, the installation and permissions; nothing is retried automatically.")
         return 2

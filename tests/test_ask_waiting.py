@@ -49,7 +49,7 @@ class AskWaitingTests(unittest.TestCase):
 
         with patch.object(ask, "WaitingIndicator", Indicator):
             result = existing.AskCliTests().run_ui(session=session, send=send,
-                answers=("Pytanie", "nie" if decline else "tak"),
+                answers=("Pytanie", "no" if decline else "yes"),
                 access=existing.WEB_ACCESS if web else None,
                 sources=existing.WEB_SOURCES if web else None)
         return result, events

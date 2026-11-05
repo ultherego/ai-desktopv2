@@ -59,7 +59,7 @@ class WebUiInvalidationTests(unittest.TestCase):
     def test_preinit_notice_preserves_exact_verified_answer(self):
         expected = web_text(wire(events()))
         self.assertEqual(web_text(wire([notice()] + events())), expected)
-        self.assertEqual(expected, "Python [1].\n\nŹródła:\n[1] Python — `https://www.python.org/`")
+        self.assertEqual(expected, "Python [1].\n\nSources:\n[1] Python — `https://www.python.org/`")
 
     def test_notice_during_session_before_final_is_inert(self):
         expected = web_text(wire(events()))

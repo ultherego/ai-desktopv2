@@ -29,15 +29,15 @@ def recipient(text=None, *, config=execution.UNSET):
 
 
 def wait_message(*, config=execution.UNSET):
-    return "Czekam na odpowiedź od %s… Ctrl+C przerywa oczekiwanie." % recipient(config=config)
+    return "Waiting for %s… Ctrl+C stops waiting." % recipient(config=config)
 
 
 def network_hint(*, short=False):
     selected = execution.current()
     provider = selected["provider"] if selected is not None else "claude"
     key = "network." + provider + "=false"
-    return ("Uwaga: " + key + " — tylko polecenia lokalne." if short else
-            key + " w permissions.toml: wysyłka do " + recipient() + " jest zablokowana. Polecenia lokalne działają.")
+    return ("Note: " + key + " — local commands only." if short else
+            key + " in permissions.toml: sending to " + recipient() + " is blocked. Local commands still work.")
 
 
 def provider_allowed(policy):
@@ -54,27 +54,27 @@ def failure_hint(reason, fallback, *, config=execution.UNSET, diagnostic=None):
         from .analysis_diagnostics import codex_diagnostic
         code = codex_diagnostic(diagnostic, reason)
         specific = {
-            "codex-launch": "Nie udało się uruchomić klienta Codex.",
-            "codex-native-exit": "Klient Codex zakończył sesję z błędem.",
-            "codex-native-exit-2": "Klient Codex zakończył sesję z błędem (kod 2).",
-            "codex-native-io": "Przerwano komunikację z klientem Codex.",
-            "codex-input-write": "Nie udało się przekazać żądania do klienta Codex.",
-            "codex-rpc-initialize": "Nie udało się zainicjować sesji Codex.",
-            "codex-rpc-thread": "Codex nie rozpoczął rozmowy.",
-            "codex-rpc-turn": "Codex nie przyjął pytania do analizy.",
-            "codex-stream": "Odpowiedź Codex nie przeszła kontroli protokołu.",
-            "codex-turn-failed": "Codex przerwał analizę pytania.",
-            "codex-server-error": "Codex zgłosił błąd podczas analizy.",
-            "codex-model-unavailable": "Wybrany model Codex jest niedostępny.",
-            "codex-http-forbidden": "Usługa odmówiła dostępu do modelu Codex.",
+            "codex-launch": "Could not start the Codex client.",
+            "codex-native-exit": "The Codex client ended the session with an error.",
+            "codex-native-exit-2": "The Codex client ended the session with an error (code 2).",
+            "codex-native-io": "Communication with the Codex client was interrupted.",
+            "codex-input-write": "Could not pass the request to the Codex client.",
+            "codex-rpc-initialize": "Could not start a Codex session.",
+            "codex-rpc-thread": "Codex did not start the conversation.",
+            "codex-rpc-turn": "Codex did not accept the question.",
+            "codex-stream": "The Codex answer failed the protocol check.",
+            "codex-turn-failed": "Codex stopped working on the question.",
+            "codex-server-error": "Codex reported an error while working on the question.",
+            "codex-model-unavailable": "The selected Codex model is not available.",
+            "codex-http-forbidden": "The service refused access to the Codex model.",
         }
         if code in specific:
             return specific[code]
         codex = {
-            "runtime": "Brak zaufanego klienta Codex 0.166.0 lub zależności w pakiecie ai-desktop.",
-            "version": "Klient Codex nie przeszedł kontroli wersji 0.166.0.",
-            "auth-required": "Połącz konto: ai-desktop login (wybierz ChatGPT / Codex). Potem zatwierdź nowe zadanie.",
-            "auth-method": "Wymagane osobne logowanie Sign in with ChatGPT dla AI Desktop.",
+            "runtime": "The trusted Codex 0.166.0 client or its dependencies are missing from the ai-desktop package.",
+            "version": "The Codex client failed the version 0.166.0 check.",
+            "auth-required": "Connect your account: ai-desktop login (choose ChatGPT / Codex). Then approve a new task.",
+            "auth-method": "AI Desktop needs its own Sign in with ChatGPT login.",
         }
         if reason in codex:
             return codex[reason]
@@ -82,23 +82,23 @@ def failure_hint(reason, fallback, *, config=execution.UNSET, diagnostic=None):
 
 
 def add_arguments(parser, *, session=False):
-    parser.add_argument("--agent", metavar="NAZWA", help="Profil agenta zapisany w ai-desktop agents")
+    parser.add_argument("--agent", metavar="NAME", help="Agent profile saved in ai-desktop agents")
     parser.add_argument("--model", type=execution.model_argument, metavar="MODEL",
-                        help="Model dla tego uruchomienia: alias (ai-desktop settings models) albo identyfikator modelu; default = wybór klienta")
+                        help="Model for this run: an alias (ai-desktop settings models) or a model ID; default = the client's choice")
     parser.add_argument("--effort", choices=execution.EFFORTS,
-                        help="Poziom rozumowania dla tego uruchomienia")
+                        help="Reasoning level for this run")
     if session:
-        parser.add_argument("--session", metavar="new|ID", help="Jawnie zapisz rozmowę lub wznów lokalną sesję")
+        parser.add_argument("--session", metavar="new|ID", help="Explicitly save the conversation or resume a local session")
 
 
 def label(config=execution.UNSET):
     config = recipient_config(config)
     if config is None:
-        return "Claude · profil: default · model i rozumowanie: domyślne"
-    return "%s · profil: %s · model: %s · rozumowanie: %s%s" % (
+        return "Claude · profile: default · model and reasoning: default"
+    return "%s · profile: %s · model: %s · reasoning: %s%s" % (
         "Claude" if config["provider"] == "claude" else "Codex",
         config["profile"], config["model"], config["effort"],
-        " · tylko odczyt" if config["access"] == "read-only" else "")
+        " · read-only" if config["access"] == "read-only" else "")
 
 
 def require_changes():
@@ -137,7 +137,7 @@ def configured(function):
                     print(label())
                 return function(remaining, **kwargs)
         except (OSError, ValueError, TypeError, KeyError):
-            print("Niepoprawna konfiguracja agenta. Sprawdź ai-desktop settings show lub ai-desktop agents list.")
+            print("Invalid agent configuration. Check ai-desktop settings show or ai-desktop agents list.")
             return 2
     return wrapped
 
@@ -145,19 +145,19 @@ def configured(function):
 def conversation_command(line, *, saved=False):
     """Idle-only conversation controls; never called from a model response."""
     command, _, value = line.partition(" ")
-    if command not in ("/ustawienia", "/model", "/sila", "/effort", "/agent"):
+    if command not in ("/settings", "/ustawienia", "/model", "/sila", "/effort", "/agent"):
         return False
     value = value.strip()
-    if command == "/ustawienia" or not value:
+    if command in ("/settings", "/ustawienia") or not value:
         print(label())
         selected = execution.current()
         provider = selected["provider"] if selected is not None else "claude"
         models = execution.MODELS if provider == "claude" else ("default", "ID")
-        print("/model %s · /sila %s · /agent NAZWA" % (
+        print("/model %s · /effort %s · /agent NAME" % (
             "|".join(models), "|".join(execution.efforts_for(provider))))
         return True
     if saved:
-        print("Zapisana rozmowa jest związana z konfiguracją agenta. Zakończ ją i otwórz --session new z nowymi ustawieniami.")
+        print("A saved conversation is tied to its agent configuration. End it and open --session new with the new settings.")
         return True
     try:
         from .agent_profiles import resolve
@@ -169,10 +169,10 @@ def conversation_command(line, *, saved=False):
             after["model" if command == "/model" else "effort"] = value
         after = execution.validate(after)
         if after["provider"] != (before["provider"] if before is not None else "claude"):
-            print("Zmiana dostawcy wymaga nowej rozmowy z osobną zgodą na dane.")
+            print("Changing the provider needs a new conversation with separate consent for the data.")
             return True
         execution.select(after)
         print(label())
     except (ValueError, TypeError, KeyError, OSError):
-        print("Nie wybrano ustawienia. Sprawdź nazwę agenta, model lub poziom rozumowania.")
+        print("The setting was not changed. Check the agent name, model or reasoning level.")
     return True

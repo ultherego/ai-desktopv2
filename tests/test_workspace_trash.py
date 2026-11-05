@@ -124,7 +124,7 @@ class TrashTests(unittest.TestCase):
             {"path": p, "content": f["file"]["content"] if f["file"] else None, "writable": True} for p, f in before["files"].items()]}
         proposed = {"summary": "change", "files": [{"path": p, "content": "new\n"} for p in before["files"]]}
         task = TaskPlan(before, source, proposed, "text")
-        tw.apply(task, task.authorize("ZAPISZ " + task.sha256))
+        tw.apply(task, task.authorize("SAVE " + task.sha256))
         self.assertEqual(tw.status(self.ws), [(task.sha256, "applied")])
         self.assertTrue(tw.rollback(self.ws, task.sha256))
         self.assertTrue(trash.restore(self.ws, plan))                       # and the other way round

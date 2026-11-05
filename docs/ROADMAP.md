@@ -1,118 +1,119 @@
-# Plan do wersji 1.0
+# Plan for version 1.0
 
-**Cel:** uruchamiasz program, rozmawiasz zwykłym językiem, diagnozujesz system i zlecasz zmiany, a każda zmiana czeka na Twoją zgodę i da się ją cofnąć. Przebieg, który ma działać w całości:
+**Goal:** you start the program, talk in plain language, diagnose the system and ask for changes, and every change waits for your consent and can be undone. The flow that must work end to end:
 
-> przeanalizuj → ustalmy zmianę → zrób to → przetestuj → cofnij
+> analyze → let's agree on the change → do it → test it → undo
 
-Ta strona opisuje etapy i warunki ich ukończenia. Pojedyncze zadania są w [TODO.md](TODO.md), ograniczenia bieżącej wersji w [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md), a kroki wydania w [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
+This page describes the stages and the conditions for completing them. Individual tasks are in [TODO.md](TODO.md), limitations of the current version in [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md), and the release steps in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 
-## Jak liczy się ukończenie
+## How completion counts
 
-Etap jest ukończony, gdy jego warunki są spełnione dla konkretnego commita. Wynik innego commita niczego nie poświadcza. Zielone CI nie wystarcza dla zmian izolacji, uprawnień, systemu plików, sieci i logowania: te wymagają też testu na prawdziwym CachyOS lub Arch, z zapisanym numerem commita.
+A stage is complete when its conditions are met for a specific commit. The result of another commit attests nothing. Green CI is not enough for changes to isolation, permissions, the file system, network and login: these also require a test on real CachyOS or Arch, with the commit number recorded.
 
-Stan: **gotowe** (scalone), **w toku** (czeka na test lub scalenie), **do zrobienia**.
+Status: **done** (merged), **in progress** (waiting for a test or merge), **to do**.
 
-## Stan obecny
+## Current state
 
-Działa i jest scalone:
+Working and merged:
 
-- Rozmowa `ask` z jedną zgodą, 32 wymianami i pamięcią zadania, polecenia `/`, wiadomość do 128 KiB.
-- Rozpoznanie katalogów, odczyt plików i polecenia zgodne z `permissions.toml`.
-- Zapis po pokazaniu różnic, z testem na kopii, osobną zgodą i dziennikiem. Równoczesny zapis edytora nie jest nadpisywany przy zapisie.
-- Skille na żądanie w `ask`, procedury dla CachyOS i Arch.
-- Klient na osobnym koncie, w Bubblewrap, z wyjściem przez filtrujące proxy.
-- Ochrona gałęzi `main`, pięć wymaganych zadań CI, przypięte akcje.
+- `ask` conversation with one consent, 32 exchanges and task memory, `/` commands, messages up to 128 KiB.
+- Directory discovery, file reads and commands according to `permissions.toml`.
+- Writing after showing the diff, with a test on a copy, separate consent and a journal. A concurrent editor save is not overwritten on write.
+- Skills on demand in `ask`, procedures for CachyOS and Arch.
+- Client on a separate account, in Bubblewrap, with egress through a filtering proxy.
+- Protection of the `main` branch, five required CI jobs, pinned actions.
+- The interface, settings, docs and Skills are in English, and Claude answers in the language of the question.
 
-## Etap 1: bez utraty danych
+## Stage 1: no data loss
 
-| Zadanie | Stan |
+| Task | Status |
 |---|---|
-| Cofanie zmiany nie nadpisuje ani nie usuwa nowszego zapisu edytora, zarówno przy edycji, jak i przy nowym pliku | gotowe |
-| Suma SHA-256 klienta sprawdzana przy budowie pakietu | gotowe |
-| Zgoda na rozmowę obejmuje cały `permissions.toml` | gotowe |
-| Długie polecenie zmiany nie jest odrzucane na etapie edycji (`ask` przyjmuje 128 KiB, edycja 2 KiB) | gotowe |
-| Słowo zaczynające się od `/` da się wysłać jako pytanie, zgodnie z komunikatem programu | gotowe |
-| 129. usunięcie do kosza jest odrzucane przed wykonaniem | gotowe |
-| Edycja pliku z BOM i końcami linii Windows zachowuje jego format, a cofnięcie przywraca te same bajty | gotowe |
+| Undoing a change does not overwrite or delete a newer editor save, both for an edit and for a new file | done |
+| SHA-256 sum of the client checked when the package is built | done |
+| Consent for a conversation covers the whole `permissions.toml` | done |
+| A long change instruction is not refused at the edit stage (`ask` accepts 128 KiB, the edit stage 2 KiB) | done |
+| A word starting with `/` can be sent as a question, as the program's message says | done |
+| The 129th deletion to the trash is refused before it runs | done |
+| Editing a file with BOM and Windows line endings keeps its format, and undo restores the same bytes | done |
 
-**Ukończone, gdy:** testy odtwarzają równoczesny zapis przy cofaniu obu rodzajów zmian, a wersja edytora zostaje na miejscu.
+**Complete when:** tests reproduce a concurrent save while undoing both kinds of change, and the editor's version stays in place.
 
-## Etap 2: ciągłość zadania
+## Stage 2: task continuity
 
-| Zadanie | Stan |
+| Task | Status |
 |---|---|
-| Końcowa odpowiedź po odczycie pliku dostaje wyniki poleceń i wczytane Skille | gotowe |
-| Etap edycji dostaje ustalenia z rozmowy, pamięć zadania, wyniki rozpoznania i Skille | gotowe |
-| To samo w `project` | do zrobienia |
-| Skill wczytany w rozmowie jest dostępny w kolejnych pytaniach bez dodatkowego wywołania modelu | do zrobienia |
-| Skille na żądanie także w `material`, `project` i `task` | do zrobienia |
-| Skill działa też bez `permissions.toml`, gdy pytanie jest ogólne | do zrobienia |
-| Procedury 21 Skilli: interpretacja odczytów, warunki zastosowania, zakończenie diagnozy i weryfikacja zmiany | w toku |
+| The final answer after a file read gets the command results and loaded Skills | done |
+| The edit stage gets what was settled in the conversation, the task memory, discovery results and Skills | done |
+| The same in `project` | to do |
+| A Skill loaded in a conversation is available in later questions without an extra model call | to do |
+| Skills on demand also in `material`, `project` and `task` | to do |
+| A Skill also works without `permissions.toml` when the question is general | to do |
+| Procedures of the 21 Skills: reading interpretation, conditions for use, ending a diagnosis and verifying a change | in progress |
 
-**Ukończone, gdy:** przy „ustalmy separator CSV, zrób to” żądanie edycji zawiera ustaloną wartość, co potwierdza test na rzeczywistym generatorze żądań.
+**Complete when:** for "let's settle on the CSV separator, do it" the edit request contains the settled value, as confirmed by a test on the real request generator.
 
-## Etap 3: pamięć i cofanie dostępu
+## Stage 3: memory and revoking access
 
-| Zadanie | Stan |
+| Task | Status |
 |---|---|
-| Wynik wykonanej zmiany zostaje w pamięci, gdy następne żądanie do modelu się nie uda | gotowe |
-| Niezależna odpowiedź nie jest usuwana tylko dlatego, że wcześniejsza tura zależała od cofniętego pliku | gotowe |
-| Treść cofniętego pliku nie przetrwa w faktach kontrolera, np. w argumencie polecenia | gotowe |
-| Rozmowa z wieloma zależnymi plikami daje się zapisać | gotowe |
+| The result of a completed change stays in memory when the next request to the model fails | done |
+| An independent answer is not removed just because an earlier turn depended on a revoked file | done |
+| The content of a revoked file does not survive in the controller's facts, for example in a command argument | done |
+| A conversation with many dependent files can be saved | done |
 
-**Ukończone, gdy:** po błędzie usługi model nie proponuje ponownie wykonanej zmiany, a po cofnięciu dostępu w kolejnych żądaniach nie ma danych z tego pliku.
+**Complete when:** after a service error the model does not propose a completed change again, and after access is revoked later requests contain no data from that file.
 
-## Etap 4: izolacja i polityka
+## Stage 4: isolation and policy
 
-| Zadanie | Stan |
+| Task | Status |
 |---|---|
-| Polecenia `allow` bez dostępu do gniazd Unix hosta (D-Bus, Docker) | do zrobienia |
-| Ogólny filtr wywołań systemowych dla klienta | do zrobienia |
-| Zgodne limity szablonów `change` w polityce i kontrakcie | gotowe |
-| Sprawdzenie parsera szablonów pod kątem argumentów opcji | gotowe |
-| Polecenia z prawdziwym Bubblewrap także w CI | do zrobienia |
+| `allow` commands without access to the host's Unix sockets (D-Bus, Docker) | to do |
+| General system call filter for the client | to do |
+| Matching `change` template limits in the policy and the contract | done |
+| Checking the template parser for option arguments | done |
+| Commands with real Bubblewrap also in CI | to do |
 
-**Decyzje do podjęcia:** klient ma dostęp do własnego profilu logowania. Obecna architektura ufa oficjalnemu klientowi w tym zakresie. Przed 1.0 trzeba to świadomie przyjąć albo zmienić.
+**Decisions to make:** the client has access to its own login profile. The current architecture trusts the official client on this point. Before 1.0 this must be consciously accepted or changed.
 
-## Etap 5: zmiana i test
+## Stage 5: change and test
 
-| Zadanie | Stan |
+| Task | Status |
 |---|---|
-| Testy projektu (np. `pytest`, `go test`, `npm test`) na odizolowanej kopii, a nie tylko siedem stałych sprawdzeń | do zrobienia |
-| Jasny komunikat, co dane sprawdzenie potwierdza, a czego nie | do zrobienia |
-| Dłuższy limit czasu dla `high`, jeśli długie wiadomości go przekraczają | do sprawdzenia |
+| Project tests (for example `pytest`, `go test`, `npm test`) on an isolated copy, not only seven fixed checks | to do |
+| A clear message about what a given check confirms and what it does not | to do |
+| A longer time limit for `high`, if long messages exceed it | to check |
 
-## Etap 6: porządki przed wydaniem
+## Stage 6: cleanup before release
 
-| Zadanie | Stan |
+| Task | Status |
 |---|---|
-| Nowy numer `pkgrel` przy każdej zmianie, tak aby wersja pakietu odróżniała wydania | do zrobienia |
-| Działające skrypty odbioru albo ich usunięcie (`update_candidate.fish` wymaga starej wersji) | do zrobienia |
-| Usunięcie modułów i poleceń nieużywanych przez zainstalowany program | do zrobienia |
-| Połączenie powielonych przepływów `material` i `project` | do zrobienia |
-| `task prune` z listą wpisów i zgodą | do zrobienia |
-| Jedna sesja klienta na rozmowę, strumieniowanie odpowiedzi | do rozważenia |
+| A new `pkgrel` number with every change, so the package version tells releases apart | to do |
+| Working acceptance scripts or their removal (`update_candidate.fish` requires an old version) | to do |
+| Removal of modules and commands not used by the installed program | to do |
+| Merging the duplicated `material` and `project` flows | to do |
+| `task prune` with a list of entries and consent | to do |
+| One client session per conversation, streaming answers | to consider |
 
-## Warunki wydania 1.0
+## Conditions for the 1.0 release
 
-1. Etapy 1–5 ukończone.
-2. Cały przebieg z początku tej strony zaliczony na CachyOS dla jednego commita, także na świeżej instalacji według README.
-3. Prawdziwe awarie sprawdzone: wygaśnięcie logowania, brak sieci, limit usługi.
-4. Niezależny przegląd bezpieczeństwa.
-5. Sprawdzone warunki Anthropic dla programu uruchamiającego Claude Code z logowaniem subskrypcyjnym.
-6. Lista kontrolna wydania odhaczona dla tego commita.
+1. Stages 1–5 complete.
+2. The whole flow from the top of this page passed on CachyOS for one commit, also on a fresh install according to README.
+3. Real failures checked: login expiry, no network, service limit.
+4. Independent security review.
+5. Anthropic's terms checked for a program that runs Claude Code with a subscription login.
+6. Release checklist ticked for this commit.
 
-## Dziennik realizacji
+## Progress log
 
-### 2026-11-05 — E3: jakość procedur Skills
+### 2026-11-05 — E3: quality of the Skills procedures
 
-- **Status: READY FOR TEST.** Gałąź `improve/skills-procedures`, baza `ba82f88c43eea65c7a3f5fe85a2a6639a5ed0d08`.
-- Ślad zmian: [PR #16](https://github.com/ultherego/ai-desktopv2/pull/16), commit procedur i regresji [`872859d`](https://github.com/ultherego/ai-desktopv2/commit/872859d1c2e77a61a71ae4ffe258d0722ef9b7b1). Wyniki wymaganych zadań CI są przypisane do aktualnego head tego PR.
-- Zakres: poprawa wszystkich 21 istniejących `SKILL.md`, bez zmiany nazw, przypisań agentów, uprawnień ani mechanizmu wykonania.
-- Kryterium: procedura wskazuje potrzebne fakty, interpretację wyników, warunki zatrzymania i wynik diagnozy; zmiana wymaga odrębnego planu, testu, zgody i przywrócenia konkretnego stanu.
-- Ryzyka podlegające przeglądowi: pełny balance bez uzasadnienia, ogólne `systemctl revert`, reset kluczy i downgrade bez diagnozy, naprawa rozruchu bez ustalenia etapu awarii oraz pomylenie izolowanego widoku z awarią hosta.
-- Dowody lokalne: 33/33 testy PASS (`test_skills`: 7, `test_user_skills`: 13, `test_prepared_skill_analysis`: 1, `SkillsOnDemandTests`: 12), bez pominięć; walidacja 21/21 treści i składni Python PASS. Rzeczywiste treści pakietowych Skilli przechodzą przez zgodę i końcowe żądanie z plikiem; komplet treści mieści się w żądaniu edycji także w trybach wysyłających wszystkie przypisane Skille. Regresje uruchamia istniejący etap `unit` centralnej bramy i macierz GitHub Actions, bez osobnej bramy.
-- Przegląd treści: niezależny recenzent ocenił komplet 21 procedur bez istotnych uwag blokujących. Sześć syntetycznych scenariuszy sprawdziło decyzje dotyczące APU/dGPU, braku sesji audio, potrzeby balance, zachowania istniejących drop-inów, nieustalonego etapu rozruchu i znaczenia `text: PASS`. Nie uruchamiano oficjalnego klienta ani poleceń diagnostycznych z procedur.
-- CI dla `c53e51514a3c07e58b43c75c8110c51a616a8302`: **5/5 wymaganych zadań PASS**, [run 42060801397](https://github.com/ultherego/ai-desktopv2/actions/runs/42060801397): Python 3.12, 3.13, 3.14 oraz dwie wersje Bubblewrap. To dowód tego SHA, nie odbiór CachyOS. Pełnej bramy lokalnej nie powtarzano w środowisku UID 0, w którym testy wymagające zwykłego użytkownika odmawiają.
-- Nieukończone: sprawdzenie użyteczności w rzeczywistej rozmowie na CachyOS. Walidacja formatu, przegląd scenariuszy i test transportu nie potwierdzają skuteczności naprawy na hoście. Pozostałe kryteria etapu 2 i E3 pozostają otwarte.
-- **Następny krok:** po zaliczeniu CI ocenić procedury podczas zwykłej diagnostyki read-only na CachyOS, bez wykonywania sugerowanych zmian systemowych.
+- **Status: READY FOR TEST.** Branch `improve/skills-procedures`, base `ba82f88c43eea65c7a3f5fe85a2a6639a5ed0d08`.
+- Change trail: [PR #16](https://github.com/ultherego/ai-desktopv2/pull/16), commit with procedures and regressions [`872859d`](https://github.com/ultherego/ai-desktopv2/commit/872859d1c2e77a61a71ae4ffe258d0722ef9b7b1). The results of the required CI jobs are attributed to the current head of this PR.
+- Scope: improvement of all 21 existing `SKILL.md` files, without changing names, agent assignments, permissions or the execution mechanism.
+- Criterion: a procedure names the facts needed, how to interpret results, the stop conditions and the outcome of the diagnosis; a change requires a separate plan, test, consent and restoration of a specific state.
+- Risks under review: a full balance without justification, a general `systemctl revert`, key reset and downgrade without diagnosis, boot repair without establishing the failure stage, and mistaking an isolated view for a host failure.
+- Local evidence: 33/33 tests PASS (`test_skills`: 7, `test_user_skills`: 13, `test_prepared_skill_analysis`: 1, `SkillsOnDemandTests`: 12), no skips; validation of 21/21 contents and Python syntax PASS. The real contents of the packaged Skills go through consent and the final request with a file; the full set of contents fits in the edit request also in the modes that send all assigned Skills. Regressions are run by the existing `unit` stage of the central gate and the GitHub Actions matrix, with no separate gate.
+- Content review: an independent reviewer assessed all 21 procedures with no significant blocking remarks. Six synthetic scenarios checked decisions concerning APU/dGPU, a missing audio session, the need for a balance, keeping existing drop-ins, an unestablished boot stage and the meaning of `text: PASS`. Neither the official client nor the diagnostic commands from the procedures were run.
+- CI for `c53e51514a3c07e58b43c75c8110c51a616a8302`: **5/5 required jobs PASS**, [run 42060801397](https://github.com/ultherego/ai-desktopv2/actions/runs/42060801397): Python 3.12, 3.13, 3.14 and two versions of Bubblewrap. This is evidence for this SHA, not CachyOS acceptance. The full local gate was not repeated in a UID 0 environment, where tests requiring a regular user refuse to run.
+- Not finished: checking usefulness in a real conversation on CachyOS. Format validation, scenario review and a transport test do not confirm that a repair works on the host. The remaining criteria of stage 2 and E3 stay open.
+- **Next step:** after CI passes, assess the procedures during ordinary read-only diagnostics on CachyOS, without performing the suggested system changes.

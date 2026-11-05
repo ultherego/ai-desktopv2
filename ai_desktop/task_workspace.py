@@ -343,9 +343,9 @@ def _rebase(value, device):
 
 
 DETACHED_HISTORY_HINT = (
-    "Zachowano zakończoną historię z innym numerem urządzenia. "
-    "Nie użyjemy jej do cofania; nowe zmiany wymagają świeżego planu i zgody na diff. "
-    "Nie usuwaj ani nie poprawiaj ręcznie dzienników."
+    "Finished history with a different device number was kept. "
+    "It will not be used for undo; new changes need a fresh plan and your approval of the diff. "
+    "Do not delete or edit the journals by hand."
 )
 
 

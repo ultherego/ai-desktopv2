@@ -132,11 +132,11 @@ class ConversationPtyTests(unittest.TestCase):
     def test_a_full_terminal_conversation(self):
         driver = Driver(self)
         self.addCleanup(driver.close)
-        mark = driver.wait_for("W czym mogę pomóc?")
+        mark = driver.wait_for("How can I help?")
         driver.wait_for("> ", mark)
         driver.send("Pierwsze pytanie\r")
         mark = driver.wait_for(CONSENT, mark)
-        driver.send(b"tak\n")
+        driver.send(b"yes\n")
         mark = driver.wait_for("SENT 1 Q:Pierwsze pytanie H:0", mark)
         mark = driver.wait_for("Odpowiedz 1.", mark)
         mark = driver.wait_for("> ", mark)                                   # the next prompt is back at once
@@ -160,7 +160,7 @@ class ConversationPtyTests(unittest.TestCase):
         driver.send("WISI\r")
         mark = driver.wait_for("WAITING", mark)
         driver.send(b"\x03")
-        mark = driver.wait_for("Anulowano", mark)
+        mark = driver.wait_for("Cancelled", mark)
         mark = driver.wait_for("> ", mark)
         self.assertIsNone(driver.process.poll(), driver.text()[-800:])
 
@@ -179,86 +179,86 @@ class ConversationPtyTests(unittest.TestCase):
 
         # Double Ctrl-D ends the conversation cleanly.
         driver.send(b"\x04")
-        mark = driver.wait_for("jeszcze raz Ctrl-D", mark)
+        mark = driver.wait_for("Ctrl-D again", mark)
         mark = driver.wait_for("> ", mark)
         driver.send(b"\x04")
-        driver.wait_for("Zapisać tę rozmowę", mark)                         # consent to keep the thread, default: no
-        driver.send(b"nie\n")
+        driver.wait_for("Save this conversation", mark)                         # consent to keep the thread, default: no
+        driver.send(b"no\n")
         self.assertEqual(driver.finish(), 0, driver.text()[-800:])
-        self.assertEqual(driver.text().count("W czym mogę pomóc?"), 1)         # the greeting appears once
+        self.assertEqual(driver.text().count("How can I help?"), 1)         # the greeting appears once
         self.assertEqual(termios.tcgetattr(driver.slave), driver.before)       # terminal settings restored
 
     def test_a_multi_line_paste_is_one_message_and_an_oversized_paste_is_explained(self):
         driver = Driver(self)
         self.addCleanup(driver.close)
-        mark = driver.wait_for("W czym mogę pomóc?")
+        mark = driver.wait_for("How can I help?")
         mark = driver.wait_for("> ", mark)
         start, end = b"\x1b[200~", b"\x1b[201~"
         output = "Startup finished in 13.339s (firmware) + 10.671s (userspace) = 36.610s\ngraphical.target reached after 10.622s"
         driver.send(b"Wynik: " + start + output.encode() + end + b"\r")
         mark = driver.wait_for(CONSENT, mark)
-        driver.send(b"tak\n")
+        driver.send(b"yes\n")
         # both lines arrive as ONE message, in order, with the text typed around the paste
         driver.wait_for("SENT 1 Q:Wynik: Startup finished in 13.339s (firmware) + 10.671s (userspace) = 36.610s|"
                         "graphical.target reached after 10.622s H:0", mark)
         mark = driver.wait_for("> ", mark)
         big = ("linia z logu o dosyć długiej treści\n" * 3800).encode()               # > 128 KiB
         driver.send(start + big + end)
-        mark = driver.wait_for("Wklejka jest za duża", mark)                       # the conversation goes on
+        mark = driver.wait_for("The paste is too large", mark)                       # the conversation goes on
         mark = driver.wait_for("> ", mark)
         self.assertEqual(driver.text().count("SENT "), 1)                          # nothing was sent for the oversized one
         driver.send(b"\x04")
-        mark = driver.wait_for("jeszcze raz Ctrl-D", mark)
+        mark = driver.wait_for("Ctrl-D again", mark)
         mark = driver.wait_for("> ", mark)
         driver.send(b"\x04")
-        driver.wait_for("Zapisać tę rozmowę", mark)
-        driver.send(b"nie\n")
+        driver.wait_for("Save this conversation", mark)
+        driver.send(b"no\n")
         self.assertEqual(driver.finish(), 0, driver.text()[-800:])
 
     def test_typing_a_slash_lists_commands_tab_completes_and_a_control_is_not_sent(self):
         driver = Driver(self)
         self.addCleanup(driver.close)
-        mark = driver.wait_for("W czym mogę pomóc?")
+        mark = driver.wait_for("How can I help?")
         mark = driver.wait_for("> ", mark)
-        driver.send("/pomoc\r")
-        mark = driver.wait_for("Zapis na stałe", mark)
+        driver.send("/help\r")
+        mark = driver.wait_for("To save permanently", mark)
         mark = driver.wait_for("> ", mark)
-        self.assertEqual(driver.text().count("W czym mogę pomóc?"), 1)         # the greeting is not repeated after a control
+        self.assertEqual(driver.text().count("How can I help?"), 1)         # the greeting is not repeated after a control
         driver.send("/mo")
-        mark = driver.wait_for("zmień model", mark)
+        mark = driver.wait_for("change the model", mark)
         driver.send(b"\t")
         driver.send("haiku\r")
         mark = driver.wait_for("model: haiku", mark)
-        mark = driver.wait_for("poprosi o zgodę", mark)
+        mark = driver.wait_for("will ask for consent", mark)
         mark = driver.wait_for("> ", mark)
         driver.send("Pytanie po zmianie\r")
         mark = driver.wait_for(CONSENT, mark)
-        driver.send(b"tak\n")
+        driver.send(b"yes\n")
         mark = driver.wait_for("SENT 1 Q:Pytanie po zmianie H:0", mark)       # the control itself never reached the model
         mark = driver.wait_for("> ", mark)
-        driver.send("/ko\r")                                                   # Enter runs what the list has highlighted
+        driver.send("/ex\r")                                                   # Enter runs what the list has highlighted
 
     def test_a_new_message_cancels_the_intention_to_exit(self):
         driver = Driver(self)
         self.addCleanup(driver.close)
-        mark = driver.wait_for("W czym mogę pomóc?")
+        mark = driver.wait_for("How can I help?")
         mark = driver.wait_for("> ", mark)
         driver.send("Pytanie\r")
         mark = driver.wait_for(CONSENT, mark)
-        driver.send(b"tak\n")
+        driver.send(b"yes\n")
         mark = driver.wait_for("> ", driver.wait_for("Odpowiedz 1.", mark))
         driver.send(b"\x04")
-        mark = driver.wait_for("jeszcze raz Ctrl-D", mark)
+        mark = driver.wait_for("Ctrl-D again", mark)
         mark = driver.wait_for("> ", mark)
         driver.send("Dalej\r")                                               # typing a message clears the pending exit
         mark = driver.wait_for("> ", driver.wait_for("Odpowiedz 2.", mark))
         driver.send(b"\x04")
-        mark = driver.wait_for("jeszcze raz Ctrl-D", mark)
+        mark = driver.wait_for("Ctrl-D again", mark)
         driver.wait_for("> ", mark)
         self.assertIsNone(driver.process.poll(), "one Ctrl-D after a new message must only warn")
         driver.send(b"\r")                                                   # empty line ends the conversation
-        driver.wait_for("Zapisać tę rozmowę", mark)
-        driver.send(b"nie\n")
+        driver.wait_for("Save this conversation", mark)
+        driver.send(b"no\n")
         self.assertEqual(driver.finish(), 0, driver.text()[-800:])
 
 

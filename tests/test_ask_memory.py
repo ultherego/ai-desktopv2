@@ -25,7 +25,7 @@ from ai_desktop.terminal_consent import PROMPTS
 EMPTY = {"files": [], "systemd": [], "weather": False}
 PROFILE = {"provider": "claude", "model": "default", "effort": "default", "instructions": "",
            "profile": "default", "access": "changes"}
-YES = "tak"
+YES = "yes"
 REAL_UID = _os.geteuid()          # sessions check file ownership through the same global os module
 MARKER = "UNIKALNY-ZNACZNIK-7f3a91"
 
@@ -146,7 +146,7 @@ class UndervoltScenarioTests(Harness):
         # The visible answer was computed by the stand-in from the approved payload only.
         self.assertIn("Ostatnia stabilna: Próba A: 230 W, 91 FPS, stabilna", result.out)
         self.assertNotIn("@@MEMORY", result.out)                        # the memory line is never shown
-        self.assertEqual(result.out.count("W czym mogę pomóc?"), 0)     # the greeting belongs to the terminal reader
+        self.assertEqual(result.out.count("How can I help?"), 0)     # the greeting belongs to the terminal reader
 
     def test_memory_and_history_reach_only_assistant_and_question_requests(self):
         payload = execution_payload = None
@@ -212,7 +212,7 @@ class MemoryRobustnessTests(Harness):
         self.assertTrue(find(self.payloads[-1], "żółć 🚀 „cytat”"))
 
     def test_a_declined_turn_sends_nothing_and_is_not_recorded(self):
-        result = self.run_ui(["Pierwsze", "nie", "Drugie", YES, "Trzecie", ""], lambda p, n: answer("O%d" % n))
+        result = self.run_ui(["Pierwsze", "no", "Drugie", YES, "Trzecie", ""], lambda p, n: answer("O%d" % n))
         self.assertEqual(result.sent.call_count, 2)
         self.assertEqual([t["question"] for t in self.payloads[1]["conversation"]], ["Drugie"])
         self.assertNotIn("Pierwsze", json.dumps(self.payloads))
@@ -224,7 +224,7 @@ class MemoryRobustnessTests(Harness):
             return answer("O%d" % number)
         result = self.run_ui(["Pierwsze", YES, "Drugie", ""], model)
         self.assertEqual(result.code, 2)                                  # the failed turn is reported in the exit code
-        self.assertIn("Rozmowa trwa", result.out)                         # but the conversation went on until the user left
+        self.assertIn("The conversation continues", result.out)                         # but the conversation went on until the user left
 
 
 class RevocationTests(Harness):
@@ -259,7 +259,7 @@ class RevocationTests(Harness):
         out = self.run_ui(["Przeczytaj plik.", YES, "Co dalej?", "I jeszcze?", ""], revoke_after_first)
         for later in self.payloads[1:]:
             self.assertNotIn(MARKER, json.dumps(later), "revoked content came back")
-        self.assertIn("cofnięty", out.out)
+        self.assertIn("revoked", out.out)
 
     def test_user_goal_is_kept_when_only_model_derived_content_is_revoked(self):
         def model(payload, number):
@@ -322,7 +322,7 @@ class SessionResumeTests(Harness):
         again.close()
         self.assertNotIn(MARKER, json.dumps(self.payloads[0]))
         self.assertTrue(find(self.payloads[0], "obniżyć pobór"))         # the user's own goal survives
-        self.assertIn("cofnięty", out.out)
+        self.assertIn("revoked", out.out)
 
     def test_an_old_four_turn_record_without_memory_still_opens_and_continues(self):
         value = self.conversation()
@@ -367,7 +367,7 @@ class MemoryUnitTests(unittest.TestCase):
         text, raw = cm.split_marker('Odpowiedź.\n@@MEMORY {"add":[{"kind":"goal","text":"x"}]}')
         self.assertEqual(text, "Odpowiedź.")
         self.assertEqual(cm.parse_ops(raw)["add"][0]["kind"], "goal")
-        for bad in ('{"add":[{"kind":"nope","text":"x"}]}', '{"add":"x"}', '{"extra":1}', "[]", "nie json",
+        for bad in ('{"add":[{"kind":"nope","text":"x"}]}', '{"add":"x"}', '{"extra":1}', "[]", "not json",
                     '{"mark":[{"id":"zly","status":"done"}]}', '{"add":[{"kind":"goal","text":"\\u0007"}]}'):
             self.assertIsNone(cm.parse_ops(bad), bad)
         self.assertEqual(cm.split_marker("Bez znacznika"), ("Bez znacznika", None))

@@ -29,8 +29,8 @@ def _terminal(input_stream, output_stream):
 
 def _confirm(source, target, display, verb, digest):
     # Data is encoded by the caller before display: no ANSI/C1/bidi execution.
-    prompt = (display + "\nAby zatwierdzic wpisz dokladnie: " + verb + " " +
-              digest + "\nKazda inna odpowiedz oznacza odmowe.\n> ")
+    prompt = (display + "\nTo approve, type exactly: " + verb + " " +
+              digest + "\nAny other answer means no.\n> ")
     if target.write(prompt) != len(prompt):
         raise ApprovalDenied("APPROVAL: REFUSED")
     target.flush()
@@ -59,11 +59,11 @@ def confirm_transfer(report, *, input_stream=None, output_stream=None,
         source, target = _terminal(input_stream, output_stream)
         session = ConsentSession(clock=clock)
         preview = session.preview(report)
-        display = ("ZGODA NA PRZEKAZANIE DANYCH (offline; brak wysylki)\n" +
-                   "Odbiorca: " + preview.recipient + "\nCel: " + preview.purpose +
-                   "\nSHA-256: " + preview.sha256 + "\nDokladny raport JSON:\n" +
+        display = ("CONSENT TO SEND DATA (offline; nothing is sent)\n" +
+                   "Recipient: " + preview.recipient + "\nPurpose: " + preview.purpose +
+                   "\nSHA-256: " + preview.sha256 + "\nExact JSON report:\n" +
                    preview.payload)
-        _confirm(source, target, display, "PRZEKAZ", preview.sha256)
+        _confirm(source, target, display, "SEND", preview.sha256)
         # Revalidate original object: mutation during the prompt is refused.
         return session.authorize(report, confirmed_sha256=preview.sha256,
                                  nonce=preview.nonce)
@@ -76,12 +76,12 @@ def render_plan(preview):
     """Exact, escaped plan text shown for both dry-run and approval."""
     exact = [{"action": "create_text", "path": path, "content": content}
              for path, content in preview.operations]
-    return ("ZGODA NA PLAN CREATE-ONLY (offline; brak wykonania)\n" +
-            "Workspace: " + preview.workspace + "\nStan SHA-256: " +
+    return ("CONSENT TO A CREATE-ONLY PLAN (offline; nothing is run)\n" +
+            "Workspace: " + preview.workspace + "\nState SHA-256: " +
             preview.state_sha256 + "\nPlan SHA-256: " + preview.sha256 +
-            "\nDokladne operacje (ciagi JSON; escape sa doslowne):\n" +
+            "\nExact operations (JSON strings; escapes are literal):\n" +
             json.dumps(exact, ensure_ascii=True, indent=2) +
-            "\nDiff (znaki specjalne jako escape JSON):\n" +
+            "\nDiff (special characters as JSON escapes):\n" +
             _display_diff(preview.diff))
 
 
@@ -99,7 +99,7 @@ def confirm_plan(workspace, operations, *, state_sha256, input_stream=None,
         session = PlanSession(clock=clock)
         preview = session.preview(workspace, operations, state_sha256=state_sha256)
         display = render_plan(preview)
-        _confirm(source, target, display, "UTWORZ", preview.sha256)
+        _confirm(source, target, display, "CREATE", preview.sha256)
         authorization = session.authorize(
             confirmed_sha256=preview.sha256, nonce=preview.nonce,
             state_sha256=preview.state_sha256)

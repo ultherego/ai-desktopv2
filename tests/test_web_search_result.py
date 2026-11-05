@@ -51,7 +51,7 @@ class WebSearchResultTests(unittest.TestCase):
 
     def test_complete_search_returns_only_answer_and_actual_sources(self):
         result = web_text(stream(web_events()))
-        self.assertEqual(result, "Python to język programowania [1].\n\nŹródła:\n"
+        self.assertEqual(result, "Python to język programowania [1].\n\nSources:\n"
                          "[1] About Python — `https://www.python.org/about/`")
         self.assertNotIn("UNTRUSTED TOOL TEXT", result)
         self.assertNotIn("Backend summary", result)
@@ -63,7 +63,7 @@ class WebSearchResultTests(unittest.TestCase):
         events[2].pop("session_id")  # SDKUserMessage permits an omitted session.
         events[2]["message"]["content"][0]["is_error"] = False
         events[2]["tool_use_result"].pop("searchCount")
-        self.assertIn("Źródła:", web_text(stream(events)))
+        self.assertIn("Sources:", web_text(stream(events)))
 
     def test_two_parallel_calls_require_both_results_and_accept_out_of_order(self):
         events = web_events()
@@ -238,7 +238,7 @@ class WebSearchResultTests(unittest.TestCase):
         for turns in (1, 4):
             events = web_events()
             events[-1]["num_turns"] = turns
-            self.assertIn("Źródła:", web_text(stream(events)))
+            self.assertIn("Sources:", web_text(stream(events)))
 
     def test_truncated_duplicate_unknown_and_oversized_streams_are_refused(self):
         for raw in (b"", b"not JSON", b'[]\n', b'{"type":"result","type":"result"}\n',
@@ -269,7 +269,7 @@ class WebSearchResultTests(unittest.TestCase):
             events = web_events()
             events.insert(1, {"type": "rate_limit_event", "session_id": events[0]["session_id"],
                               "rate_limit_info": {"status": status, "resetsAt": 1800000000, "utilization": 0.5}})
-            self.assertIn("Źródła:", web_text(stream(events)))
+            self.assertIn("Sources:", web_text(stream(events)))
             del events[2:4]
             self.assert_refused(events, "web-no-results")
 

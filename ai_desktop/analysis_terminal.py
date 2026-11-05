@@ -36,7 +36,8 @@ def _reference_breaks(token):
     if token.type != "inline" or not token.children:
         return
     lines = token.content.split("\n")
-    entries = lines[1:] if lines[0] == "Źródła:" else lines
+    # Model answers follow the language of the question, so the Polish heading is still recognized.
+    entries = lines[1:] if lines[0] in ("Sources:", "Źródła:") else lines
     if not 1 <= len(entries) <= 32 or len(lines) < 2:
         return
     if any(not re.fullmatch(r"\[" + str(index) + r"\] .+", line)

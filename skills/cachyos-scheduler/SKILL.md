@@ -1,38 +1,38 @@
 ---
 name: cachyos-scheduler
-description: Diagnozuje działanie sched-ext i porównuje zmianę planisty na CachyOS. Użyj przy scx_loader, scxctl, awarii planisty lub pomiarze wpływu planowania na wydajność i energię.
+description: Diagnoses sched-ext operation and compares a scheduler change on CachyOS. Use for scx_loader, scxctl, a scheduler failure or measuring the effect of scheduling on performance and energy.
 ---
 
-# Sched-ext: stan, diagnoza i próba
+# Sched-ext: state, diagnosis and trial
 
-## Ustal stan
+## Establish the state
 
-1. Ustal cel i objaw: awaria, opóźnienia czy planowany pomiar. Bez konkretnego problemu nie proponuj strojenia.
-2. Odczytaj działające jądro przez `uname -r` oraz wersje dostępnych narzędzi. Nazwa wariantu jądra nie jest wystarczającym dowodem obsługi funkcji.
-3. Jeżeli polityka i widok systemu pozwalają, odczytaj `/sys/kernel/sched_ext/state` i `/sys/kernel/sched_ext/root/ops`. `enabled` wraz z nazwą operacji potwierdza aktywność planisty BPF; `disabled` wskazuje brak aktywnego sched-ext. Brak ścieżki lub odmowa odczytu wymaga rozróżnienia obsługi jądra od ograniczenia dostępu.
-4. Ustal menedżera i jego stan: `systemctl status scx_loader.service --no-pager`, a przy dostępnym kliencie `scxctl get` i `scxctl list`. To przykłady odczytu, wykonywane wyłącznie po dopasowaniu do polityki.
+1. Establish the goal and symptom: a failure, latency, or a planned measurement. Without a specific problem, do not propose tuning.
+2. Read the running kernel through `uname -r` and the versions of the available tools. The name of a kernel variant is not sufficient evidence of feature support.
+3. If the policy and the system view allow it, read `/sys/kernel/sched_ext/state` and `/sys/kernel/sched_ext/root/ops`. `enabled` together with an ops name confirms an active BPF scheduler; `disabled` indicates no active sched-ext. A missing path or a denied read requires distinguishing kernel support from an access limit.
+4. Establish the manager and its state: `systemctl status scx_loader.service --no-pager` and, with an available client, `scxctl get` and `scxctl list`. These are examples of reads, run only after matching the policy.
 
-## Interpretuj wynik
+## Interpret the result
 
-- Brak aktywnego planisty może być zamierzony. Nie oznacza, że system jest zepsuty lub nie używa planisty CPU.
-- Aktywna usługa nie dowodzi załadowania planisty. Porównaj stan usługi z wynikiem jądra i logiem z tego samego czasu.
-- Błąd połączenia klienta D-Bus w piaskownicy nie dowodzi awarii usługi na hoście. Nie przenoś odczytu do `change` ani nie rozszerzaj dostępu, aby go obejść.
-- Gdy planista zniknął po błędzie, przeczytaj dostępny fragment dziennika menedżera i jądra. Kernel może odłączyć planistę BPF po błędzie. Ustal powód z logu zamiast zakładać konflikt konkretnego programu.
-- Przy dwóch mechanizmach zarządzania lub samoczynnej zmianie profilu ustal, który steruje stanem i kiedy. Nie wyłączaj usług tylko na podstawie ich obecności.
+- No active scheduler can be intentional. It does not mean the system is broken or does not use a CPU scheduler.
+- An active service does not prove a scheduler is loaded. Compare the service state with the kernel's result and the log from the same time.
+- A D-Bus client connection error in the sandbox does not prove a service failure on the host. Do not move a read into `change` or widen access to get around it.
+- When the scheduler disappeared after an error, read the available excerpt of the manager and kernel journals. The kernel can detach a BPF scheduler after an error. Establish the reason from the log instead of assuming a conflict with a specific program.
+- With two management mechanisms or a profile changing on its own, establish which one controls the state and when. Do not disable services merely because they are present.
 
-## Zmiana z pomiarem
+## Change with measurement
 
-Zachowaj bazę: jądro, aktywny planista i tryb, menedżer oraz jego konfiguracja. Wersja `scxctl` decyduje o nazwach i parametrach; wybierz dostępny wariant, bez listy stałych numerów profili lub obietnicy poprawy.
+Preserve the baseline: kernel, active scheduler and mode, manager and its configuration. The `scxctl` version decides names and parameters; choose an available variant, without a list of fixed profile numbers or a promise of improvement.
 
-Zaplanuj jedną odwracalną próbę, miarę i identyczne obciążenie dla kilku powtórzeń. Uwzględnij responsywność, stabilność i pobór mocy, gdy są celem. Sterowanie wymaga osobnej zgody i mechanizmu aplikacji, który rzeczywiście ma dostęp; Skill nie nadaje praw administratora ani polkit.
+Plan one reversible trial, a metric and an identical load for several repetitions. Include responsiveness, stability and power draw when they are the goal. Control needs separate consent and an application mechanism that actually has access; a Skill does not grant administrator or polkit rights.
 
-Wycofanie ma przywracać zapamiętany stan. `scxctl restore` przywraca ustawienie domyślne z konfiguracji, które może różnić się od stanu sprzed próby. Przy zawieszeniu lub pogorszeniu zakończ próbę; trwałą konfigurację proponuj dopiero po pomiarze. Nie dodawaj parametrów jądra w ramach zwykłego porównania planistów.
+Rollback must restore the recorded state. `scxctl restore` restores the default setting from the configuration, which can differ from the state before the trial. On a hang or degradation, end the trial; propose permanent configuration only after measurement. Do not add kernel parameters as part of an ordinary scheduler comparison.
 
-## Wynik
+## Result
 
-Podaj potwierdzony stan jądra i menedżera, przyczynę lub hipotezę z dowodem, bazę i wynik próby oraz stan wycofania. Przy braku logów lub widoczności zakończ na konkretnej luce, bez diagnozy z samego komunikatu dostępu.
+Give the confirmed state of the kernel and manager, the cause or hypothesis with evidence, the baseline and trial result, and the state of the rollback. With no logs or visibility, end at the specific gap, without a diagnosis from the access message alone.
 
-## Źródła
+## Sources
 
-- Kernel, stan i zachowanie sched-ext: <https://www.kernel.org/doc/html/latest/scheduler/sched-ext.html#switching-to-and-from-sched-ext>.
-- CachyOS, zarządzanie i porównanie: <https://wiki.cachyos.org/configuration/sched-ext/>.
+- Kernel, state and behavior of sched-ext: <https://www.kernel.org/doc/html/latest/scheduler/sched-ext.html#switching-to-and-from-sched-ext>.
+- CachyOS, management and comparison: <https://wiki.cachyos.org/configuration/sched-ext/>.
