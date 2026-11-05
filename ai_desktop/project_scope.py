@@ -29,7 +29,7 @@ MAX_PATH_BYTES = 512
 SNIPPET = 200
 
 CODES = frozenset({"PROJECT_ROOT", "PROJECT_PATH", "PROJECT_FILE", "PROJECT_CHANGED",
-                   "PROJECT_NEEDLE", "PROJECT_POLICY"})
+                   "PROJECT_NEEDLE", "PROJECT_POLICY", "TEST_SIZE", "TEST_CHANGED", "TEST_FORMAT"})
 
 
 class ProjectError(ValueError):
@@ -46,7 +46,8 @@ class ProjectError(ValueError):
 class Entry:
     path: str          # relative to the root, "/" separated
     size: int
-    ident: tuple       # (st_dev, st_ino, st_mtime_ns) at scan time
+    ident: tuple       # stable format for existing saved project-session manifests
+    identity: tuple    # full fd fingerprint, including mode and ctime, for a test copy
 
 
 @dataclass(frozen=True)
@@ -170,7 +171,7 @@ class Project:
                                 return
                             else:
                                 found.append(Entry(child, info.st_size,
-                                                   (info.st_dev, info.st_ino, info.st_mtime_ns)))
+                                                   (info.st_dev, info.st_ino, info.st_mtime_ns), permissions._fingerprint(info)))
                         else:
                             counts["special"] += 1
                     recheck()
@@ -202,6 +203,46 @@ class Project:
         for entry in self.files:
             digest.update(("%s\0%d\0%d\0%d\0%d\n" % ((entry.path, entry.size) + entry.ident)).encode("utf-8", "surrogatepass"))
         return digest.hexdigest()
+
+    def test_selection(self):
+        """All policy-visible entries or a refusal. Never silently narrow the suite to a passing subset."""
+        from . import task_contract
+        limits = self.policy.limits()
+        file_limit = min(limits.read_file_size, task_contract.MAX_FILE)
+        if not self.complete or not 1 <= len(self.files) <= min(limits.read_files, task_contract.MAX_FILES):
+            raise ProjectError("TEST_SIZE")
+        if (any(entry.size > file_limit for entry in self.files) or
+                sum(entry.size for entry in self.files) > min(limits.read_total_size, task_contract.MAX_TOTAL)):
+            raise ProjectError("TEST_SIZE")
+        for entry in self.files:
+            try:
+                task_contract.path(entry.path)
+            except ValueError:
+                raise ProjectError("TEST_FORMAT") from None
+        return self.files
+
+    def test_copy(self, approved):
+        from . import task_contract
+        if self.test_selection() != approved:
+            raise ProjectError("TEST_CHANGED")
+        files = {}
+        for entry in approved:
+            # Compare the *opened* file against the approved object, even if an ancestor is swapped and restored.
+            _, raw = permissions.read_bounded(self.policy, self.root + "/" + entry.path,
+                                              max(1, entry.size), expected_identity=entry.identity)
+            if len(raw) != entry.size:
+                raise ProjectError("TEST_CHANGED")
+            try:
+                text = task_contract.file_text(raw.decode("utf-8"))
+                if permissions.contains_private_key(text):
+                    raise ValueError("private key")
+            except ValueError:
+                raise ProjectError("TEST_FORMAT") from None
+            files[entry.path] = text
+        self.scan()
+        if self.test_selection() != approved:
+            raise ProjectError("TEST_CHANGED")
+        return files
 
     # --- map --------------------------------------------------------------------
     def listing(self, prefix="", cursor=0, limit=PAGE):

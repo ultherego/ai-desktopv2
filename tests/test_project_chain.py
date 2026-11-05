@@ -204,6 +204,31 @@ class ChainTests:
 
 
 class ProjectScopeChainTests(ChainTests, ChainBase):
+    def test_edit_carries_exact_authorized_project_history_and_observations(self):
+        marker = "synthetic-semicolon-choice"
+        self.model = script({"action": "answer", "text": marker, "sources": []},
+                            {"action": "read", "path": "src/util.py", "ranges": [{"first": 1, "last": 2}]},
+                            {"action": "edit", "files": ["src/util.py"], "create": [], "check": "text"})
+        self.session(["Which delimiter?", "Apply it."], ["yes", "yes", "no"],
+                     self.transport(lambda path, old: old + "# selected delimiter\n"))
+        edited, = self.transported
+        context = edited["task"]["project_context"]
+        self.assertEqual(edited["task"]["instruction"], "Apply it.")
+        self.assertEqual(context, self.payloads()[-1]["project"])
+        self.assertEqual(context["history"][-1]["answer"], marker)
+        self.assertIn("return 1", str(context["observations"]))
+        self.assertNotIn("TOP-SECRET", json.dumps(edited))
+        self.assertEqual((self.proj / "src/util.py").read_text(), "def helper():\n    return 1\n")
+
+    def test_new_policy_between_the_planner_and_edit_cannot_authorize_old_observations(self):
+        def model(_payload):
+            self.config.write_text(self.config.read_text() + "# a different policy, same project scopes\n")
+            return json.dumps({"action": "edit", "files": [], "create": ["docs/new.txt"], "check": "text"})
+        self.model = model
+        self.session(["Use our earlier findings."], ["yes"], self.transport(lambda path, old: "new"))
+        self.assertEqual(self.transported, [])
+        self.assertFalse((self.proj / "docs/new.txt").exists())
+
     write = '["~/proj/**"]'
 
 

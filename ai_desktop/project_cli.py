@@ -18,7 +18,7 @@ import shlex
 from .run_controls import recipient, failure_hint, network_hint
 from . import ask_cli, ask_edit, assistant_flow, permissions, task_contract
 from .analysis_cli import HINTS
-from .analysis_contract import AnalysisDenied, MAX_QUESTION_BYTES, validate_question
+from .analysis_contract import AnalysisDenied, InputBudgetExceeded, MAX_QUESTION_BYTES, validate_question
 from .assistant_contract import parse_plan
 from .question_consent import QuestionConsent
 from .workspace_executor import ExecutionDenied
@@ -51,6 +51,7 @@ HELP = """Ask about the project in a plain sentence; the program picks the files
 Optional (local commands, nothing is sent):
   /files [DIR]      show file names (up to 40)
   /search TEXT      search project file contents for this exact text (up to 20 matches)
+  /test RECIPE      run pytest, python-unittest, go-test or npm-test on an isolated copy of indexed files
   /refresh          scan the directory again (also happens before every question)
   /log              what the app handed to Claude in this session
   /exit             quit (also Ctrl+D)"""
@@ -379,8 +380,14 @@ class ProjectSession(Session):
             action = decision["action"]
             if action == "answer":
                 return self._answer(text, loop, decision)
+            if action == "test":
+                self._close_section()
+                outcome = self.test_project(decision["recipe"])
+                if outcome:
+                    self.remember(text, outcome)  # only the controller status; raw local output stays in the terminal
+                return
             if action == "edit":
-                return self._edit(text, loop, decision)
+                return self._edit(text, loop, decision, packet)
             if action == "ask_user":
                 self._close_section()
                 print(recipient("Claude asks: %s") % _safe(decision["text"], 500))
@@ -441,7 +448,7 @@ class ProjectSession(Session):
         skipped = ["%s: %d" % (label, stats[key]) for key, label in SKIP_LABELS if stats[key]]
         return field("Out of reach", *skipped) if skipped else None
 
-    def _edit(self, text, loop, decision):
+    def _edit(self, text, loop, decision, packet):
         from .run_controls import require_changes
         try:
             require_changes()
@@ -456,6 +463,11 @@ class ProjectSession(Session):
         try:
             request_text = self._expand_pastes(text)
             snapshot = assistant_flow.capture_access()
+            # A newer policy must never authorize resending earlier project observations.
+            try:
+                self.policy.recheck()
+            except (OSError, ValueError):
+                raise EditRefused("The project policy changed. Start a new project session.") from None
             plan, existing, created = build_edit_plan(self.project, snapshot, decision)
             versions = {}
             for path, name in zip(decision["files"], existing):
@@ -506,10 +518,55 @@ class ProjectSession(Session):
                 return self._remember_edit(text, "the user rejected the proposed change")
         else:
             print("File change — %s. Preparing the diff…" % summary)
-        code = self._run_edit(request_text, snapshot, plan, versions)
+        code = self._run_edit(request_text, snapshot, plan, versions, packet)
         print()
         return self._remember_edit(text, "change saved after the user's consent" if code == 0
                                    else "change NOT saved (rejected, failed test or error)")
+
+    def test_project(self, recipe):
+        from . import task_sandbox
+        from .analysis_contract import terminal_text
+        from .run_controls import require_changes
+        if recipe not in task_contract.TEST_SUITES:
+            print("Available offline suites: " + ", ".join(task_contract.TEST_SUITES))
+            return
+        try:
+            require_changes()
+            if not self._refresh():
+                return
+            entries = self.project.test_selection()
+            skipped = self._skipped_total()
+            print("Offline %s on a temporary copy of %d indexed file(s); %d entries excluded from the index." %
+                  (recipe, len(entries), skipped))
+            print("Project: " + _safe(self.project.root))
+            print("Network, user HOME and host writes are blocked. Test output stays in this terminal.")
+            if not confirm("project-test", reader=self.reader):
+                print("Test cancelled.")
+                return
+            files = self.project.test_copy(entries)
+            executable = [entry.path for entry in entries if entry.identity[2] & 0o100]
+            self.policy.recheck()
+            result = task_sandbox.run_copy(files, recipe, executable=executable)
+        except EOFError:
+            return
+        except AnalysisDenied:
+            print("This profile cannot execute project tests.")
+            return
+        except (OSError, ValueError) as exc:
+            reasons = {"TEST_SIZE": "the complete index must fit the file count, per-file and total read limits",
+                       "TEST_CHANGED": "the indexed project changed during the copy",
+                       "TEST_FORMAT": "the index includes an unsupported name, binary or protected content"}
+            print("Test refused: " + reasons.get(getattr(exc, "code", None), "the policy, files or sandbox are unavailable") + ".")
+            return
+        print("Untrusted local test output:")
+        print(terminal_text(result["output"]))
+        state = "passed" if result["passed"] else "failed or could not complete"
+        if recipe == "npm-test" and result["passed"]:
+            state = "script exited 0 (test count unknown)"
+        outcome = "%s %s on the isolated copy of %d indexed file(s), %d entries excluded." % (
+            recipe, state, len(entries), skipped)
+        print(outcome)
+        return outcome
 
     def _expand_pastes(self, text):
         """The edit request carries the pasted text itself (the marker alone would tell the model nothing)."""
@@ -601,17 +658,24 @@ class ProjectSession(Session):
         print("Restore: " + shlex.join(["ai-desktop", "task", "restore", "--workspace", workspace, "--plan", plan]))
         print()
 
-    def _run_edit(self, text, snapshot, plan, versions):
+    def _run_edit(self, text, snapshot, plan, versions, packet):
         args = ask_cli.build_parser().parse_args(["--v"] if self.args.details else [])
         args.format = self.args.format
         permit = None
         try:
             self.window.close()                       # the edit pipeline opens its own managed session
             self.pacer.wait_turn(_countdown, _countdown_end)
+            # Only data from the exact packet that elicited this edit may cross the hand-off.
+            # The context is subsequently sealed together with the selected files in WriteGrant.
+            from .execution import current
+            envelope = json.loads(packet.payload)
+            if (not packet.verify() or envelope.get("execution") != current() or
+                    envelope["project"]["project"]["id"] != self.project.project_id):
+                raise ask_edit.EditDenied("consent")
             permit = QuestionConsent(text, snapshot, plan_ready=True)
             permit.approve()
             prepared = ask_edit.prepare(plan, snapshot, args, self.reader, question_consent=permit,
-                                        expected_versions=versions)
+                                        expected_versions=versions, project_context=envelope["project"])
             self.pacer.record()
             sent = prepared.source["files"]
             transfer = {"files": [item["path"] for item in sent if item["content"] is not None],
@@ -624,6 +688,8 @@ class ProjectSession(Session):
             permit.check()
             permit.close()
             return ask_edit.finish(prepared, response, args, self.reader).code
+        except InputBudgetExceeded:
+            print("The agreed context and selected files exceed the edit request limit. Narrow the task; nothing was saved.")
         except ask_edit.CreateCollision:
             print("The file to create already exists. Nothing was saved.")
         except (ask_edit.EditDenied, ExecutionDenied) as exc:
@@ -765,6 +831,8 @@ class ProjectSession(Session):
             return False
         if command in ("/pomoc", "/help", "/?"):
             print(recipient(HELP))
+        elif command == "/test":
+            self.test_project(rest)
         elif command in ("/files", "/pliki"):
             self.files(rest)
         elif command in ("/search", "/szukaj"):

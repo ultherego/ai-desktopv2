@@ -264,6 +264,11 @@ def parse_decision(raw):
             if prefix:
                 _path(prefix.rstrip("/"))
             return {"action": "list", "prefix": prefix, "cursor": _int(value["cursor"], 0, MAX_CURSOR)}
+        if action == "test" and set(value) == {"action", "recipe"}:
+            from .task_contract import TEST_SUITES
+            if value["recipe"] not in TEST_SUITES:
+                raise ValueError("decision")
+            return {"action": "test", "recipe": value["recipe"]}
         if action == "overview" and set(value) == {"action"}:
             return {"action": "overview"}
         if action == "edit" and {"action", "files", "create", "check"} <= set(value) <= {"action", "files", "create", "check", "delete"}:

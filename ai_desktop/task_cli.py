@@ -130,7 +130,14 @@ def finish_task(before, source, response, args, reader, *, write_guard=None, con
     if args.details:
         print("=== TEST ON AN ISOLATED COPY ===", flush=True)
         print("Checking the changes on an isolated copy…", flush=True)
-    result = task_sandbox.run(source, proposed["files"], args.test)
+    if args.test in contract.MULTIPROCESS:
+        print("Run %s on the selected files with a transient user cgroup, without network or host writes." % args.test)
+        if not confirm("project-test", reader=reader):
+            print("Test cancelled. Nothing was saved.")
+            return 2
+    originals = {path: info["file"] for path, info in before["files"].items() if info["file"] is not None
+                 and info["file"]["content"] != contract.plain_text(info["file"]["content"])}
+    result = task_sandbox.run(source, proposed["files"], args.test, **({"originals": originals} if originals else {}))
     if args.details or not result["passed"]:
         print("Untrusted test output:")
         print(terminal_text(result["output"]))
@@ -143,8 +150,11 @@ def finish_task(before, source, response, args, reader, *, write_guard=None, con
     elif args.details:
         print("TASK TEST: " + ("PASS" if result["passed"] else "FAIL") + " check=" + args.test)
         print("Test on a copy: " + ("passed" if result["passed"] else "failed") + " (" + args.test + ").")
-    elif not result["passed"]:
-        print("Test on a copy: failed (" + args.test + ").")
+    else:
+        print("Check on %d selected file(s): %s (%s)." % (
+            len(source["files"]), "passed" if result["passed"] else "failed", args.test))
+        if args.test not in contract.TEST_SUITES:
+            print("This checks syntax only; project tests were not run.")
     if not result["passed"]:
         print("TASK: REFUSED reason=test; project unchanged" if args.details
               else "The changes were not saved. Fix the task or the test and try again.")

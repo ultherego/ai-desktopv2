@@ -89,7 +89,7 @@ class WriteGrant:
         permit.check()
 
 
-def prepare(plan, snapshot, args, reader, *, question_consent, expected_versions=None):
+def prepare(plan, snapshot, args, reader, *, question_consent, expected_versions=None, project_context=None):
     from .run_controls import require_changes
     require_changes()
     """Snapshot only approved readable data and absent writable new targets."""
@@ -159,7 +159,10 @@ def prepare(plan, snapshot, args, reader, *, question_consent, expected_versions
             if writable:
                 targets.append(path)
             files.append({"path": name, "content": content, "writable": writable})
-        source = task_contract.request({"instruction": question_consent.question, "files": files})
+        source = {"instruction": question_consent.question, "files": files}
+        if project_context is not None:
+            source["project_context"] = project_context
+        source = task_contract.request(source)
         grant = WriteGrant(question_consent, snapshot, index, before, source, read_paths, targets)
         grant.require_transfer(question_consent, source)
         return PreparedEdit(before, source, plan["check"], workspace, grant)

@@ -9,6 +9,7 @@ import unicodedata
 
 from .e2_ipc import _unique_pairs
 from .file_context_contract import plain_text
+from .task_cgroup import MULTIPROCESS
 
 MAX_INSTRUCTION = 128 * 1024           # an `ask` message may be this long, so a change it asks for must fit too
 _SEGMENT = re.compile(r"[A-Za-z0-9_.][A-Za-z0-9_.-]{0,63}\Z")
@@ -17,6 +18,8 @@ MAX_FILES = 64
 MAX_CHANGED_FILES = 32
 MAX_FILE = 64 * 1024
 MAX_TOTAL = 128 * 1024
+TEST_SUITES = ("python-unittest", "pytest", *MULTIPROCESS)
+CHECKS = ("text", "toml", *TEST_SUITES, "python-syntax", "json", "bash-syntax", "fish-syntax")
 
 
 def path(value):
@@ -59,10 +62,13 @@ def in_file_format(content, original):
 
 
 def request(value):
-    if type(value) is not dict or set(value) != {"instruction", "files"}:
+    if type(value) is not dict or set(value) not in ({"instruction", "files"}, {"instruction", "files", "project_context"}):
         raise ValueError("task")
     if not text(value["instruction"], MAX_INSTRUCTION).strip():
         raise ValueError("instruction")
+    if "project_context" in value:
+        from .project_step import validate_input
+        validate_input(value["project_context"])
     files = value["files"]
     if type(files) is not list or not 1 <= len(files) <= MAX_FILES:
         raise ValueError("files")

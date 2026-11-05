@@ -21,6 +21,53 @@ class TaskKernelTests(unittest.TestCase):
         self.assertFalse(self.check(files)["passed"])
         self.assertFalse(self.check({"calc.py": "x=1\n"})["passed"])
 
+    def test_real_pytest_on_an_unchanged_copy_pass_fail_empty_and_denials(self):
+        files = {"calc.py": "def add(a, b): return a + b\n",
+                 "test_calc.py": "import os, socket, pytest\nfrom calc import add\n"
+                                 "def test_add():\n assert add(2, 3) == 5\n"
+                                 " with pytest.raises(PermissionError): os.fork()\n"
+                                 " with pytest.raises(PermissionError): socket.socket()\n"}
+        result = task_sandbox.run_copy(files, "pytest")
+        if "pytest is unavailable in the system Python" in result["output"] and os.environ.get("AI_DESKTOP_REQUIRE_PROJECT_SUITES") != "1":
+            self.assertFalse(result["passed"])  # optional package missing locally: no result is presented as PASS
+            return
+        self.assertTrue(result["passed"], result)
+        self.assertFalse(task_sandbox.run_copy(dict(files, **{"calc.py": "def add(a, b): return 0\n"}), "pytest")["passed"])
+        self.assertFalse(task_sandbox.run_copy({"calc.py": "x = 1\n"}, "pytest")["passed"])
+        for recipe, test in (
+                ("pytest", 'import pytest\ndef test_it(): pytest.skip("fixture")\n'),
+                ("python-unittest", 'import unittest\nclass T(unittest.TestCase):\n @unittest.skip("fixture")\n def test_it(self): pass\n')):
+            with self.subTest(recipe=recipe):
+                self.assertFalse(task_sandbox.run_copy({"test_it.py": test}, recipe)["passed"])
+
+    def test_real_offline_child_process_suites_pass_fail_and_enforce_the_boundary(self):
+        go = {"go.mod": "module example.invalid/synthetic\ngo 1.18\n",
+              "calc_test.go": 'package synthetic\nimport ("testing"; "net"; "os"; "os/exec")\n'
+                              'func TestBounds(t *testing.T) { if _, e := os.Stat("/run/user"); !os.IsNotExist(e) {t.Fatal(e)}; '
+                              'if c, e := net.Listen("tcp", "127.0.0.1:0"); e == nil {c.Close();t.Fatal("socket")}; '
+                              'if e := exec.Command("/usr/bin/true").Run(); e != nil {t.Fatal(e)}}\n'}
+        node = {"package.json": json.dumps({"scripts": {"test": "./check.sh"}}),
+                "check.sh": "#!/bin/sh\nexec node scripts/check.cjs\n",
+                "scripts/check.cjs": 'const fs = require("node:fs"); const cp = require("node:child_process");'
+                                     'if (fs.existsSync("/run/user") || fs.existsSync("/sys/fs/cgroup")) process.exit(1);'
+                                     'cp.execFileSync("/usr/bin/true");\n'}
+        for recipe, files, executable in (("go-test", go, ()), ("npm-test", node, ("check.sh",))):
+            with self.subTest(recipe=recipe):
+                result = task_sandbox.run_copy(files, recipe, executable=executable)
+                if (os.environ.get("AI_DESKTOP_REQUIRE_PROJECT_SUITES") != "1" and not result["passed"]
+                        and any(message in result["output"] for message in
+                                ("Failed to connect", "Test refused: the transient user scope", "fixed test tool is not installed"))):
+                    self.assertNotEqual(result["exit_code"], 0)
+                    continue
+                self.assertTrue(result["passed"], result)
+                if recipe == "go-test":
+                    files = dict(go, **{"calc_test.go": 'package synthetic\nimport "testing"\nfunc TestWrong(t *testing.T){t.Fatal("failure")}\n'})
+                    empty = {"go.mod": go["go.mod"], "calc.go": "package synthetic\n"}
+                    self.assertFalse(task_sandbox.run_copy(empty, recipe)["passed"])
+                else:
+                    files = dict(node, **{"scripts/check.cjs": "process.exit(9);\n"})
+                self.assertFalse(task_sandbox.run_copy(files, recipe, executable=executable)["passed"])
+
     def test_actual_filesystem_network_process_and_namespace_denials(self):
         with tempfile.TemporaryDirectory(prefix="ai-task-sentinel-") as tmp:
             sentinel = Path(tmp) / "secret"

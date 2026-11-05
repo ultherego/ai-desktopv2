@@ -3,6 +3,8 @@ import json
 import re
 import unicodedata
 
+from .task_contract import CHECKS
+
 
 MAX_ACCESS_BYTES = 8192
 MAX_PLAN_BYTES = 16384
@@ -17,7 +19,7 @@ SYSTEMD_SCOPES = frozenset({"system", "user"})
 SYSTEMD_VIEWS = frozenset({"enabled", "active", "inactive", "failed", "all", "installed"})
 _FILE_ID = re.compile(r"f(?:[0-9]|[1-5][0-9]|6[0-3])\Z", re.ASCII)
 _WRITE_ID = re.compile(r"w(?:[0-9]|[1-5][0-9]|6[0-3])\Z", re.ASCII)
-EDIT_CHECKS = frozenset({"python-unittest", "python-syntax", "json", "bash-syntax", "fish-syntax", "text", "toml"})
+EDIT_CHECKS = frozenset(CHECKS)
 PLAN_CHECKS = frozenset({"access", "type", "size", "json", "shape", "action", "files", "systemd",
                          "weather", "write", "check", "create", "text", "empty", "command", "invalid"})
 

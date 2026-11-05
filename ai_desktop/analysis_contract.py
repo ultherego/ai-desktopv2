@@ -4,7 +4,7 @@ This previews application input, not encrypted wire traffic or client-owned
 OAuth/protocol metadata. A+ deliberately trusts the official client with its
 own private profile. Model output never grants execution rights.
 """
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import hashlib
 import hmac
 import json
@@ -65,7 +65,7 @@ SYSTEM_PROMPT = (
     "write is one id from access.write; files selects reads using the selectors described below. "
     "create is at most 32 new relative paths inside the write scope, without .. and without creating directories. "
     "When only creating, and you do not need the content of existing files, give files=[]. "
-    "check is pytest, python-unittest, python-syntax, json, bash-syntax, fish-syntax, text or toml. "
+    "check is go-test, npm-test, pytest, python-unittest, python-syntax, json, bash-syntax, fish-syntax, text or toml. "
     "text only checks for acceptable text, not that a configuration works. "
     "Do not call this a semantic test of KDL or of a program's configuration. "
     "An edit plan is not consent to write: the controller checks the policy and state, tests a copy, "
@@ -193,11 +193,11 @@ SYSTEM_PROMPT = (
     "{\"action\":\"read\",\"path\":\"src/a.py\",\"ranges\":[{\"first\":1,\"last\":80}]} (at most 4 line ranges "
     "of one listed file, up to about 240 KiB in total; a range end past the last line is cut to "
     "the last line, so a small file can be read with range 1-500, and the lines field of the result gives the line count), "
-    "{\"action\":\"test\",\"recipe\":\"pytest\"} (only when the user explicitly asks to test; use pytest or python-unittest. "
+    "{\"action\":\"test\",\"recipe\":\"pytest\"} (only when the user explicitly asks to test; use pytest, python-unittest, go-test or npm-test. "
     "The controller asks before running the fixed suite on an isolated copy of the indexed project. Test output stays local), "
     "{\"action\":\"edit\",\"files\":[\"src/a.py\"],\"create\":[\"src/new.py\"],\"check\":\"python-syntax\"} (a proposed change "
     "to files: files are existing listed project files you want to change, at most 8 of at most 64 KiB each; create are new files "
-    "in existing directories; check is one of pytest, python-unittest, python-syntax, json, bash-syntax, fish-syntax, text, toml. "
+    "in existing directories; check is one of go-test, npm-test, pytest, python-unittest, python-syntax, json, bash-syntax, fish-syntax, text, toml. "
     "You save nothing: the application asks the user for consent, sends you the content of these files in a separate task, shows the diff and "
     "saves only after their consent. To delete files add a delete field (a list of listed paths, at most 8; files and "
     "create must then be empty): {\"action\":\"edit\",\"files\":[],\"create\":[],\"delete\":[\"a.py\"],\"check\":\"text\"}; the files go to "
@@ -560,6 +560,8 @@ def parse_request(raw):
 class Approval:
     payload: str
     sha256: str
+    # Desktop-only file identity and policy bytes. Neither is serialized in the model request.
+    local_policy: object = field(default=None, repr=False, compare=False)
 
 
 class AnalysisConsent:
@@ -568,6 +570,11 @@ class AnalysisConsent:
         self.payload = application_input(report, question, task, context, access, web=web, material=material,
                                          project=project, execution=execution,
                                          **({"discovery": discovery} if discovery is not None else {}))
+        selected = current_execution() if execution is UNSET else execution
+        self._local_policy = None
+        if selected is not None and selected["provider"] == "local":
+            from .local_provider import capture_policy
+            self._local_policy = capture_policy()
         self.sha256 = digest(self.payload)
         self.nonce = secrets.token_hex(24)
         self._clock, self._expires, self._used = clock, clock() + TTL, False
@@ -593,7 +600,7 @@ class AnalysisConsent:
                        **({"discovery": discovery} if discovery is not None else {}))
         finally:
             self._used = True
-        return Approval(self.payload, self.sha256)
+        return Approval(self.payload, self.sha256, self._local_policy)
 
 
 MODEL_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._\-\[\]]{0,63}\Z")
@@ -612,11 +619,15 @@ class ModelText(str):
 def validate_meta(value):
     """Closed model metadata: 1-3 entries of {model id, input/output token counts, context window}. No credentials,
     no free text, no other keys; counts are plain non-negative integers."""
-    models = value.get("models") if type(value) is dict and not set(value) - {"models", "quota"} else None
+    models = value.get("models") if type(value) is dict and not set(value) - {"models", "quota", "plan"} else None
+    if type(value) is dict and "plan" in value:
+        from .account_store import PLANS
+        if type(value["plan"]) is not str or value["plan"] not in PLANS:
+            raise ValueError("meta")
     if type(value) is dict and "quota" in value:
         from .account_store import quota
         quota(value["quota"])
-    if type(models) is not list or len(models) > 3 or not models and "quota" not in value:
+    if type(models) is not list or len(models) > 3 or not models and "quota" not in value and "plan" not in value:
         raise ValueError("meta")
     for item in models:
         if (type(item) is not dict or set(item) != set(_META_KEYS) or type(item["model"]) is not str
