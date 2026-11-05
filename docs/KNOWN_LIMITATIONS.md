@@ -6,7 +6,7 @@ AI Desktop jest wersją rozwojową, nie wydaniem 1.0. Testy automatyczne nie dow
 - Piaskownica poleceń odczytu nie izoluje gniazd Unix hosta. Szablon w `[commands] allow`, który może zmieniać stan przez D-Bus lub Dockera, nie jest zatrzymany przez samą piaskownicę, a takie polecenia działają bez pytania. Dotyczy to np. `docker`, który działa z piaskownicy i sięga do demona na hoście, dlatego nie ma go w szablonie. Wpisuj do `allow` tylko polecenia wyłącznie do odczytu.
 - Treść pliku lub wynik polecenia może skłonić model do kolejnych dozwolonych odczytów, a ich wyniki trafiają do dostawcy. Granicą są `permissions.toml` i budżety na pytanie.
 - Klient Claude Code ma dostęp do własnego profilu logowania w osobnym koncie `ai-desktop`. Nie ma ogólnego filtra wywołań systemowych dla klienta.
-- Przypięcie klienta polega na zgłaszanej wersji, nie na sumie kontrolnej pliku w pakiecie.
+- Suma SHA-256 klienta Claude jest sprawdzana przy budowie pakietu. Potem, przy każdym użyciu, program sprawdza już tylko zgłaszaną wersję pliku należącego do roota. Klient Codex ma sprawdzaną sumę archiwum przy pobieraniu przez `scripts/fetch_codex_client.py`, a `PKGBUILD` sprawdza u niego tylko nagłówek pliku.
 - Nie ma ochrony przed wrogim procesem tego samego użytkownika ani gwarancji przy utracie zasilania.
 
 ## Zachowanie
