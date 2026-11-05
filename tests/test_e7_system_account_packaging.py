@@ -88,6 +88,14 @@ class SystemAccountPackagingTests(unittest.TestCase):
                 env=environment, check=False, capture_output=True, text=True, timeout=12,
             )
             self.assertEqual(staged.returncode, 0, staged.stderr[-1000:])
+            desktop = ROOT / "packaging/desktop"
+            for name in ("ai-desktop.desktop", "ai-desktop-panel.desktop", "niri-bindings.kdl",
+                         "dms/AiDesktop/plugin.json", "dms/AiDesktop/Widget.qml", "dms/AiDesktop/Settings.qml",
+                         "dms/AiDesktop/Status.js"):
+                base = "usr/share/applications" if name.endswith(".desktop") else "usr/share/ai-desktop"
+                installed = package_root / base / name
+                self.assertEqual(installed.read_bytes(), (desktop / name).read_bytes())
+                self.assertEqual(stat.S_IMODE(installed.stat().st_mode), 0o644)
             self.assertEqual(
                 (package_root / "usr/lib/ai-desktop/provisioning/sysusers.conf").read_bytes(),
                 SYSUSERS.read_bytes(),

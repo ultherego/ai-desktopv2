@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=AI Desktop
+Comment=Start a conversation in the terminal
+TryExec=/usr/bin/ai-desktop
+Exec=/usr/bin/ai-desktop ask
+Terminal=true
+Icon=utilities-terminal
+Categories=System;Utility;

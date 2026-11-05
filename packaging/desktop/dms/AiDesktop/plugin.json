@@ -1,0 +1,13 @@
+{
+    "id": "aiDesktop",
+    "name": "AI Desktop",
+    "description": "Show the selected service, conversations and reported subscription limits.",
+    "version": "1.0.0",
+    "author": "AI Desktop contributors",
+    "type": "widget",
+    "capabilities": ["dankbar-widget"],
+    "component": "./Widget.qml",
+    "settings": "./Settings.qml",
+    "icon": "terminal",
+    "permissions": ["process", "settings_read", "settings_write"]
+}
