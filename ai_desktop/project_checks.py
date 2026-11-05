@@ -80,9 +80,20 @@ def run(project, recipe, reader, *, permit=None):
     except AnalysisDenied:
         print("Test refused by the active profile or consent.")
         return Result(2)
+    except project_scope.TestScopeRefused as exc:
+        print("Test refused. No tests ran.")
+        for detail in exc.details:
+            print(detail)
+        print("Open a smaller, self-contained project covered by files.read and retry. "
+              "Its result will apply only to that project.")
+        # This is a local hint for the specific checkout, never an executable fallback.
+        if {"ai_desktop/cli.py", "scripts/verify.py", "packaging/arch/PKGBUILD"}.issubset(e.path for e in project.files):
+            print("If this is your trusted AI Desktop checkout, run its full CI verification yourself "
+                  "in fish from the repository root (outside the sandbox):")
+            print("  python3 -B scripts/verify.py --mode ci --fail-fast")
+        return Result(2)
     except (OSError, ValueError) as exc:
-        reasons = {"TEST_SIZE": "the complete index must fit the file count, per-file and total read limits",
-                   "TEST_CHANGED": "the indexed project changed during the copy",
+        reasons = {"TEST_CHANGED": "the indexed project changed during the copy",
                    "TEST_FORMAT": "the index includes an unsupported name, binary or protected content"}
         print("Test refused: " + reasons.get(getattr(exc, "code", None), "the policy, files or sandbox are unavailable") + ".")
         return Result(2)

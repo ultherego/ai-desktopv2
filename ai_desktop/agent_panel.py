@@ -1,9 +1,14 @@
 """Offline status and interactive shortcuts. Never opens a client or reads a credential."""
 import argparse
+from contextlib import contextmanager
 import json
 import os
+import shutil
+import sys
 
 from . import agent_profiles, analysis_session, permissions, session_presence
+from .account_cli import print_usage
+from .terminal_style import paint
 from .analysis_contract import CLIENT_VERSION, terminal_text
 from .analysis_sandbox import INSTALL
 from .codex_protocol import CLIENT_VERSION as CODEX_VERSION
@@ -47,29 +52,39 @@ def snapshot():
     return value
 
 
-def _summary(data):
+def _summary(data, *, interactive=False):
     selected = data["selected"] or "unknown"
-    print("AI Desktop")
-    print("Service: %s    Role: %s    Model: %s" % (selected, data["role"] or "unknown", data.get("model", "unknown")))
-    for item in data["providers"]:
-        mark = "*" if selected == item["id"] else " "
-        access = {True: "allowed", False: "blocked", None: "no explicit policy"}[item["allowed"]]
-        details = item.get("endpoint") or ("installed" if item["client_present"] else "missing") + ", pinned " + item["pinned_version"]
-        print("%s %-7s %s · %s" % (mark, item["id"], details, access))
+    print(paint("AI Desktop", "accent", "bold") + "  " +
+          " · ".join((paint(selected, "bold"), data["role"] or "unknown", data.get("model", "unknown"))))
+    if not interactive:
+        for item in data["providers"]:
+            mark = "*" if selected == item["id"] else " "
+            access = {True: "allowed", False: "blocked", None: "no explicit policy"}[item["allowed"]]
+            details = item.get("endpoint") or (("installed" if item["client_present"] else "missing")
+                                              + ", pinned " + item["pinned_version"])
+            tone = {True: "green", False: "yellow", None: "muted"}[item["allowed"]]
+            print("%s %-7s %s · %s" % (mark, item["id"], details, paint(access, tone)))
     if data["policy"]:
         rules = data["policy"]
-        print("Configured policy: %d read / %d write scopes, %d read / %d change commands" %
+        print(paint("Policy", "muted") + "  %d read / %d write scopes · %d read / %d change commands" %
               (rules["read_scopes"], rules["write_scopes"], rules["read_commands"], rules["change_commands"]))
     for row in data["sessions"]:
         print("Conversation %s · %s · %s exchanges · %s" %
-              (terminal_text(row["id"]), terminal_text(row["provider"]), row["exchanges"], json.dumps(row["directory"], ensure_ascii=True)))
-    for row in data["accounts"]:
-        current = " (selected)" if row["selected"] else ""
-        print("Account: %s / %s%s · %s · plan %s · %s" %
-              (row["provider"], row["account"], current, row.get("status", "unchecked"),
-               row.get("plan") or "unknown", row["usage"]))
+              (terminal_text(row["id"]), terminal_text(row["provider"]), row["exchanges"],
+               json.dumps(row["directory"], ensure_ascii=True)))
+    if data["accounts"]:
+        print()
+        print(paint("Subscription limits", "violet", "bold"))
+        accounts = data["accounts"]
+        if interactive:
+            # Show the account used for the next task. The limits page includes all accounts.
+            accounts = [r for r in accounts if r["provider"] == selected and r["selected"]]
+        if accounts:
+            print_usage(accounts)
+        else:
+            print("  Local inference has no subscription limit." if selected == "local" else "  No selected account.")
     for error in data["errors"]:
-        print(error)
+        print(paint(error, "yellow"))
 
 
 def status(as_json=False):
@@ -100,34 +115,84 @@ def services(argv):
     return management_cli.main(["set", "--provider", args.provider], prog="ai-desktop settings", provider_neutral=True)
 
 
-def panel(dispatch):
-    from .terminal_menu import MenuInputError, choose
+@contextmanager
+def _panel_screen():
+    # Use the terminal's separate screen so inspecting the panel never erases shell scrollback.
+    sys.stdout.write("\x1b[?1049h")
+    try:
+        sys.stdout.flush()
+        yield
+    finally:
+        sys.stdout.write("\x1b[?1049l")
+        sys.stdout.flush()
+
+
+def _limits_page(rows, choose):
+    page = 0
+    while True:
+        cols, lines = shutil.get_terminal_size()
+        page_size = max(1, (lines - 7) // (10 if cols < 72 else 7))
+        last = max(0, (len(rows) - 1) // page_size)
+        page = min(page, last)
+        sys.stdout.write("\x1b[2J\x1b[H")
+        print(paint("Subscription limits", "violet", "bold"))
+        print_usage(rows[page * page_size:(page + 1) * page_size])
+        options = ["Back"]
+        if page < last:
+            options.append("Next page")
+        if page:
+            options.append("Previous page")
+        title = "Actions" if not last else "Page %d of %d" % (page + 1, last + 1)
+        choice = choose(title, options)
+        if choice in (None, 0):
+            return
+        page += 1 if options[choice] == "Next page" else -1
+
+
+def _panel_command(dispatch, choose):
     actions = (("Start a conversation", ["ask"]), ("Service and role", ["settings"]),
                ("Choose an account", ["account", "use"]), ("Subscription limits", ["usage"]),
                ("Saved conversations", ["sessions"]), ("Close", None))
+    while True:
+        sys.stdout.write("\x1b[2J\x1b[H")
+        data = snapshot()
+        _summary(data, interactive=True)
+        print()
+        choice = choose("Actions", tuple(title for title, _ in actions))
+        command = None if choice is None else actions[choice][1]
+        if command is None:
+            return None
+        if command == ["usage"]:
+            _limits_page(data["accounts"], choose)
+            continue
+        if command == ["account", "use"]:
+            from .ask_commands import _pick
+            accounts = [r for r in data["accounts"] if r.get("status") != "retired"]
+            if accounts:
+                labels = [r["provider"] + " / " + r["account"] + (" (selected)" if r["selected"] else "")
+                          for r in accounts]
+                index = _pick("Account for new requests", labels)
+                if index is not None and not accounts[index]["selected"]:
+                    row = accounts[index]
+                    dispatch([*command, row["provider"], row["account"]])
+            continue
+        return command
+
+
+def panel(dispatch):
+    from .terminal_menu import MenuInputError, choose
+    if not (os.isatty(0) and os.isatty(1)) or os.environ.get("TERM", "") in ("", "dumb", "unknown"):
+        _summary(snapshot())
+        return 0
     try:
         while True:
-            data = snapshot()
-            _summary(data)
-            if not os.isatty(0) or not os.isatty(1):
-                return 0
-            choice = choose("AI Desktop", tuple(title for title, _ in actions))
-            command = None if choice is None else actions[choice][1]
+            with _panel_screen():
+                command = _panel_command(dispatch, choose)
             if command is None:
                 return 0
+            # A conversation or settings command owns its normal terminal and scrollback.
             if command == ["ask"]:
                 return dispatch(command)
-            if command == ["account", "use"]:
-                from .ask_commands import _pick
-                accounts = [r for r in data["accounts"] if r.get("status") != "retired"]
-                if accounts:
-                    labels = [r["provider"] + " / " + r["account"] + (" (selected)" if r["selected"] else "")
-                              for r in accounts]
-                    account_choice = _pick("Account for new requests", labels)
-                    if account_choice is not None:
-                        row = accounts[account_choice]
-                        dispatch([*command, row["provider"], row["account"]])
-            else:
-                dispatch(command)
+            dispatch(command)
     except (KeyboardInterrupt, MenuInputError):
         return 0

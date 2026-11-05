@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-72: subscription display and project test feedback
+
+- The terminal panel and `usage` show separate five-hour and seven-day windows, utilization bars and local reset times. Current usage is colored by percentage. Expired readings are labelled with their last recorded value.
+- The interactive panel keeps subscription details on a separate page. Returning to the menu restores the dashboard in place; leaving the panel restores the shell.
+- An oversized project test reports which copy limits the authorized index exceeded before any tests run.
+
 ## 0.1.0-71: shared agent sessions and project checks
 
 - Start a conversation with `ai-desktop`. Choose Claude, Codex or an explicitly allowed loopback model and review what will travel when changing provider in the same conversation.

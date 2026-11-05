@@ -33,7 +33,7 @@ See [agent settings, accounts and sessions](docs/AGENT_MANAGEMENT.md), [verified
 
 This is a development version, not a 1.0 release.
 
-The current candidate package is **0.1.0-71** (changes: [CHANGELOG.md](CHANGELOG.md)).
+The current candidate package is **0.1.0-72** (changes: [CHANGELOG.md](CHANGELOG.md)).
 
 What is still missing and what has not been checked is described in [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md). Read that file before using this on important data. The plan up to version 1.0: [docs/ROADMAP.md](docs/ROADMAP.md), tasks: [docs/TODO.md](docs/TODO.md).
 
@@ -58,7 +58,7 @@ and ./claude-code --version  # must print: 2.1.312 (Claude Code)
 
 # 4. Build and install the package (the version in the file name = pkgrel from PKGBUILD)
 makepkg --cleanbuild
-sudo pacman -U ai-desktop-0.1.0-71-x86_64.pkg.tar.zst
+sudo pacman -U ai-desktop-0.1.0-72-x86_64.pkg.tar.zst
 sudo systemctl daemon-reload
 
 # 5. Log in to Claude (interactive, once)
@@ -213,7 +213,7 @@ Local commands that send nothing: `/find TEXT`, `/show A-B`, `/log`, `/exit`. `/
 
 ### `ai-desktop project DIRECTORY`
 
-The project editor receives the authorized conversation and observations behind the proposed edit. Type `/test pytest`, `/test python-unittest`, `/test go-test` or `/test npm-test` to run a fixed suite on an isolated copy of the authorized index. The controller requests approval for the copy and refuses a project that exceeds the supported limits. The test output stays in your terminal. Go and npm need a delegated systemd user scope with verified cgroup v2 limits and the corresponding local toolchain. Recipes never install dependencies.
+The project editor receives the authorized conversation and observations behind the proposed edit. Type `/test pytest`, `/test python-unittest`, `/test go-test` or `/test npm-test` to run a fixed suite on an isolated copy of the authorized index. The controller requests approval for the copy. On a size refusal it reports the measured file count or byte total, the relevant policy setting and the fixed copy ceiling (64 files, 64 KiB per file and 128 KiB total). A refused copy runs no tests. The test output stays in your terminal. Go and npm need a delegated systemd user scope with verified cgroup v2 limits and the corresponding local toolchain. Recipes never install dependencies.
 
 
 One directory covered by `files.read`. The scan is local and repeated before each question. Limits: 20,000 files, 100,000 entries, depth

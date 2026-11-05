@@ -3,11 +3,14 @@ import argparse
 from datetime import datetime, timezone
 import json
 import os
+import shutil
+import sys
 import subprocess
 import time
 
 from .account_store import AccountStore, CLOUD, named_account
 from .agent_profiles import ProfileError
+from .terminal_style import paint
 
 
 def _window_text(observed, samples, now):
@@ -43,6 +46,92 @@ def panel_rows(*, store=None, now=None):
     return rows
 
 
+def _local_time(stamp):
+    return datetime.fromtimestamp(stamp, timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M %Z")
+
+
+def _until_reset(seconds):
+    if seconds < 60:
+        return "<1m"
+    minutes = seconds // 60
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+    if days:
+        return "%dd %dh" % (days, hours)
+    if hours:
+        return "%dh %dm" % (hours, minutes)
+    return "%dm" % minutes
+
+
+def print_usage(rows):
+    """Human view of already-read quota snapshots. Never contacts a subscription."""
+    if not rows:
+        print("No subscription accounts to display.")
+        return
+    width = shutil.get_terminal_size((80, 24)).columns
+    now = int(time.time())
+    unicode_bar = (getattr(sys.stdout, "encoding", "") or "").lower().replace("-", "") == "utf8"
+    full, empty = ("█", "░") if unicode_bar else ("#", "-")
+    previous = None
+    for row in rows:
+        provider = row["provider"]
+        if previous is not None:
+            print()
+        if provider != previous:
+            print(paint({"claude": "Claude", "codex": "Codex"}[provider], "accent", "bold"))
+        previous = provider
+        name = paint(row["account"], "bold")
+        selected = " (selected)" if row["selected"] else ""
+        plan = (row.get("plan") or "unknown").replace("_", " ")
+        print("  Account  " + name + selected)
+        print("  Plan     " + plan)
+        print("  Status   " + row.get("status", "unchecked"))
+        windows = row.get("windows") or {}
+        if not windows:
+            print("  Limits   " + paint("Not reported", "muted"))
+            continue
+        for key, label in (("five_hour", "5-hour"), ("seven_day", "7-day")):
+            sample = windows.get(key)
+            prefix = "    %-7s" % label
+            if sample is None:
+                print(prefix + paint("Not reported", "muted"))
+                continue
+            percent, reset = sample["percent"], sample["reset"]
+            expired = reset <= now
+            # Keep a nearly full window distinguishable from an exhausted one.
+            if 99.9 < percent < 100:
+                percent_text = ">99.9%"
+            elif 0 < percent < 0.1:
+                percent_text = "<0.1%"
+            else:
+                percent_text = ("%.1f" % percent).removesuffix(".0") + "%"
+            value = "%6s %s" % (percent_text, "last recorded" if expired else "used")
+            tone = "muted" if expired else "red" if percent >= 90 else "yellow" if percent >= 75 else "green"
+            bar = ""
+            bar_width = 0
+            if width >= 72:
+                bar_width = 12
+                if expired:
+                    bar = " " * bar_width
+                else:
+                    count = int(percent // 10)
+                    bar = paint(full * count, tone) + paint(empty * (10 - count), "muted") + "  "
+            stamp = _local_time(reset)
+            label = "Window expired" if expired else "Resets in " + _until_reset(reset - now)
+            timing = label + " (" + stamp + ")"
+            if len(prefix + value + "   " + timing) + bar_width <= width:
+                print(prefix + bar + paint(value, tone, "bold") + "   " + paint(timing, "muted"))
+            else:
+                print(prefix + bar + paint(value, tone, "bold"))
+                if len(timing) + 6 <= width:
+                    print("      " + paint(timing, "muted"))
+                else:
+                    print("      " + paint(label, "muted"))
+                    print("      " + paint(stamp, "muted"))
+        if row.get("observed_at"):
+            print(paint("    Last reported " + _local_time(row["observed_at"]), "muted"))
+
+
 def usage_main(argv=None):
     parser = argparse.ArgumentParser(prog="ai-desktop usage", description="Last quota windows reported by approved subscriptions")
     parser.add_argument("--provider", choices=CLOUD)
@@ -53,8 +142,7 @@ def usage_main(argv=None):
         if args.json:
             print(json.dumps(rows, ensure_ascii=False))
         else:
-            for row in rows:
-                print("%s/%s   plan %s   %s" % (row["provider"], row["account"], row["plan"] or "unknown", row["usage"]))
+            print_usage(rows)
         return 0
     except (OSError, ValueError):
         print("Could not read account settings.")

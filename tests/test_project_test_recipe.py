@@ -108,6 +108,57 @@ class ProjectTestRecipeTests(unittest.TestCase):
         self.assertIsNone(self.session.test_project("pytest"))
         self.runner.assert_not_called()
 
+    def test_reports_all_exceeded_fixed_ceilings_without_exposing_excluded_files(self):
+        self.config.write_text(self.policy + "read_files = 128\nread_file_size = 131072\nread_total_size = 262144\n")
+        for relative in ("scripts/verify.py", "ai_desktop/cli.py", "packaging/arch/PKGBUILD"):
+            file = self.root / relative
+            file.parent.mkdir(parents=True)
+            file.touch()
+        for n in range(60):
+            (self.root / f"f{n}").touch()
+        (self.root / "big").write_bytes(b"0" * 131073)
+        (self.root / "private" / "SECRET-NAME").write_bytes(b"x" * 200000)
+        size = 131073 + self.testfile.stat().st_size
+        with contextlib.chdir(self.root):
+            result = project_checks.current("python-unittest", lambda _: self.fail("asked to run an oversized copy"))
+        self.assertEqual((result.code, result.summary, result.sources), (2, "", ()))
+        output = self.output.getvalue()
+        self.assertIn("No tests ran", output)
+        self.assertIn("Indexed files: 65 > 64 (permissions.toml [files] read_files = 128; fixed copy ceiling = 64)", output)
+        self.assertIn("Largest indexed file (bytes): 131073 > 65536", output)
+        self.assertIn(f"Total indexed bytes: {size} > 131072", output)
+        self.assertNotIn("SECRET-NAME", output)
+        self.assertNotIn("200000", output)
+        self.assertIn("trusted AI Desktop checkout", output)
+        self.assertIn("python3 -B scripts/verify.py --mode ci --fail-fast", output)
+        self.runner.assert_not_called()
+
+    def test_owner_budget_is_separate_from_fixed_ceiling_and_only_failed_limits_are_reported(self):
+        self.config.write_text(self.policy + "read_file_size = 1024\n")
+        (self.root / "big").write_bytes(b"x" * 1025)
+        with contextlib.chdir(self.root):
+            result = project_checks.current("pytest", lambda _: self.fail("consent must follow preflight"))
+        self.assertEqual(result.code, 2)
+        output = self.output.getvalue()
+        self.assertIn("1025 > 1024 (permissions.toml [files] read_file_size = 1024; fixed copy ceiling = 65536)", output)
+        self.assertNotIn("Total indexed bytes", output)
+        self.assertNotIn("scripts/verify.py", output)
+        self.runner.assert_not_called()
+
+    def test_unfinished_and_empty_indexes_are_not_reported_as_size_overruns(self):
+        (self.root / "a").touch()
+        with patch.object(project_scope, "MAX_FILES", 1):
+            self.assertIsNone(self.session.test_project("pytest"))
+        output = self.output.getvalue()
+        self.assertIn("Incomplete index: the index exceeded its limit of 1 files", output)
+        self.assertIn("1 permitted file(s) indexed so far; full totals are unknown.", output)
+        self.assertNotIn("Total indexed bytes", output)
+        self.testfile.unlink()
+        (self.root / "a").unlink()
+        self.assertIsNone(self.session.test_project("pytest"))
+        self.assertIn("complete index contains 0 permitted regular files", self.output.getvalue())
+        self.runner.assert_not_called()
+
     def test_model_cannot_select_program_options_or_files_for_a_project_suite(self):
         for recipe in ("pytest", "python-unittest", "go-test", "npm-test"):
             self.assertEqual(project_step.parse_decision(json.dumps({"action": "test", "recipe": recipe}))["recipe"], recipe)
