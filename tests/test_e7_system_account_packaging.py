@@ -90,9 +90,10 @@ class SystemAccountPackagingTests(unittest.TestCase):
             self.assertEqual(staged.returncode, 0, staged.stderr[-1000:])
             desktop = ROOT / "packaging/desktop"
             for name in ("ai-desktop.desktop", "ai-desktop-panel.desktop", "ai-desktop-login-claude.desktop",
-                         "ai-desktop-login-codex.desktop", "niri-bindings.kdl",
+                         "ai-desktop-login-codex.desktop", "ai-desktop-logout-claude.desktop",
+                         "ai-desktop-logout-codex.desktop", "ai-desktop-check-sign-in.desktop", "niri-bindings.kdl",
                          "dms/AiDesktop/plugin.json", "dms/AiDesktop/Widget.qml", "dms/AiDesktop/Settings.qml",
-                         "dms/AiDesktop/quota/QuotaCard.qml", "dms/AiDesktop/quota/Status.js"):
+                         "dms/AiDesktop/usage/QuotaCard.qml", "dms/AiDesktop/usage/Status.js"):
                 base = "usr/share/applications" if name.endswith(".desktop") else "usr/share/ai-desktop"
                 installed = package_root / base / name
                 self.assertEqual(installed.read_bytes(), (desktop / name).read_bytes())

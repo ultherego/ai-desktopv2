@@ -3,8 +3,8 @@ import qs.Common
 import qs.Services
 import qs.DCommon.Widgets
 import qs.Modules.Plugins
-import "quota" as Quota
-import "quota/Status.js" as Status
+import "usage" as Quota
+import "usage/Status.js" as Status
 
 PluginComponent {
     id: root
@@ -16,6 +16,8 @@ PluginComponent {
     property var snapshot: null
     property real sampledAt: 0
     property bool switching: false
+    property bool refreshing: false
+    property bool refreshQueued: false
     readonly property var activeAccount: Status.currentAccount(snapshot, service)
     readonly property var shortWindow: Status.accountWindows(activeAccount, sampledAt).find(w => w.name === "five_hour" && w.current) || null
     readonly property string service: snapshot?.selected || "Unavailable"
@@ -29,6 +31,11 @@ PluginComponent {
     }
 
     function refresh() {
+        if (refreshing) {
+            refreshQueued = true;
+            return;
+        }
+        refreshing = true;
         const key = "aiDesktop.status." + (widgetInstanceId || "default") + "." + (parentScreen?.name || "screen");
         Proc.runCommand(key, ["/usr/bin/ai-desktop", "status", "--json"], (output, code) => {
             // Exit 2 also carries usable fields when part of the local status is unavailable.
@@ -36,6 +43,11 @@ PluginComponent {
             root.snapshot = (code === 0 || code === 2) ? Status.parseStatus(output) : null;
             for (const message of Status.alerts(root.snapshot, root.notifyUsage, root.usageThreshold, root.sampledAt))
                 ToastService.showWarning("AI Desktop · subscription usage", message);
+            root.refreshing = false;
+            if (root.refreshQueued) {
+                root.refreshQueued = false;
+                Qt.callLater(root.refresh);
+            }
         });
     }
 
@@ -62,10 +74,32 @@ PluginComponent {
             changeSelection(["account", "use", provider, account], "account");
     }
 
-    function launch(entryId) {
+    function accountAction(provider, name, action) {
+        const selected = Status.currentAccount(snapshot, provider);
+        if (!["claude", "codex"].includes(provider) || selected?.account !== name ||
+            typeof name !== "string" || name !== name.trim() || !/^[a-z][a-z0-9-]{0,31}$/.test(name))
+            return;
+        if (action === "check" && selected.auth_state === "unknown")
+            launch("ai-desktop-check-sign-in.desktop", [provider, name]);
+        if (action === "logout" && selected.auth_state === "signed_in") {
+            if (provider === "claude")
+                launch("ai-desktop-logout-claude.desktop", [name]);
+            else
+                launch("ai-desktop-logout-codex.desktop", [name]);
+        }
+    }
+
+    function manageAccounts(provider) {
+        if (provider === "claude")
+            launch("ai-desktop-login-claude.desktop");
+        else if (provider === "codex")
+            launch("ai-desktop-login-codex.desktop");
+    }
+
+    function launch(entryId, args) {
         const entry = SessionService.resolveDesktopId(entryId);
         if (entry)
-            SessionService.launchDesktopEntry(entry);
+            SessionService.launchDesktopEntry(entry, false, args || []);
         else
             ToastService.showError("AI Desktop", "The packaged terminal launcher is unavailable.");
     }
@@ -111,7 +145,22 @@ PluginComponent {
             property bool showAccounts: false
             readonly property int listLimit: Math.min(340, (root.parentScreen?.height || 800) * 0.50)
 
+            readonly property bool opened: parentPopout?.shouldBeVisible === true
+            onOpenedChanged: if (opened) root.refresh()
+
             headerText: "AI Desktop"
+            headerActions: Component {
+                DButton {
+                    objectName: "statusRefresh"
+                    iconName: "refresh"
+                    enabled: !root.refreshing
+                    minimumWidth: 36
+                    horizontalPadding: 8
+                    tooltipText: "Refresh local status and limits"
+                    Accessible.name: "Refresh local status and limits"
+                    onClicked: root.refresh()
+                }
+            }
             detailsText: root.snapshot ? [Status.providerName(root.service), root.snapshot.role, root.snapshot.model].filter(Boolean).join("  ·  ")
                                          + (root.snapshot.sessions.length ? "  ·  " + root.snapshot.sessions.length + " active" : "")
                                        : "Local status unavailable"
@@ -158,6 +207,15 @@ PluginComponent {
                         successColor: Theme.success
                         warningColor: Theme.warning
                         dangerColor: Theme.error
+                        emptyUsageAction: Component {
+                            ChoiceButton {
+                                objectName: "chatgptUsageLink"
+                                text: "View usage in ChatGPT"
+                                iconName: "open_in_new"
+                                tooltipText: "Opens the account signed in to your browser"
+                                onClicked: Qt.openUrlExternally("https://chatgpt.com/settings/usage")
+                            }
+                        }
                     }
                 }
                 StyledText {
@@ -182,12 +240,43 @@ PluginComponent {
                         id: serviceCard
                         required property var modelData
                         readonly property string provider: modelData.id
+                        readonly property var selectedAccount: Status.currentAccount(root.snapshot, provider)
+                        readonly property bool signedIn: selectedAccount?.auth_state === "signed_in"
                         readonly property var accounts: (root.snapshot?.accounts || []).filter(a => a.provider === provider && a.status !== "retired")
                         width: ListView.view.width
                         height: serviceBody.implicitHeight + 24
                         radius: 13
                         color: Theme.surfaceContainer
-                        border.color: provider === root.service ? Qt.alpha(Theme.primary, 0.52) : Qt.alpha(Theme.surfaceVariantText, 0.24)
+                        border.color: chooseService.activeFocus || chooseService.containsMouse ? Theme.primary : provider === root.service ? Qt.alpha(Theme.primary, 0.52) : Qt.alpha(Theme.surfaceVariantText, 0.24)
+
+                        MouseArea {
+                            id: chooseService
+                            objectName: "chooseService_" + serviceCard.provider
+                            anchors.fill: parent
+                            enabled: !root.switching && Status.canSelectService(root.snapshot, serviceCard.provider)
+                            activeFocusOnTab: true
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            Accessible.role: Accessible.Button
+                            Accessible.name: "Use " + Status.providerName(serviceCard.provider)
+                            Accessible.onPressAction: root.selectService(serviceCard.provider)
+                            function overButton(row, x, y) {
+                                const point = mapToItem(row, x, y);
+                                return row.visible && row.childAt(point.x, point.y) !== null;
+                            }
+
+                            onClicked: mouse => {
+                                // Disabled account buttons also own their area on the card.
+                                if (!overButton(accountChoices, mouse.x, mouse.y) && !overButton(accountActions, mouse.x, mouse.y))
+                                    root.selectService(serviceCard.provider);
+                            }
+                            Keys.onPressed: event => {
+                                if (event.key === Qt.Key_Space || event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                                    root.selectService(serviceCard.provider);
+                                    event.accepted = true;
+                                }
+                            }
+                        }
 
                         Column {
                             id: serviceBody
@@ -206,15 +295,15 @@ PluginComponent {
                             }
                             StyledText {
                                 width: parent.width
-                                readonly property var selectedAccount: Status.currentAccount(root.snapshot, serviceCard.provider)
                                 text: serviceCard.provider === "local" ? serviceCard.modelData.endpoint
-                                      : (selectedAccount ? "Account: " + selectedAccount.account : "No active account")
+                                      : (serviceCard.selectedAccount ? "Account: " + serviceCard.selectedAccount.account : "No active account")
                                         + (serviceCard.modelData.allowed === false ? "   ·   Blocked by policy" : "")
                                 color: Theme.surfaceVariantText
                                 textFormat: Text.PlainText
                                 elide: Text.ElideRight
                             }
                             Flow {
+                                id: accountChoices
                                 width: parent.width
                                 spacing: Theme.spacingXS
                                 visible: serviceCard.accounts.length > 1
@@ -231,25 +320,32 @@ PluginComponent {
                                 }
                             }
                             Flow {
+                                id: accountActions
                                 width: parent.width
                                 spacing: Theme.spacingS
                                 DButton {
                                     visible: serviceCard.provider !== "local"
-                                    enabled: serviceCard.modelData.client_present === true
-                                    text: "Sign in…"
-                                    iconName: "login"
+                                    enabled: !root.switching && (serviceCard.signedIn || serviceCard.modelData.client_present === true)
+                                    text: serviceCard.signedIn ? "Sign out…" : serviceCard.selectedAccount?.requires_new_alias ? "Add account…" : "Sign in…"
+                                    iconName: serviceCard.signedIn ? "logout" : "login"
                                     onClicked: {
-                                        if (serviceCard.provider === "claude")
-                                            root.launch("ai-desktop-login-claude.desktop");
-                                        else if (serviceCard.provider === "codex")
-                                            root.launch("ai-desktop-login-codex.desktop");
+                                        if (serviceCard.signedIn)
+                                            root.accountAction(serviceCard.provider, serviceCard.selectedAccount.account, "logout");
+                                        else
+                                            root.manageAccounts(serviceCard.provider);
                                     }
                                 }
                                 ChoiceButton {
-                                    visible: serviceCard.provider !== root.service
-                                    enabled: !root.switching && Status.canSelectService(root.snapshot, serviceCard.provider)
-                                    text: "Use service"
-                                    onClicked: root.selectService(serviceCard.provider)
+                                    visible: serviceCard.selectedAccount?.auth_state === "unknown"
+                                    enabled: !root.switching
+                                    text: "Check sign-in…"
+                                    onClicked: root.accountAction(serviceCard.provider, serviceCard.selectedAccount.account, "check")
+                                }
+                                ChoiceButton {
+                                    visible: serviceCard.signedIn
+                                    enabled: !root.switching
+                                    text: "Manage accounts…"
+                                    onClicked: root.manageAccounts(serviceCard.provider)
                                 }
                             }
                         }

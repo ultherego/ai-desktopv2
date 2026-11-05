@@ -610,17 +610,17 @@ class AuthClient:
         """Stop local usage even if remote revocation cannot be confirmed."""
         with self.store.locked() as (state, save):
             account = state["accounts"].get(state["active"])
-            if account is None:
+            if account is None or not any(account[k] for k in ("access_token", "refresh_token", "id_token")):
                 return True
             confirmed = not account["refresh_token"]
-            try:
-                endpoint = self._discovery().get("revocation_endpoint")
-                if account["refresh_token"]:
+            if account["refresh_token"]:
+                try:
+                    endpoint = self._discovery().get("revocation_endpoint")
                     self._request("POST", _metadata_url(endpoint), {"client_id": account["client_id"],
                         "token": account["refresh_token"], "token_type_hint": "refresh_token"}, empty=True)
                     confirmed = True
-            except AuthError:
-                confirmed = False
+                except AuthError:
+                    confirmed = False
             for name in ("access_token", "refresh_token", "id_token"):
                 account[name] = ""
             account["expires_at"] = 0

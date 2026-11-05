@@ -229,7 +229,7 @@ def _rate_spend(value):
 
 
 def _rate_limits(params):
-    """Check pinned 0.166.0 quota metadata and discard it entirely.
+    """Check pinned 0.166.0 metadata before selecting numeric windows and a recognized plan.
 
     v2/account.rs defines optional snapshot fields and signed integer windows;
     protocol/account.rs defines emitted plan names. TokenCountEvent may emit

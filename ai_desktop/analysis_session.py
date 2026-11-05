@@ -184,6 +184,8 @@ def administrative(action, *, allow=False, details=False):
         print("SESSION: STOPPED")
         return 0
     except (AnalysisDenied, OSError, ValueError, subprocess.SubprocessError, KeyboardInterrupt) as exc:
+        if action == "login" and isinstance(exc, KeyboardInterrupt):
+            raise   # The desktop login flow reports the cancellation for this provider/account.
         reason = exc.reason if isinstance(exc, AnalysisDenied) else "cancelled" if isinstance(exc, KeyboardInterrupt) else "runtime"
         print("SESSION: REFUSED reason=" + reason)
         return 2

@@ -214,8 +214,10 @@ def client_command(action, execution=None):
                      "permissions or available tools.")
     if action == "login":
         return common + ["auth", "login"]
-    if action == "status":
+    if action in ("status", "offline-status"):
         return common + ["auth", "status"]
+    if action == "offline-logout":
+        return common + ["auth", "logout"]
     if action == "web":
         return common + ["-p", "--output-format", "stream-json", "--verbose",
                          "--tools", "WebSearch", "--allowedTools", "WebSearch",
@@ -231,7 +233,8 @@ def client_command(action, execution=None):
 
 
 def namespace_command(action, directory, *, online, account_path=None):
-    if action not in ("version", "status", "analyze", "web", "login") or online != (action != "version"):
+    if (action not in ("version", "status", "analyze", "web", "login", "offline-status", "offline-logout")
+            or online != (action in ("status", "analyze", "web", "login"))):
         raise AnalysisDenied("input")
     directory = Path(directory)
     command = base_command() + ["--disable-userns", "--assert-userns-disabled", "--hostname", "ai-desktop",
@@ -244,6 +247,10 @@ def namespace_command(action, directory, *, online, account_path=None):
     if online:
         command += ["--bind", str(PROFILE if account_path is None else account_path), INNER_PROFILE,
                     "--ro-bind", str(directory / "egress.sock"), "/run/egress.sock"]
+    elif action in ("offline-status", "offline-logout"):
+        # Local account actions get just this profile, with no host egress bridge.
+        mount = "--ro-bind" if action == "offline-status" else "--bind"
+        command += [mount, str(PROFILE if account_path is None else account_path), INNER_PROFILE]
     metadata = json.dumps({name: os.readlink("/proc/self/ns/" + name) for name in NAMESPACES})
     return command + ["--chdir", "/work", "/usr/bin/python3", "-I", "-B",
                       str(INSTALL / "analysis-client.py"), action, metadata]
@@ -405,6 +412,51 @@ def analysis_failure(code, output, errors, connection_failed):
     return AnalysisDenied("network" if code == 1 and connection_failed is True else "client")
 
 
+def _identity_files(directory):
+    (directory / "passwd").write_text("client:x:%d:%d::/home/client:/usr/bin/false\n" %
+                                      (os.geteuid(), os.getegid()))
+    (directory / "group").write_text("client:x:%d:\n" % os.getegid())
+
+
+def local_claude_session(account_path, *, logout=False):
+    """Caller holds the service profile lock. Only the offline native client opens OAuth."""
+    runtime_ready()
+    with tempfile.TemporaryDirectory(prefix="ai-desktop-account-") as temp:
+        directory = Path(temp)
+        _identity_files(directory)
+
+        def run(action):
+            cmd = namespace_command(action, directory, online=False, account_path=account_path)
+            return bounded_process(cmd, env={"PATH": "/usr/bin", "LANG": "C.UTF-8"}, timeout=20, limit=16384)
+
+        code, output, errors = run("version")
+        if code:
+            raise child_failure(errors, "version")
+        if output.strip() != (CLIENT_VERSION + " (Claude Code)").encode("ascii"):
+            raise AnalysisDenied("version")
+
+        def signed_in():
+            code, output, errors = run("offline-status")
+            if code not in (0, 1):
+                raise child_failure(errors, "client")
+            status = _json_result(0, output)
+            if status.get("loggedIn") is False:
+                return False
+            check_auth(code, output)
+            return True
+
+        if not signed_in():
+            return False
+        if not logout:
+            return True
+        _, _, errors = run("offline-logout")
+        # The native command can fail after it has already removed its local
+        # credentials. Its next offline status is authoritative about that effect.
+        if signed_in():
+            raise child_failure(errors, "client")
+        return False
+
+
 def run_client(action, report=b"", *, cancelled=None, mode="analysis"):
     """One official login OR one approved analysis. No retries or fallback."""
     if (action not in ("login", "analyze", "web") or (action == "login" and report)
@@ -417,9 +469,7 @@ def run_client(action, report=b"", *, cancelled=None, mode="analysis"):
         account_path = account_runtime.directory(PROFILE, login=action == "login")
         options = {} if account_path == PROFILE else {"account_path": account_path}
         directory = Path(temp)
-        (directory / "passwd").write_text("client:x:%d:%d::/home/client:/usr/bin/false\n" %
-                                          (os.geteuid(), os.getegid()))
-        (directory / "group").write_text("client:x:%d:\n" % os.getegid())
+        _identity_files(directory)
         env = {"PATH": "/usr/bin", "LANG": "C.UTF-8"}
         with failure_stage("version"):
             code, out, errors = bounded_process(namespace_command("version", directory, online=False),

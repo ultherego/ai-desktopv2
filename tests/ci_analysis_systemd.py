@@ -11,6 +11,7 @@ import pwd
 import pty
 import re
 import select
+import shlex
 import signal
 import socket
 import subprocess
@@ -63,7 +64,7 @@ def require_ci():
     if pwd.getpwnam("ai-desktop").pw_uid == os.geteuid():
         raise ValueError("identity")
     host._installed_matches()
-    for name in ("claude-code", "fixture-client.py", "analysis-worker.py", "analysis-client.py", "analysis-session.py"):
+    for name in ("claude-code", "fixture-client.py", "analysis-worker.py", "analysis-client.py", "analysis-session.py", "codex-auth.py"):
         if os.path.lexists(prior.DEST / name):
             raise ValueError("existing-runtime")
     for name in NAMES:
@@ -80,7 +81,7 @@ def install(temp, file_home):
     prior._run("sudo", "-n", "/usr/bin/install", "-m755", str(temp / "client"), str(prior.DEST / "claude-code"))
     prior._run("sudo", "-n", "/usr/bin/install", "-m644", str(ROOT / "tests/analysis_fixture_diagnostic.py"),
                str(prior.DEST / "fixture-diagnostic.py"))
-    for name in ("analysis-worker.py", "analysis-client.py", "analysis-session.py"):
+    for name in ("analysis-worker.py", "analysis-client.py", "analysis-session.py", "codex-auth.py"):
         prior._run("sudo", "-n", "/usr/bin/install", "-m644", str(ROOT / "packaging/systemd" / name), str(prior.DEST))
     for name in NAMES:
         prior._run("sudo", "-n", "/usr/bin/install", "-m644", str(ROOT / "packaging/systemd" / name), str(prior.UNITS / name))
@@ -153,6 +154,40 @@ def install(temp, file_home):
                   "raise SystemExit(cli.main())\n")
     prior._run("sudo", "-n", "/usr/bin/install", "-m644", str(ui), str(prior.DEST / "fixture-ui.py"))
     return fixture
+
+
+def account_lifecycle_cycle(temp):
+    """Exercise the installed helper, sudo UID, transient service, and result codes on a synthetic slot."""
+    alias = "ci-lifecycle"
+    slot = Path("/var/lib/ai-desktop") / f"account-{os.getuid()}-claude-{alias}"
+    admin = ["sudo", "-n"]
+    for flag in ("-e", "-L"):
+        prior._run(*admin, "/usr/bin/test", "!", flag, str(slot))
+
+    def check(action, expected):
+        command = [*admin, "/usr/bin/python3", "-I", "-B", str(prior.DEST / "codex-auth.py"),
+                   "account-" + action, "claude", alias]
+        result = subprocess.run(["/usr/bin/script", "-qec", shlex.join(command), "/dev/null"],
+                                stdin=subprocess.DEVNULL, capture_output=True, timeout=30)
+        if result.returncode != expected:
+            raise ValueError(f"account-{action}-expected-{expected}-got-{result.returncode}")
+
+    check("check", 4)  # Checking an unknown slot must leave it absent.
+    prior._run(*admin, "/usr/bin/test", "!", "-e", str(slot))
+    fixture = temp / "synthetic-local-credential"
+    fixture.write_text("SYNTHETIC-CI-FIXTURE")
+    owner = ["-o", "ai-desktop", "-g", "ai-desktop"]
+    prior._run(*admin, "/usr/bin/install", "-d", "-m700", *owner, str(slot), str(slot / "profile"))
+    prior._run(*admin, "/usr/bin/install", "-m600", *owner, "/dev/null", str(slot / "connected"))
+    credential = slot / "profile/.credentials.json"
+    prior._run(*admin, "/usr/bin/install", "-m600", *owner, str(fixture), str(credential))
+    mode_file = temp / "synthetic-account-mode"
+    mode_file.write_text("account-lifecycle")
+    prior._run(*admin, "/usr/bin/install", "-m600", *owner, str(mode_file), str(slot / "profile/fixture-mode"))
+    check("check", 0)
+    check("logout", 6)  # This named Claude alias stays bound after local sign-out.
+    prior._run(*admin, "/usr/bin/test", "!", "-e", str(credential))
+    check("check", 6)
 
 
 def mode(temp, value):
@@ -624,10 +659,10 @@ def login_pty(*, accepted, details=True):
                 break
         process.wait(timeout=2)
         success = (b"LOGIN: PASS auth=claude.ai" if details else
-                   "Logged in. Active service: Claude.".encode("utf-8"))
+                   b"Signed in  Claude / default")
         if (not answered or (details and unit is None) or process.returncode != (0 if accepted else 2)
                 or (accepted and success not in output)
-                or (not accepted and "Logged in.".encode("utf-8") in output)
+                or (not accepted and b"Signed in  Claude / default" in output)
                 or (not accepted and b"LOGIN: REFUSED stage=auth-status reason=auth-method" not in output)):
             # Synthetic fixture only, but still expose only fixed diagnostic lines.
             for match in re.findall(rb"(?:LOGIN|CLIENT): REFUSED stage=[a-z-]+ reason=[a-z-]+", output):
@@ -680,6 +715,8 @@ def main(argv=None):
             stage = "install"
             fixture = install(temp, file_home)
             installed = True
+            stage = "account-credentials"
+            account_lifecycle_cycle(temp)
             stage = "login-pty"
             mode(temp, "login")
             login_pty(accepted=True)

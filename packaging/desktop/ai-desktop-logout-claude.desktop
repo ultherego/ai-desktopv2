@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=AI Desktop — Sign out of Claude
+Comment=Confirm sign-out of the specified AI Desktop account
+Exec=/usr/bin/ai-desktop account logout claude --from-widget
+Terminal=true
+NoDisplay=true
+Icon=utilities-terminal
+Categories=System;Utility;

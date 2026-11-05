@@ -1,6 +1,6 @@
 import QtQuick
 import QtTest
-import "../../packaging/desktop/dms/AiDesktop/quota" as Quota
+import "../../packaging/desktop/dms/AiDesktop/usage" as Quota
 
 Item {
     id: scene
@@ -79,6 +79,17 @@ Item {
             compare(colorAt(first, 0.5), card.trackColor);
             compare(colorAt(second, 0.8), card.dangerColor);
             compare(colorAt(second, 0.95), card.trackColor);
+        }
+
+        function test_staleWindowKeepsItsObservationTime() {
+            const older = card.sampledAt - 7200;
+            const weekly = reading(31);
+            weekly.observed_at = older;
+            setReadings({five_hour: reading(13), seven_day: weekly});
+            const stamp = findChild(card, "reportedAt_seven_day");
+            verify(stamp.visible);
+            compare(stamp.text, "Reported " + Qt.formatDateTime(new Date(older * 1000), "d MMM, hh:mm t"));
+            verify(!findChild(card, "reportedAt_five_hour").visible);
         }
 
         function test_zeroAndExhausted() {

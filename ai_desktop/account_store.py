@@ -1,13 +1,16 @@
 """Non-secret account names, selections and numeric usage snapshots in a private desktop store."""
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
+import fcntl
 import json
+import os
 import re
 
-from .agent_profiles import Store, ProfileError, _pairs
+from .agent_profiles import Store, ProfileError, _file, _pairs
 
 CLOUD = ("claude", "codex")
 PLANS = frozenset(("free", "go", "plus", "pro", "max", "ultra", "prolite", "promax", "team", "business",
-                   "enterprise", "edu", "edu_plus", "edu_pro", "self_serve_business_prolite",
+                   "enterprise", "ent26", "edu", "edu_plus", "edu_pro", "sci", "sci_plus", "self_serve_business_prolite",
                    "self_serve_business_usage_based", "enterprise_cbp_automation", "enterprise_cbp_usage_based"))
 _NAME = re.compile(r"[a-z][a-z0-9-]{0,31}\Z", re.ASCII)
 
@@ -16,12 +19,18 @@ def named_account(value):
     return type(value) is str and value != "default" and _NAME.fullmatch(value) is not None
 
 
-def quota(value):
-    """Only recognized time windows and finite numeric provider readings cross the trust boundary."""
+def quota(value, *, stored_at=None):
+    """The provider supplies only percent/reset. Only the desktop can stamp retained observations."""
     if type(value) is not dict or not value or set(value) - {"five_hour", "seven_day"}:
         raise ValueError("quota")
     for sample in value.values():
-        if (type(sample) is not dict or set(sample) != {"percent", "reset"}
+        if type(sample) is not dict:
+            raise ValueError("quota")
+        extra = set(sample) - {"percent", "reset"}
+        if extra and (extra != {"observed_at"} or stored_at is None
+                      or type(sample["observed_at"]) is not int or not 0 < sample["observed_at"] < stored_at):
+            raise ValueError("quota")
+        if (not {"percent", "reset"} <= set(sample)
                 or type(sample["percent"]) not in (float, int) or not 0 <= sample["percent"] <= 100
                 or type(sample["reset"]) is not int or not 0 < sample["reset"] < 2**34):
             raise ValueError("quota")
@@ -36,6 +45,8 @@ class Accounts:
     # A successful explicit login is historical evidence; the live credential might subsequently expire.
     logins: tuple = ()
     plans: tuple = ()
+    # Locally checked credentials, independent of account selection and cached quota.
+    auth: tuple = ()
 
     def __post_init__(self):
         if len(self.rows) > 32:
@@ -48,7 +59,9 @@ class Accounts:
                     or (observed == 0) != (samples is None)):
                 raise ProfileError("accounts")
             if samples is not None:
-                quota(samples)
+                quota(samples, stored_at=observed)
+                if all("observed_at" in sample for sample in samples.values()):
+                    raise ProfileError("accounts")
             seen.add((service, name))
             if active:
                 selected.add(service)
@@ -57,13 +70,39 @@ class Accounts:
                 or any(not named_account(name) for _, name in self.retired)):
             raise ProfileError("accounts")
         if (len({(p, n) for p, n, _ in self.logins}) != len(self.logins)
-                or any((p, n) not in seen or type(t) is not int or not 0 < t < 2**34 for p, n, t in self.logins)):
+                or any(p not in CLOUD or n not in self.items(p) or type(t) is not int or not 0 < t < 2**34 for p, n, t in self.logins)):
             raise ProfileError("accounts")
 
         if (len({(p, n) for p, n, _, _ in self.plans}) != len(self.plans)
                 or any(p not in CLOUD or n not in self.items(p) or plan not in PLANS
                        or type(t) is not int or not 0 < t < 2**34 for p, n, plan, t in self.plans)):
             raise ProfileError("accounts")
+
+        if (len({(p, n) for p, n, _ in self.auth}) != len(self.auth)
+                or any(p not in CLOUD or n not in self.items(p)
+                       or status not in ("signed_in", "signed_out", "new_alias")
+                       or (status == "new_alias" and not named_account(n))
+                       for p, n, status in self.auth)):
+            raise ProfileError("accounts")
+
+    def auth_status(self, provider, name):
+        for p, n, status in self.auth:
+            if (p, n) == (provider, name):
+                return status
+        # Versions before the auth field kept successful named login receipts.
+        return "signed_in" if any(row[:2] == (provider, name) for row in self.logins) else "unknown"
+
+    def checked(self, provider, name, status, *, clear_usage=False):
+        key = (provider, name)
+        if provider not in CLOUD or name not in self.items(provider) or key in self.retired:
+            raise ProfileError("account-missing")
+        retained = tuple(row for row in self.auth if row[:2] != key)
+        if status == "signed_in" and not clear_usage:
+            return replace(self, auth=retained + ((provider, name, status),))
+        rows = tuple((p, n, selected, 0, None) if (p, n) == key else (p, n, selected, t, samples)
+                     for p, n, selected, t, samples in self.rows)
+        return replace(self, rows=rows, plans=tuple(row for row in self.plans if row[:2] != key),
+                       auth=retained + ((provider, name, status),))
 
     def with_plan(self, service, name, plan, observed):
         previous = next((row for row in self.plans if row[:2] == (service, name)), None)
@@ -74,7 +113,9 @@ class Accounts:
 
     def logged_in(self, provider, name, when):
         retained = tuple(r for r in self.logins if r[:2] != (provider, name))
-        return replace(self, logins=retained + ((provider, name, when),))
+        # A fresh login can connect a different subscription in the default slot.
+        connected = self.checked(provider, name, "signed_in", clear_usage=True)
+        return replace(connected, logins=retained + ((provider, name, when),))
 
     def retire(self, provider, name):
         key = (provider, name)
@@ -94,7 +135,8 @@ class Accounts:
         return replace(self, rows=self.rows + ((service, name, False, 0, None),))
 
     def select(self, service, name):
-        if service not in CLOUD or name not in self.items(service) or (service, name) in self.retired:
+        if (service not in CLOUD or name not in self.items(service) or (service, name) in self.retired
+                or self.auth_status(service, name) == "new_alias"):
             raise ProfileError("account-missing")
         return replace(self, rows=tuple((p, n, n == name if p == service else active, t, s)
                               for p, n, active, t, s in self.rows))
@@ -102,28 +144,40 @@ class Accounts:
     def note(self, service, name, observed, samples):
         if name not in self.items(service):
             raise ProfileError("account-missing")
+        if type(observed) is not int or not 0 < observed < 2**34:
+            raise ValueError("quota")
         previous = next((row for row in self.rows if row[:2] == (service, name)), None)
-        if previous is not None and previous[3] > observed:
-            return self
+        measured = {window: (observed, sample) for window, sample in quota(samples).items()}
+        if previous and previous[4]:
+            for window, sample in previous[4].items():
+                when = sample.get("observed_at", previous[3])
+                if window not in measured or when > observed:
+                    measured[window] = (when, sample)
+        newest = max(when for when, _ in measured.values())
+        windows = {}
+        for window, (when, sample) in measured.items():
+            windows[window] = {"percent": sample["percent"], "reset": sample["reset"]}
+            if when != newest:
+                windows[window]["observed_at"] = when
         retained = tuple(row for row in self.rows if row[:2] != (service, name))
-        return replace(self, rows=retained + ((service, name, self.active(service) == name, observed, quota(samples)),))
+        return replace(self, rows=retained + ((service, name, self.active(service) == name, newest, windows),))
 
     def data(self):
-        return {"schema": 1, "rows": list(self.rows), "retired": self.retired, "logins": self.logins, "plans": self.plans}
+        return {"schema": 1, "rows": list(self.rows), "retired": self.retired, "logins": self.logins, "plans": self.plans, "auth": self.auth}
 
 
 def decode(raw):
     value = json.loads(raw, object_pairs_hook=_pairs)
     if (type(value) is not dict or not {"schema", "rows"} <= set(value)
-            or set(value) - {"schema", "rows", "retired", "logins", "plans"} or type(value["schema"]) is not int
+            or set(value) - {"schema", "rows", "retired", "logins", "plans", "auth"} or type(value["schema"]) is not int
             or value["schema"] != 1 or type(value["rows"]) is not list
             or any(type(row) is not list or len(row) != 5 for row in value["rows"])
-            or any(type(value.get(k, [])) is not list or len(value.get(k, [])) > 32
+            or any(type(value.get(k, [])) is not list or len(value.get(k, [])) > 34
                    or any(type(row) is not list or len(row) != size for row in value.get(k, []))
-                   for k, size in (("retired", 2), ("logins", 3), ("plans", 4)))):
+                   for k, size in (("retired", 2), ("logins", 3), ("plans", 4), ("auth", 3)))):
         raise ProfileError("accounts")
     try:
-        return Accounts(*(tuple(tuple(row) for row in value.get(key, [])) for key in ("rows", "retired", "logins", "plans")))
+        return Accounts(*(tuple(tuple(row) for row in value.get(key, [])) for key in ("rows", "retired", "logins", "plans", "auth")))
     except (TypeError, ValueError):
         raise ProfileError("accounts") from None
 
@@ -133,6 +187,25 @@ class AccountStore(Store):
     record_type = Accounts
     empty = staticmethod(Accounts)
     decode = staticmethod(decode)
+
+    @contextmanager
+    def lifecycle(self, provider, name):
+        """Serialize a cooperating desktop's credential operation and its matching receipt."""
+        if provider not in CLOUD or (name != "default" and not named_account(name)):
+            raise ProfileError("account-name")
+        with self._parent(create=True) as (parent, recheck):
+            filename = f".auth-{provider}-{name}.lock"
+            fd = os.open(filename, os.O_RDWR | os.O_CREAT | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
+                         0o600, dir_fd=parent)
+            try:
+                _file(os.fstat(fd), self.uid)
+                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                if not os.path.samestat(os.fstat(fd), os.stat(filename, dir_fd=parent, follow_symlinks=False)):
+                    raise ProfileError("changed")
+                recheck()
+                yield
+            finally:
+                os.close(fd)
 
 
 def claude_windows(info):

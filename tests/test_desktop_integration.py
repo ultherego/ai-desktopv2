@@ -11,8 +11,11 @@ DESKTOP = ROOT / "packaging" / "desktop"
 class DesktopIntegrationTests(unittest.TestCase):
     def test_freedesktop_launchers_use_fixed_argv_in_a_terminal(self):
         for name, action in (("ai-desktop", "ask"), ("ai-desktop-panel", "panel"),
-                             ("ai-desktop-login-claude", "account connect claude"),
-                             ("ai-desktop-login-codex", "account connect codex")):
+                             ("ai-desktop-login-claude", "account connect claude --from-widget"),
+                             ("ai-desktop-login-codex", "account connect codex --from-widget"),
+                             ("ai-desktop-logout-claude", "account logout claude --from-widget"),
+                             ("ai-desktop-logout-codex", "account logout codex --from-widget"),
+                             ("ai-desktop-check-sign-in", "account check --from-widget")):
             with self.subTest(name=name):
                 entry = configparser.ConfigParser(interpolation=None)
                 entry.read(DESKTOP / (name + ".desktop"), encoding="utf-8")
@@ -34,12 +37,17 @@ class DesktopIntegrationTests(unittest.TestCase):
         self.assertIn('["/usr/bin/ai-desktop"].concat(args)', widget)
         self.assertIn('if (Status.canSelectService(snapshot, provider))\n            changeSelection(["agent", "use", provider]', widget)
         self.assertIn('if (Status.canSelectAccount(snapshot, provider, account))\n            changeSelection(["account", "use", provider, account]', widget)
-        self.assertIn("onClicked: root.selectService(serviceCard.provider)", widget)
+        self.assertIn("root.selectService(serviceCard.provider)", widget)
         self.assertIn("onClicked: root.selectAccount(serviceCard.provider, modelData.account)", widget)
         self.assertIn("onTriggered: root.refresh()", widget)
         self.assertNotIn("sudo", widget)
         self.assertIn('["/usr/bin/ai-desktop", "status", "--json"]', widget)
         for item in ("ai-desktop.desktop", "ai-desktop-panel.desktop",
                      "ai-desktop-login-claude.desktop", "ai-desktop-login-codex.desktop"):
-            self.assertIn('root.launch("' + item + '")', widget)
+            self.assertIn('launch("' + item + '")', widget)
             self.assertTrue((DESKTOP / item).is_file())
+        for name in ("ai-desktop-check-sign-in", "ai-desktop-logout-claude", "ai-desktop-logout-codex"):
+            self.assertIn(f'launch("{name}.desktop", [', widget)
+            self.assertTrue((DESKTOP / (name + ".desktop")).is_file())
+        self.assertEqual(widget.count("Qt.openUrlExternally("), 1)
+        self.assertIn('onClicked: Qt.openUrlExternally("https://chatgpt.com/settings/usage")', widget)

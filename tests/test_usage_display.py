@@ -74,6 +74,24 @@ class UsageDisplayTests(unittest.TestCase):
         self.assertNotIn("100% used", output)
         self.assertNotIn("Resets in", output)
 
+    def test_codex_empty_after_login_gives_official_usage_url_without_a_percentage(self):
+        row = {**self.rows()[-1], "windows": {}, "observed_at": None}
+        with patch.object(self, "rows", return_value=[row]):
+            text = self.display(argv=["--provider", "codex"])
+        self.assertIn("Sign-in does not return usage limits.", text)
+        self.assertIn("https://chatgpt.com/settings/usage", text)
+        self.assertNotIn("%", text)
+
+    def test_earlier_window_reports_its_own_local_timestamp(self):
+        row = self.rows()[-1]
+        row["windows"]["five_hour"]["observed_at"] = NOW - 3600
+        with patch.object(self, "rows", return_value=[row]):
+            text = self.display(argv=["--provider", "codex"], zone="Europe/Warsaw")
+        self.assertIn("Reported 2026-07-01 11:00 CEST", text)
+        self.assertIn("Last reported 2026-07-01 11:55 CEST", text)
+        summary = accounts._window_text(row["observed_at"], row["windows"], NOW)
+        self.assertIn("reported 2026-07-01 09:00 UTC", summary)
+
     def test_narrow_tty_wraps_without_a_bar_and_respects_no_color(self):
         output = self.display(width=42, tty=True, no_color=True)
         self.assertNotIn("\x1b", output)

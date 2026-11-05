@@ -57,6 +57,55 @@ Item {
                     {tag: "cached card and script", state: "cached", provider: "codex"}];
         }
 
+        function exerciseAccountActions(widget, popout, snapshot, provider, account) {
+            const refresh = findChild(popout, "statusRefresh");
+            verify(refresh && refresh.visible);
+            const corner = refresh.mapToItem(popout, refresh.width, 0);
+            verify(corner.x >= popout.width - 1 && corner.y < 40, "Refresh belongs in the top right corner");
+            clickButton(popout, "Sign in…");
+            compare(SessionService.lastLaunched, "ai-desktop-login-" + provider.id + ".desktop");
+            clickButton(popout, "Check sign-in…");
+            compare(SessionService.lastLaunched, "ai-desktop-check-sign-in.desktop");
+            compare(JSON.stringify(SessionService.lastArgs), JSON.stringify([provider.id, account.account]));
+
+            const oldAlias = account.account;
+            account.auth_state = "signed_in";
+            account.account = provider.id === "claude" ? "default" : "work";
+            snapshot.accounts.push({provider: provider.id, account: "spare", selected: false, auth_state: "signed_out"});
+            Proc.statusReply = JSON.stringify(snapshot);
+            mouseClick(refresh);
+            clickButton(popout, "Sign out…");
+            compare(SessionService.lastLaunched, "ai-desktop-logout-" + provider.id + ".desktop");
+            compare(JSON.stringify(SessionService.lastArgs), JSON.stringify([account.account]));
+            SessionService.lastLaunched = "";
+            widget.accountAction(provider.id, oldAlias, "logout");
+            widget.accountAction(provider.id, "--help", "logout");
+            compare(SessionService.lastLaunched, "");
+            clickButton(popout, "Manage accounts…");
+            compare(SessionService.lastLaunched, "ai-desktop-login-" + provider.id + ".desktop");
+            const selected = visibleButton(popout, account.account);
+            verify(selected && !selected.enabled);
+            mouseClick(selected);
+            compare(Proc.changes.length, 0, "Nested buttons must never activate the provider card");
+            clickButton(popout, "spare");
+            compare(JSON.stringify(Proc.changes), JSON.stringify([["/usr/bin/ai-desktop", "account", "use", provider.id, "spare"]]));
+            Proc.changes = [];
+
+            function hit() { return findChild(popout, "chooseService_" + provider.id); }
+            tryVerify(() => hit() && hit().enabled);
+            mouseClick(hit(), 15, 14);
+            compare(JSON.stringify(Proc.changes), JSON.stringify([["/usr/bin/ai-desktop", "agent", "use", provider.id]]));
+            hit().forceActiveFocus();
+            keyClick(Qt.Key_Return);
+            compare(Proc.changes.length, 2);
+            provider.allowed = false;
+            Proc.statusReply = JSON.stringify(snapshot);
+            mouseClick(refresh);
+            tryVerify(() => hit() && !hit().enabled);
+            mouseClick(hit(), 15, 14);
+            compare(Proc.changes.length, 2, "Blocked provider card must ignore clicks");
+        }
+
         function test_recoverWithoutRestart(data) {
             plugin = data.state + "/plugins/AiDesktop/";
             const old = loadWidget(0);
@@ -74,21 +123,34 @@ Item {
                 compare(previousCard.status, Component.Ready, previousCard.errorString());
             }
 
+            install(data.state, "old-quota");
+            const quotaPackage = loadWidget(2);
+            compare(quotaPackage.status, Component.Ready, quotaPackage.errorString());
+            verify(createTemporaryObject(quotaPackage, stage).oldCard);
+
             install(data.state, "upgrade");
-            const updated = loadWidget(2);
+            const updated = loadWidget(3);
             compare(updated.status, Component.Ready, updated.errorString());
 
-            const snapshot = {selected: "claude", role: "diagnostic", model: "default",
-                              sessions: [], providers: [{id: data.provider, allowed: true, client_present: true}], accounts: [
-                                  {provider: "claude", account: "personal", selected: true,
-                                   observed_at: 1799999900, windows: {five_hour: {percent: 19, reset: 1800000900}}}
-                              ]};
-            const widget = createTemporaryObject(updated, stage, {snapshot, sampledAt: 1800000000});
+            const now = Math.floor(Date.now() / 1000);
+            const account = {provider: data.provider, account: "personal", selected: true, auth_state: "unknown",
+                             observed_at: now - 100, windows: {five_hour: {percent: 19, reset: now + 900}}};
+            const provider = {id: data.provider, allowed: true, client_present: true};
+            const snapshot = {schema: 1, selected: data.provider === "claude" ? "codex" : "claude",
+                              role: "diagnostic", model: "default", sessions: [], providers: [provider], accounts: [account]};
+            Proc.statusReply = JSON.stringify(snapshot);
+            Proc.changes = [];
+            const widget = createTemporaryObject(updated, stage, {snapshot, sampledAt: now});
             verify(widget);
             const popout = createTemporaryObject(widget.popoutContent, stage, {width: 420});
             verify(popout);
+            const host = Qt.createQmlObject("import QtQuick; QtObject { property bool shouldBeVisible: false }", popout);
+            popout.parentPopout = host;
+            const openedAfter = Proc.statusCalls;
+            host.shouldBeVisible = true;
+            tryVerify(() => Proc.statusCalls > openedAfter, 5000, "Opening the widget should refresh local status");
             tryVerify(() => findChild(popout, "quotaAccountTitle") !== null);
-            compare(findChild(popout, "quotaAccountTitle").text, "Claude  /  personal");
+            compare(findChild(popout, "quotaAccountTitle").text, (data.provider === "claude" ? "Claude" : "Codex") + "  /  personal");
             const gauge = findChild(popout, "quotaFill_five_hour");
             const track = findChild(popout, "quotaTrack_five_hour");
             verify(gauge && track && track.visible && track.width > 0);
@@ -103,10 +165,18 @@ Item {
             clickButton(popout, "Accounts & login");
             compare(usage.backgroundColor, Theme.surfaceContainerHigh);
             compare(accounts.backgroundColor, Theme.primaryContainer);
-            clickButton(popout, "Sign in…");
-            compare(SessionService.lastLaunched, "ai-desktop-login-" + data.provider + ".desktop");
+            exerciseAccountActions(widget, popout, snapshot, provider, account);
             clickButton(popout, "Usage");
-            tryCompare(track, "visible", true);
+            const refresh = findChild(popout, "statusRefresh");
+            const before = Proc.statusCalls;
+            mouseClick(refresh);
+            tryVerify(() => Proc.statusCalls > before);
+            if (data.provider === "codex") {
+                account.windows = {};
+                Proc.statusReply = JSON.stringify(snapshot);
+                mouseClick(refresh);
+                tryVerify(() => visibleButton(popout, "View usage in ChatGPT") !== null);
+            }
             clickButton(popout, "Open chat");
             compare(SessionService.lastLaunched, "ai-desktop.desktop");
             clickButton(popout, "Open panel");

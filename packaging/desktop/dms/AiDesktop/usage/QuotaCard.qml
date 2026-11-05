@@ -7,6 +7,7 @@ Rectangle {
     required property var account
     required property real sampledAt
     property bool active: false
+    property Component emptyUsageAction
     property string fontFamily: ""
     property color accentColor: "#fab387"
     property color surfaceColor: "#252536"
@@ -152,13 +153,28 @@ Rectangle {
                           Status.remaining(windowRow.sample.reset - card.sampledAt) : "Last recorded · expired")
                           + "  ·  " + Qt.formatDateTime(new Date(windowRow.sample.reset * 1000), "d MMM, hh:mm t")
                 }
+                Caption {
+                    objectName: "reportedAt_" + windowRow.modelData
+                    width: parent.width
+                    visible: !!windowRow.sample && !!windowRow.sample.observedAt && windowRow.sample.observedAt !== card.account.observed_at
+                    text: visible ? "Reported " + Qt.formatDateTime(new Date(windowRow.sample.observedAt * 1000), "d MMM, hh:mm t") : ""
+                }
             }
         }
         Caption {
             objectName: "emptyUsage"
             width: parent.width
             visible: !card.hasUsage
-            text: card.account.status === "retired" ? "Account retired" : "Usage not reported"
+            wrapMode: Text.Wrap
+            elide: Text.ElideNone
+            text: card.account.status === "retired" ? "Account retired" : card.account.provider === "codex"
+                  ? "Codex has not reported limits for this account. ChatGPT opens with the account signed in to your browser."
+                  : "Usage not reported"
+        }
+        Loader {
+            active: !!card.emptyUsageAction && !card.hasUsage && card.account.provider === "codex" && card.account.status !== "retired"
+            visible: active
+            sourceComponent: card.emptyUsageAction
         }
         Caption {
             width: parent.width

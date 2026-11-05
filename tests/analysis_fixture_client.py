@@ -87,7 +87,7 @@ def validate_file_payload(data):
 
 def main():
     args = [str(BINARY)] + sys.argv[1:]
-    action = next((name for name in ("version", "status", "analyze", "login", "web") if args == client_command(name)), None)
+    action = next((name for name in ("version", "status", "analyze", "login", "web", "offline-logout") if args == client_command(name)), None)
     assert action is not None
     assert os.geteuid() > 0 and privileges_locked(Path("/proc/self/status").read_text())
     assert dict(os.environ) == client_environment(action)
@@ -115,6 +115,23 @@ def main():
         return 0
     profile = Path(INNER_PROFILE)
     mode = (profile / "fixture-mode").read_text()
+    if mode == "account-lifecycle":
+        assert action in ("status", "offline-logout")
+        assert not Path("/run/egress.sock").exists()
+        fixture = profile / ".credentials.json"
+        if action == "offline-logout":
+            fixture.unlink()
+            return 0
+        # The offline check must never mount a writable credential profile.
+        try:
+            (profile / "check-wrote-profile").touch()
+        except OSError as exc:
+            assert exc.errno == errno.EROFS
+        else:
+            raise AssertionError("writable-status-profile")
+        present = fixture.is_file()
+        print(json.dumps({"loggedIn": present, "authMethod": "claude.ai", "configDirectory": INNER_PROFILE}))
+        return 0 if present else 1
     # Actual private profile writes/atomic replacement, always synthetic bytes.
     (profile / "fixture-refresh.tmp").write_text("SYNTHETIC")
     (profile / "fixture-refresh.tmp").replace(profile / "fixture-refresh")

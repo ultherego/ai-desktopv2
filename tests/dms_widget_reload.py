@@ -22,10 +22,24 @@ def write_dms_modules(root):
             "SessionService": ("singleton", """QtObject {
                 property string lastLaunched: ""
                 function resolveDesktopId(id) { return {id: id}; }
-                function launchDesktopEntry(entry) { lastLaunched = entry.id; }
+                property var lastArgs: []
+                function launchDesktopEntry(entry, dgpu, args) { lastLaunched = entry.id; lastArgs = args; }
             }"""),
         },
-        "qs.Common": {"Proc": ("singleton", "QtObject { function runCommand(key, args, callback) {} }"),
+        "qs.Common": {"Proc": ("singleton", """QtObject {
+            property string statusReply: ""
+            property int statusCalls: 0
+            property var changes: []
+            function runCommand(key, args, callback) {
+                if (args[1] === "status") {
+                    statusCalls++;
+                    callback(statusReply, 0);
+                } else {
+                    changes = changes.concat([args]);
+                    callback("", 0);
+                }
+            }
+        }"""),
                       "Theme": ("singleton", """QtObject {
             property int spacingXS: 4
             property int spacingS: 8
@@ -55,6 +69,9 @@ def write_dms_modules(root):
                 property color backgroundColor
                 property color textColor
                 property real maximumWidth: Infinity
+                property real minimumWidth: 0
+                property real horizontalPadding: 0
+                property string tooltipText
                 implicitWidth: Math.min(maximumWidth, label.implicitWidth + 20)
                 implicitHeight: 28
                 Text { id: label; text: parent.text }
@@ -74,7 +91,18 @@ def write_dms_modules(root):
                 property Component verticalBarPill
                 property Component popoutContent
             }"""),
-            "PopoutComponent": ("", "Column { property string headerText; property string detailsText }"),
+            "PopoutComponent": ("", """Column {
+                id: host
+                property string headerText
+                property string detailsText
+                property var parentPopout: null
+                property Component headerActions
+                Item {
+                    width: parent.width
+                    height: 40
+                    Loader { anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter; sourceComponent: host.headerActions }
+                }
+            }"""),
         },
     }
     for module, types in modules.items():
@@ -132,7 +160,7 @@ def main():
                               stderr=subprocess.STDOUT) as qt:
             for line in qt.stdout:
                 print(line, end="", flush=True)
-                request = re.search(r"\bINSTALL_TEST_PACKAGE (missing|cached) (old-card|upgrade)$", line)
+                request = re.search(r"\bINSTALL_TEST_PACKAGE (missing|cached) (old-card|old-quota|upgrade)$", line)
                 if request:
                     state, phase = request.groups()
                     system = installs[state]
@@ -140,7 +168,18 @@ def main():
                         (system / "Widget.qml").write_text(
                             "import QtQuick\nItem { Component { QuotaCard { account: ({}); sampledAt: 0 } } }\n"
                         )
+                    elif phase == "old-quota":
+                        # -75 used this component URL before the action slot and per-window timestamps.
+                        quota = system / "quota"
+                        quota.mkdir()
+                        (quota / "Status.js").write_text(".pragma library\nfunction cached() { return true; }\n")
+                        (quota / "QuotaCard.qml").write_text(
+                            'import QtQuick\nimport "Status.js" as Status\nItem { property bool oldCard: Status.cached() }\n'
+                        )
+                        (system / "Widget.qml").write_text('import QtQuick\nimport "quota" as Quota\nQuota.QuotaCard {}\n')
                     else:
+                        if not (PLUGIN / "quota").exists():
+                            shutil.rmtree(system / "quota")
                         # Match a package upgrade, including removal of the old file names.
                         for name in ("QuotaCard.qml", "Status.js"):
                             if not (PLUGIN / name).exists():

@@ -22,6 +22,8 @@ Local inference uses an approved HTTP request to numeric IPv4 loopback and a bou
 
 The optional desktop widget displays locally available metadata. The controller's private runtime entries contain the chat identifier, working directory, settings and exchange count. They are visible to the same desktop user. No conversation text is stored in those entries.
 
+The widget passes a validated provider and local alias to a fixed installed launcher for an explicit credential check or logout. The target is confirmed in a terminal before logout. The default slot is shared across desktop users. Named slots are isolated by desktop UID and provider, with a binding that prevents a disconnected name from silently designating another identity. The service owns credential operations under its profile lock. The Claude check runs the pinned native client with read-only access to its profile in an offline namespace. Claude logout has writable access to the chosen profile in an offline namespace. Codex checks the protected local SIWC registration and attempts provider revocation only on explicit logout. The desktop receives a bounded outcome. Its local sign-in record is for display; the execution path checks the service-side credentials separately.
+
 ## Trust boundaries
 
 | Element | Runs as | What it sees and can do |

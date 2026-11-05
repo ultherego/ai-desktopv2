@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import vm from "node:vm";
 
-const url = new URL("../packaging/desktop/dms/AiDesktop/quota/Status.js", import.meta.url);
+const url = new URL("../packaging/desktop/dms/AiDesktop/usage/Status.js", import.meta.url);
 const source = readFileSync(url, "utf8").replace(/^\.pragma library\s*/, "");
 const widget = vm.createContext({});
 vm.runInContext(source, widget);
@@ -20,6 +20,17 @@ assert.equal(widget.accountWindows({windows: {}, observed_at: null}, now).length
 assert.equal(widget.accountWindows({...sample, observed_at: now + 1}, now).length, 0);
 assert.equal(widget.accountWindows({...sample, windows: {five_hour: {percent: 101, reset: now + 60}}}, now).length, 0);
 assert.equal(widget.accountWindows(sample, now + 600)[0].current, false);
+const retained = {...sample, observed_at: now, windows: {
+    five_hour: {percent: 12, reset: now - 2, observed_at: now - 900},
+    seven_day: {percent: 10, reset: now + 86400}
+}};
+const mixed = widget.accountWindows(retained, now);
+assert.equal(mixed.length, 2);
+assert.equal(mixed[0].current, false);
+assert.equal(mixed[0].observedAt, now - 900);
+assert.equal(mixed[1].observedAt, now);
+assert.equal(widget.accountWindows({...retained, windows: {five_hour: {...retained.windows.five_hour,
+    observed_at: now + 30}}}, now).length, 0);
 assert.equal(widget.alerts(status(), false, 90, now).length, 0);
 assert.equal(widget.alerts(status(sample, "local"), true, 90, now).length, 0);
 assert.equal(widget.alerts(status({...sample, selected: false}), true, 90, now).length, 0);

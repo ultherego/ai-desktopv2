@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-76: account actions and status in DankBar
+
+- Select Claude or Codex by clicking its card in **Accounts & login**. The refresh icon on both tabs reloads local status and saved quota readings.
+- A successful login records the account for the widget. Connected accounts offer sign-out. Accounts from earlier installations can be checked locally. Terminal sign-in results identify the provider and account and use color when supported.
+- Preserve the timestamp of each reported quota window across partial updates. When Codex has no readings, open ChatGPT usage settings from the widget.
+
 ## 0.1.0-75: open the widget on released DMS 2.x versions
 
 - Use the button colors supported by DMS 2.0 and 2.1 to mark the selected tab. Opening the usage and account tabs works with the released button API.

@@ -125,7 +125,7 @@ class CliTests(unittest.TestCase):
                     patch("ai_desktop.analysis_session.administrative") as claude, \
                     patch("ai_desktop.codex_cli.main") as codex, contextlib.redirect_stdout(io.StringIO()) as output:
                 self.assertEqual(main(["login"]), 0)
-            self.assertIn("Login cancelled", output.getvalue())
+            self.assertIn("Sign-in cancelled", output.getvalue())
             claude.assert_not_called()
             codex.assert_not_called()
 

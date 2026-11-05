@@ -2,7 +2,7 @@
 Type=Application
 Name=AI Desktop — Claude Accounts
 Comment=Sign in or select an AI Desktop account for Claude
-Exec=/usr/bin/ai-desktop account connect claude
+Exec=/usr/bin/ai-desktop account connect claude --from-widget
 Terminal=true
 Icon=utilities-terminal
 Categories=System;Utility;

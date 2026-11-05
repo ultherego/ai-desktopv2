@@ -22,10 +22,12 @@ function accountWindows(account, now) {
     for (var i = 0; i < windows.length; ++i) {
         var name = windows[i][0]
         var item = account.windows[name]
-        if (!item || !Number.isFinite(item.percent) || item.percent < 0 || item.percent > 100 ||
-                !Number.isInteger(item.reset) || item.reset <= account.observed_at || !Number.isFinite(new Date(item.reset * 1000).getTime()))
+        const observedAt = item?.observed_at ?? account.observed_at
+        if (!item || !Number.isInteger(observedAt) || observedAt <= 0 || observedAt > account.observed_at ||
+                !Number.isFinite(item.percent) || item.percent < 0 || item.percent > 100 ||
+                !Number.isInteger(item.reset) || item.reset <= observedAt || !Number.isFinite(new Date(item.reset * 1000).getTime()))
             continue
-        result.push({name: name, label: windows[i][1], percent: item.percent, reset: item.reset, current: item.reset > now})
+        result.push({name: name, label: windows[i][1], percent: item.percent, reset: item.reset, observedAt, current: item.reset > now})
     }
     return result
 }

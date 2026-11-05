@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=AI Desktop — Check sign-in
+Comment=Check the specified AI Desktop account locally
+Exec=/usr/bin/ai-desktop account check --from-widget
+Terminal=true
+NoDisplay=true
+Icon=utilities-terminal
+Categories=System;Utility;

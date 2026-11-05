@@ -52,7 +52,8 @@ class LoginSelectionTests(unittest.TestCase):
         code, output = self.run_flow("codex", authenticate)
         self.assertEqual(code, 0)
         self.assertEqual(calls, ["claude"])
-        self.assertEqual(output, "Logged in. Active service: Codex.\n")
+        self.assertEqual(output.splitlines(), ["Signing in  Codex / default", "Signed in  Codex / default",
+                                               "  Selected for new tasks."])
         for name in config.profiles:
             self.assertEqual(profiles.resolve(name, store=self.store)["provider"], "codex")
             self.assertEqual(self.store.load().config.profiles[name].access, config.profiles[name].access)
@@ -66,7 +67,9 @@ class LoginSelectionTests(unittest.TestCase):
             with self.subTest(result=result):
                 code, output = self.run_flow("codex", lambda: result)
                 self.assertEqual(code, result)
-                self.assertNotIn("Logged in", output)
+                self.assertNotIn("Signed in", output)
+                expected = "Sign-in cancelled" if result == 130 else "Sign-in failed"
+                self.assertIn(expected + "  Codex / default", output)
                 self.assertFalse(self.store.path.exists())
 
     def test_concurrent_edit_survives_login_and_partial_success_is_explicit(self):
@@ -77,8 +80,8 @@ class LoginSelectionTests(unittest.TestCase):
             return 0
         code, output = self.run_flow("codex", authenticate)
         self.assertEqual(code, 3)
-        self.assertIn("Logged in to Codex", output)
-        self.assertIn("The service was not switched", output)
+        self.assertIn("Signed in  Codex / default", output)
+        self.assertIn("Check the sign-in and selection", output)
         actual = self.store.load().config
         self.assertEqual(actual.selected_provider, "claude")
         self.assertEqual(actual.profiles["default"].instructions, "Równoległa zmiana.")
@@ -87,8 +90,8 @@ class LoginSelectionTests(unittest.TestCase):
         with patch.object(self.store, "mutate", side_effect=profiles.ProfileError("access")):
             code, output = self.run_flow("claude", lambda: 0)
         self.assertEqual(code, 3)
-        self.assertIn("Logged in to Claude", output)
-        self.assertIn("not switched", output)
+        self.assertIn("Signed in  Claude / default", output)
+        self.assertIn("Check the sign-in and selection", output)
         self.assertFalse(self.store.path.exists())
 
     def test_invalid_preflight_config_stops_before_auth(self):
@@ -96,7 +99,7 @@ class LoginSelectionTests(unittest.TestCase):
                 patch("subprocess.run", side_effect=AssertionError("no auth")) as auth:
             code, output = self.run_flow("codex", auth)
         self.assertEqual(code, 2)
-        self.assertIn("the login was not started", output)
+        self.assertIn("Sign-in failed  Codex / default", output)
         auth.assert_not_called()
 
     def test_boolean_or_missing_success_is_not_an_auth_receipt(self):
@@ -104,7 +107,7 @@ class LoginSelectionTests(unittest.TestCase):
             with self.subTest(result=result):
                 code, output = self.run_flow("codex", lambda: result)
                 self.assertEqual(code, 2)
-                self.assertNotIn("Logged in", output)
+                self.assertNotIn("Signed in", output)
                 self.assertFalse(self.store.path.exists())
 
     def test_canonical_provider_flags_and_legacy_codex_all_activate_once(self):
@@ -119,7 +122,7 @@ class LoginSelectionTests(unittest.TestCase):
                 expected = "claude" if "claude" in arguments[-1] else "codex"
                 self.assertEqual(self.store.load().config.selected_provider, expected)
                 self.assertEqual(claude.call_count + process.call_count, previous + 1)
-                self.assertEqual(output.getvalue().count("Logged in."), 1)
+                self.assertEqual(output.getvalue().count("Signed in  "), 1)
 
     def test_menu_uses_same_activation_path_and_cancel_is_read_only(self):
         claude, process = self.transports()

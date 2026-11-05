@@ -3,6 +3,8 @@ import argparse
 import os
 import subprocess
 
+from .login_flow import authenticate_account, login_status
+
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="ai-desktop codex", description="Codex with a ChatGPT subscription")
@@ -27,14 +29,20 @@ def main(argv=None):
             return 0
         allowed = getattr(args, "allow_chatgpt_" + args.action, False)
         if not allowed or not os.isatty(0) or not os.isatty(1):
+            if args.action == "login":
+                login_status("Sign-in failed", "red", "codex", "default")
             print("This needs a terminal and the explicit flag --allow-chatgpt-%s." % args.action)
             return 2
         if os.geteuid() == 0:
             from .codex_admin import main as admin
-            result = admin(args.action, allow=True, **({"details": True} if args.details else {}))
-            if result == 0 and args.action == "login":
-                print("Logged in: Codex. Choose the service in your regular user's settings.")
-            return result
+            options = {"details": True} if args.details else {}
+            if args.action == "login":
+                result = authenticate_account("codex", "default", lambda: admin("login", allow=True, **options))
+                if result == 0:
+                    login_status("Signed in", "green", "codex", "default")
+                    print("  Choose the active service from your regular user account.")
+                return result
+            return admin(args.action, allow=True, **options)
         if os.getuid() != os.geteuid():
             raise AnalysisDenied("identity")
         from .codex_runtime import runtime_ready
@@ -48,7 +56,11 @@ def main(argv=None):
         if args.action == "login":
             from .login_flow import login as complete_login
             return complete_login("codex", authenticate)
-        return authenticate()
+        from .account_cli import _check_or_logout
+        from .account_store import AccountStore
+        return _check_or_logout(AccountStore(), "codex", "default", "logout", authorized=authenticate)
     except (AnalysisDenied, OSError, ValueError, subprocess.SubprocessError, KeyboardInterrupt):
+        if args.action == "login":
+            login_status("Sign-in failed", "red", "codex", "default")
         print("Codex is not ready. Check the client, the installation and permissions; nothing is retried automatically.")
         return 2

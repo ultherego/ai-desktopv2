@@ -143,20 +143,21 @@ Help for a command: ai-desktop COMMAND --help
 
 def login_menu(*, details=False):
     from .terminal_menu import choose, MenuInputError
+    from .login_flow import login_status
     try:
         selected = choose("Log in and choose the active service",
                           ("Claude — subscription", "ChatGPT / Codex — subscription", "Cancel"))
     except MenuInputError:
-        print("Could not read your choice. Run this in an interactive terminal: ai-desktop login")
+        login_status("Sign-in failed", "red")
+        print("  Run ai-desktop login in an interactive terminal.")
         return 2
     if selected is None or type(selected) is int and selected == 2:
-        print("Login cancelled.")
+        login_status("Sign-in cancelled", "yellow")
         return 0
     if type(selected) is not int or selected not in (0, 1):
         print("No login method was chosen.")
         return 2
     provider = "claude" if selected == 0 else "codex"
-    print("Logging in: " + ("Claude" if selected == 0 else "ChatGPT / Codex"))
     return main(["login", "--provider", provider] + (["--v"] if details else []))
 
 
@@ -252,9 +253,11 @@ def main(argv=None):
             from .login_flow import login
             return login("claude", lambda: administrative("login", allow=True, **options))
         from . import analysis_admin
-        result = analysis_admin.main(allow=True, **options)
+        from .login_flow import authenticate_account, login_status
+        result = authenticate_account("claude", "default", lambda: analysis_admin.main(allow=True, **options))
         if result == 0:
-            print("Logged in: Claude. Choose the service in your regular user's settings.")
+            login_status("Signed in", "green", "claude", "default")
+            print("  Choose the active service from your regular user account.")
         return result
     if args.command == "status":
         from . import agent_panel
