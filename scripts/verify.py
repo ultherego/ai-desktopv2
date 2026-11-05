@@ -163,8 +163,10 @@ def run(mode, ai_consent=False, fail_fast=False, writer=print, runner=subprocess
             # A traceback tail can omit the first failure when several integrations break.
             if mode == "ci" and step == "unit":
                 identifiers = re.findall(r"^(?:FAIL|ERROR): (test_[A-Za-z0-9_]+) \(([A-Za-z0-9_.]+)\)", output, re.M)
-                for name, owner in identifiers[:40]:
-                    writer("Failed test: " + owner + "." + name)
+                failures = dict.fromkeys(owner if owner.endswith("." + name) else owner + "." + name
+                                         for name, owner in identifiers)
+                for ident in list(failures)[:40]:
+                    writer("Failed test: " + ident)
             # Only 'ci' static/unit checks are echoed for debugging.
             if mode == "ci" and step in ("syntax", "unit", "cli", "skills", "doctor", "compare", "compare-summary", "snapshot", "compare-exit", "validate-report", "offline-pipeline", "stdin-pipeline", "snapshot-save", "e1-boundary", "e2-contract", "e2-broker", "e2-egress", "e3-e4-contracts", "e5-e6-contracts", "e7-install", "e7-host-cycle"):
                 writer("\n".join(output.splitlines()[-MAX_OUTPUT:]))
