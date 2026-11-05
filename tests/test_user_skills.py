@@ -10,7 +10,8 @@ from unittest.mock import patch
 from ai_desktop import agent_profiles as profiles, analysis_sandbox, conversation_sessions, execution, skills
 
 ROOT = Path(__file__).resolve().parents[1]
-PACKAGED = {"cachyos-boot-snapshots", "cachyos-diagnostics", "cachyos-gaming", "cachyos-hardware", "cachyos-kernel",
+PACKAGED = {"arch-amdgpu", "arch-audio", "arch-bluetooth", "arch-btrfs", "arch-docker", "arch-network", "arch-pacman", "arch-systemd", "arch-zram",
+                   "cachyos-boot-snapshots", "cachyos-diagnostics", "cachyos-gaming", "cachyos-hardware", "cachyos-kernel",
                    "cachyos-packages", "cachyos-scheduler", "code-development", "code-review", "concise-assistant",
                    "desktop-documentation", "project-analysis"}
 
@@ -22,12 +23,21 @@ class RepositoryContentTests(unittest.TestCase):
 
     def test_cachyos_skills_stay_about_cachyos_and_name_no_desktop_or_person(self):
         desktops = re.compile(r"\b(niri|hyprland|sway|plasma|kde|gnome|xfce|quickshell|dms)\b", re.I)
-        for path in (ROOT / "skills").glob("cachyos-*/SKILL.md"):
+        for path in (*(ROOT / "skills").glob("cachyos-*/SKILL.md"), *(ROOT / "skills").glob("arch-*/SKILL.md")):
             text = path.read_text(encoding="utf-8")
             self.assertIsNone(desktops.search(text), path)
         for path in (ROOT / "skills").glob("*/SKILL.md"):
             text = path.read_text(encoding="utf-8")
-            self.assertIsNone(re.search(r"/home/[a-z]|@[a-z0-9-]+\.[a-z]{2,}", text), path)
+            self.assertIsNone(re.search(r"/home/[a-z]|@[a-z0-9][a-z0-9-]*\.[a-z]{2,}", text), path)
+
+    def test_the_catalog_of_all_packaged_skills_has_descriptions_and_no_bodies(self):
+        names = tuple(sorted(PACKAGED))
+        with patch.object(skills, "user_root", return_value=ROOT / "nie-ma"):
+            catalog = profiles.catalog_for(profiles.Profile(skills=names))
+        for name in names:
+            self.assertIn("- " + name + ": ", catalog)
+        self.assertNotIn("## ", catalog)
+        self.assertLess(len(catalog.encode("utf-8")), 8192)
 
     def test_the_largest_prompt_fits_one_argv_string_of_the_claude_client(self):
         """Linux caps one argument at 128 KiB (MAX_ARG_STRLEN); the whole system prompt is one `--system-prompt` value."""

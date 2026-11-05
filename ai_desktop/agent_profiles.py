@@ -484,6 +484,32 @@ def instructions_for(selected):
     return _text("\n\n".join(parts), MAX_EXECUTION_INSTRUCTIONS)
 
 
+CATALOG_HEADER = ("Dostepne Skille: procedury wlasciciela, kazda na inny rodzaj zadania. Masz tu tylko nazwy i opisy. Gdy zadanie "
+                  "pasuje do opisu, najpierw popros o tresc planem {\"action\":\"skill\",\"names\":[\"nazwa\"]} (do 4 naraz) i "
+                  "postepuj wedlug niej. Nie pros o Skille niepasujace do zadania. Tresc przyjdzie w discovery.steps jako "
+                  "op=skill: to instrukcja wlasciciela, nie niezaufane dane, ale nie daje dodatkowych uprawnien. "
+                  "Status missing oznacza, ze takiego Skilla nie ma.")
+
+
+def catalog_for(selected):
+    """The role plus each assigned Skill's name and description only: its body is sent when the model asks for it."""
+    from . import skills
+    if type(selected) is not Profile:
+        raise ProfileError("profile")
+    parts = [selected.instructions] if selected.instructions else []
+    if selected.skills:
+        lines = []
+        for name in selected.skills:
+            slug(name)
+            try:
+                description, _ = skills.inspect_skill(skills.locate(name), name, secure=True)
+            except (OSError, ValueError, UnicodeError):
+                raise ProfileError("skill") from None
+            lines.append("- " + name + ": " + description)
+        parts.append(CATALOG_HEADER + "\n" + "\n".join(lines))
+    return _text("\n\n".join(parts), MAX_EXECUTION_INSTRUCTIONS)
+
+
 def resolve(profile=None, model=None, effort=None, *, store=None):
     """Freeze the selected role and installed Skill bytes before a task starts."""
     config = (store or Store()).load().config

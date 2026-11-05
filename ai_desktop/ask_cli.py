@@ -286,6 +286,7 @@ def main(argv=None, *, reader=input):
         prompt_session.commands = ask_commands.COMMANDS
         prompt_session.paste_bytes = MAX_MESSAGE_BYTES
         controls = ask_commands.Controls()
+        controls.activate()
         if args.preview and args.session:
             print("Podgląd nie zapisuje ani nie wznawia rozmowy. Usuń --session albo --preview.")
             return 2
@@ -351,7 +352,7 @@ def main(argv=None, *, reader=input):
                         using_memory(talk.task_memory()), _lenient(interactive):
                     answer = assistant_flow.run(question, args, reader,
                         lambda *values, **kwargs: request(*values, **kwargs, state=state), phase=phase,
-                        conversation_consent=consent)
+                        conversation_consent=consent, skills=controls.load_skill)
                 finished = True
             except assistant_flow.Declined:
                 if not interactive:

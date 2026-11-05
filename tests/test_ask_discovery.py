@@ -17,7 +17,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from ai_desktop import assistant_contract as plans, assistant_flow as flow, directory_context, execution, permissions
-from ai_desktop import ask_discovery
+from ai_desktop import ask_discovery, discovery_contract as dc, permissions as p
 from ai_desktop.analysis_contract import AnalysisConsent, AnalysisDenied, Approval
 
 QUESTION = "Jakie panele ma skonfigurowane Gizmo?"
@@ -104,7 +104,7 @@ class Base(unittest.TestCase):
         os.symlink("../gizmo/settings.conf", self.home / ".config/gizmo-suite/settings-link")
 
     def run_flow(self, responses, *, question=QUESTION, provider="claude", before=None, instructions="",
-                 access="read-only"):
+                 access="read-only", skills=None):
         observed, attempts = [], []
         self.wire, self.attempts = observed, attempts
         self.reads.clear()
@@ -131,7 +131,7 @@ class Base(unittest.TestCase):
         profile = {"provider": provider, "model": "default", "effort": "default", "instructions": instructions,
                    "profile": "diagnostic", "access": access}
         with execution.using(profile):
-            return flow.run(question, options(), self.reader, request)
+            return flow.run(question, options(), self.reader, request, skills=skills)
 
     def refused(self, responses, **kwargs):
         with self.assertRaises(flow.file_context.FileReadDenied):
@@ -145,6 +145,58 @@ class Base(unittest.TestCase):
         text = json.dumps(self.wire, ensure_ascii=False)
         for word in DENIED_WORDS:
             self.assertNotIn(word, text)
+
+
+class SkillsOnDemandTests(Base):
+    BODY = "Procedura: krok pierwszy, krok drugi."
+
+    def load(self, name):
+        return {"przyklad": self.BODY, "inny": "NIE-WYSYLAC"}.get(name)
+
+    def test_the_body_leaves_only_after_the_model_asks_and_only_that_skill(self):
+        result = self.run_flow([json.dumps({"action": "skill", "names": ["przyklad"]}), ANSWER_PLAN],
+                               instructions="Katalog: przyklad, inny", skills=self.load)
+        self.assertEqual(result, ANSWER)
+        first, second = self.wire
+        self.assertNotIn(self.BODY, json.dumps(first, ensure_ascii=False))
+        self.assertEqual(self.steps(1), [{"op": "skill", "name": "przyklad", "status": "ok", "text": self.BODY}])
+        self.assertNotIn("NIE-WYSYLAC", json.dumps(self.wire, ensure_ascii=False))
+        self.assertIn("Skill przyklad", self.output.getvalue())
+
+    def test_a_name_outside_the_selection_is_reported_as_missing_without_stopping(self):
+        self.run_flow([json.dumps({"action": "skill", "names": ["brak"]}), ANSWER_PLAN], skills=self.load)
+        self.assertEqual(self.steps(1), [{"op": "skill", "name": "brak", "status": "missing", "text": ""}])
+
+    def test_asking_repeatedly_is_bounded_and_a_skill_is_sent_once(self):
+        again = json.dumps({"action": "skill", "names": ["przyklad"]})
+        with self.assertRaises(flow.PlanError):
+            self.run_flow([again] * 5, skills=self.load)
+        self.assertEqual(sum(step["op"] == "skill" for step in self.steps(-1)), 1)
+
+    def test_a_mode_without_a_loader_refuses_the_action(self):
+        with self.assertRaises(flow.PlanError):
+            self.run_flow([json.dumps({"action": "skill", "names": ["przyklad"]}), ANSWER_PLAN])
+
+    def test_a_path_named_by_a_loaded_skill_counts_like_a_typed_one_and_deny_still_wins(self):
+        ledger = flow.ask_discovery.DiscoveryLedger(p.load_policy(), QUESTION, "")
+        ledger.add_skill("przyklad", "Przeczytaj ~/.config/gizmo/settings.conf")
+        self.assertIn("~/.config/gizmo/settings.conf", ledger.hints)
+        self.assertFalse(p.load_policy().allows(str(self.home) + "/.config/gizmo/token.txt"))
+
+    def test_the_plan_and_the_wire_step_are_closed(self):
+        access = {"files": [], "systemd": [], "weather": False}
+        for bad in ({"action": "skill"}, {"action": "skill", "names": []}, {"action": "skill", "names": ["../x"]},
+                    {"action": "skill", "names": ["a", "a"]}, {"action": "skill", "names": ["a"] * 5},
+                    {"action": "skill", "names": ["a"], "path": "x"}):
+            with self.assertRaises(plans.PlanError):
+                plans.parse_plan(json.dumps(bad), access)
+        step = {"op": "skill", "name": "a", "status": "ok", "text": "t"}
+        remaining = {"rounds": 1, "corrections": 1, "commands": 1}
+        self.assertEqual(dc.validate_discovery({"steps": [step], "remaining": remaining})["steps"], [step])
+        for bad in ({**step, "name": "../x"}, {**step, "status": "x"}, {**step, "text": "\x1b[2J"},
+                    {**step, "status": "missing"}, {**step, "extra": 1}, {**step, "text": "x" * (96 * 1024 + 1)}):
+            with self.assertRaises(ValueError):
+                dc.validate_discovery({"steps": [bad], "remaining": remaining})
 
 
 class FullFlowTests(Base):

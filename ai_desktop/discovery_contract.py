@@ -28,6 +28,8 @@ CEILING_OUTPUT = 131072
 REFUSAL_CODES = ("discovery-required", "discovery-budget", "files-missing", "files-count", "files-total", "files-size", "files-empty",
                  "files-depth", "files-entries", "files-type", "files-symlink")
 _ID = re.compile(r"f(?:[0-9]|[1-5][0-9]|6[0-3])\Z", re.ASCII)
+_SKILL = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z", re.ASCII)
+MAX_SKILL_TEXT = 96 * 1024
 
 
 def clean_path(value, *, empty=False, wildcard=False):
@@ -152,6 +154,14 @@ def _step(value, total):
         if "role" in value:
             step["role"] = role
         return step
+    if op == "skill":
+        if (set(value) != {"op", "name", "status", "text"} or type(value["name"]) is not str
+                or not _SKILL.fullmatch(value["name"]) or value["status"] not in ("ok", "missing")
+                or type(value["text"]) is not str or len(value["text"].encode("utf-8")) > MAX_SKILL_TEXT
+                or (value["status"] == "missing" and value["text"])
+                or any(char not in "\n\t" and unicodedata.category(char) in ("Cc", "Cf", "Cs") for char in value["text"])):
+            raise ValueError("discovery")
+        return dict(value)
     if op == "refusal":
         if (set(value) != {"op", "code", "selectors", "limit"} or type(value["code"]) is not str
                 or value["code"] not in REFUSAL_CODES or type(value["selectors"]) is not list
@@ -208,7 +218,7 @@ def scope_ids(document):
             found.update(item["id"] for item in step["directories"])
         elif step["op"] == "find":
             found.add(step["id"])
-        elif step["op"] == "run":
+        elif step["op"] in ("run", "skill"):
             continue
         else:
             found.update(item["id"] for item in step["selectors"])

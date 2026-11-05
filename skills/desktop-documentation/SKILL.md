@@ -1,6 +1,6 @@
 ---
 name: desktop-documentation
-description: Pulpit i kompozytor: najpierw ustal, co działa, potem opieraj się na jego dokumentacji, a nie na pamięci.
+description: Wskazuje dokumentację pulpitu lub kompozytora zamiast zgadywania opcji. Użyj przy pytaniach o KDE, GNOME, Hyprland, Sway, niri, Xfce albo inne środowisko graficzne.
 ---
 
 # Pulpit i kompozytor: korzystaj z dokumentacji

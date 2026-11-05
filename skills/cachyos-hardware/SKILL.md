@@ -1,11 +1,17 @@
 ---
 name: cachyos-hardware
-description: Sprzęt w CachyOS: chwd, sterowniki, zasilanie AMD, karty NVIDIA, planista dysków, ZRam.
+description: Diagnozuje sterowniki i ustawienia sprzętu w CachyOS. Użyj przy pytaniach o chwd, sterowniki kart graficznych, zasilanie procesora, planistę dysków albo ZRam.
 ---
 
 # Sprzęt w CachyOS
 
 Najpierw odczytaj sprzęt: `lspci -k`, `lscpu`, `lsmod`, `sensors`. Nie zakładaj producenta procesora ani karty.
+
+## Procedura
+
+1. Odczytaj sprzęt i załadowane sterowniki. Wybieraj dalej tylko sekcje pasujące do tego sprzętu.
+2. Ustal objaw. Bez objawu lub prośby nie proponuj strojenia.
+3. Zmianę przetestuj przez `/sys`, jeśli się da, bo znika po restarcie. Stałą zaproponuj dopiero potem, z planem wycofania.
 
 ## chwd
 

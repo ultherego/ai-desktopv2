@@ -239,7 +239,7 @@ Możesz dopisać je u siebie, jeśli świadomie tego chcesz. Program niezainstal
 
 ## Własne Skille
 
-Skill to instrukcja dla modelu do 96 KiB, nie uprawnienie. Agent może mieć dowolnie wiele Skilli, ale razem z rolą do 104 KiB: cała instrukcja idzie do klienta Claude jako jeden argument, a Linux ogranicza go do 128 KiB. Przypisane Skille są wysyłane przy każdym pytaniu i zużywają limit usługi, więc przypisuj tylko potrzebne. O plikach i poleceniach decyduje `permissions.toml`. Pakiet zawiera tylko ogólne Skille; to, co dotyczy Twojego komputera, trzymasz u siebie:
+Skill to instrukcja dla modelu do 96 KiB, nie uprawnienie. Agent może mieć dowolnie wiele Skilli, ale razem z rolą do 104 KiB: cała instrukcja idzie do klienta Claude jako jeden argument, a Linux ogranicza go do 128 KiB. W `ask` przy każdym pytaniu idą tylko nazwy i opisy przypisanych Skilli. Treść idzie dopiero wtedy, gdy model o nią poprosi, a program pokazuje to wierszem `Skill NAZWA`. W `material`, `project` i `task` treść przypisanych Skilli idzie przy każdym żądaniu. Skill ma opisywać, jak coś zrobić, a nie jak wygląda Twój komputer: fakty model odczyta sam, gdy będą potrzebne. O plikach i poleceniach decyduje `permissions.toml`. Pakiet zawiera tylko ogólne Skille; to, co dotyczy Twojego komputera, trzymasz u siebie:
 
 ```fish
 ai-desktop skills new moj-system      # tworzy ~/.config/ai-desktop/skills/moj-system/SKILL.md
@@ -248,7 +248,7 @@ ai-desktop skills show moj-system     # podgląd
 ai-desktop agents                     # przypisanie Skilla do agenta
 ```
 
-Własny Skill o nazwie ogólnego ma pierwszeństwo. **Nie wpisuj do niego sekretów: treść przypisanego Skilla trafia do modelu.** Ścieżka wpisana w Skillu liczy się jak podana przez Ciebie, więc model może ją przeczytać bez rozpoznania; `deny` nadal decyduje.
+Własny Skill o nazwie ogólnego ma pierwszeństwo. **Nie wpisuj do niego sekretów ani danych o sobie: opis i treść Skilla mogą trafić do modelu.** Ścieżka wpisana w Skillu liczy się jak podana przez Ciebie, więc model może ją przeczytać bez rozpoznania; `deny` nadal decyduje.
 
 ## Agenci i modele
 

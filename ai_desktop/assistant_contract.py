@@ -147,6 +147,9 @@ def selected_file_ids(value):
                                for item in file_selections(value)))
 
 
+_SKILL_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
+
+
 def parse_plan(raw, access):
     """Accept one bounded answer or one proposed read within advertised access."""
     check = "access"
@@ -172,6 +175,14 @@ def parse_plan(raw, access):
             if access.get("web") is not True:
                 raise ValueError("assistant-plan")
             return {"action": "web"}
+        if value.get("action") == "skill":
+            check = "shape"
+            names = value.get("names")
+            if (set(value) != {"action", "names"} or type(names) is not list or not 1 <= len(names) <= 4
+                    or any(type(name) is not str or not _SKILL_NAME.fullmatch(name) for name in names)
+                    or len(set(names)) != len(names)):
+                raise ValueError("assistant-plan")
+            return {"action": "skill", "names": names}
         if value.get("action") == "answer":
             check = "shape"
             if set(value) != {"action", "text"}:

@@ -33,6 +33,7 @@ class ControlsTests(unittest.TestCase):
         config = profiles.defaults().put("default", profiles.Profile(skills=("a",)))
         self.enterContext(patch.object(profiles, "Store", return_value=FakeStore(config)))
         self.enterContext(patch.object(profiles, "_skill", side_effect=lambda name: "tresc " + name))
+        self.enterContext(patch("ai_desktop.skills.inspect_skill", side_effect=lambda root, name, **_: ("opis " + name, "tresc " + name)))
         self.enterContext(patch("ai_desktop.skills.names", return_value=("a", "b")))
         self.enterContext(execution.using(BASE))
         self.controls = commands.Controls()
@@ -79,19 +80,32 @@ class ControlsTests(unittest.TestCase):
     def test_skills_toggle_for_this_conversation_without_touching_the_saved_agent(self):
         output = self.run_line("/skills b")[1]
         self.assertIn("a, b", output)
-        self.assertIn("Skill a:\ntresc a", execution.current()["instructions"])
-        self.assertIn("Skill b:\ntresc b", execution.current()["instructions"])
+        self.assertIn("- a: opis a", execution.current()["instructions"])
+        self.assertIn("- b: opis b", execution.current()["instructions"])
+        self.assertNotIn("tresc a", execution.current()["instructions"])   # only names and descriptions until asked for
+        self.assertEqual(self.controls.load_skill("b"), "tresc b")
         self.run_line("/skills a")
-        self.assertNotIn("Skill a:", execution.current()["instructions"])
+        self.assertNotIn("- a:", execution.current()["instructions"])
+        self.assertIsNone(self.controls.load_skill("a"))                   # switched off: the model cannot fetch it
         self.assertEqual(profiles.Store().load().config.profiles["default"].skills, ("a",))
         self.assertEqual(execution.current()["access"], "changes")      # never a wider permission
 
     def test_an_unknown_skill_or_one_that_does_not_fit_changes_nothing(self):
         before = execution.current()
         self.assertIn("Nie ma Skilla", self.run_line("/skills zzz")[1])
-        with patch.object(profiles, "instructions_for", side_effect=profiles.ProfileError("x")):
+        with patch.object(profiles, "catalog_for", side_effect=profiles.ProfileError("x")):
             self.assertIn("Nie zmieniono", self.run_line("/skills b")[1])
         self.assertEqual(execution.current(), before)
+
+    def test_a_conversation_sends_only_the_catalog_and_nothing_outside_the_selection_can_be_fetched(self):
+        self.controls.activate()
+        text = execution.current()["instructions"]
+        self.assertIn("- a: opis a", text)
+        self.assertIn('"action":"skill"', text)
+        self.assertNotIn("tresc a", text)
+        self.assertEqual(self.controls.load_skill("a"), "tresc a")
+        self.assertIsNone(self.controls.load_skill("b"))                   # exists on disk, not assigned to this agent
+        self.assertIsNone(self.controls.load_skill("../sekret"))
 
     def test_a_menu_starts_on_the_current_value_and_choosing_it_changes_nothing(self):
         before = execution.current()

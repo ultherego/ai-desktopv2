@@ -1,11 +1,18 @@
 ---
 name: cachyos-boot-snapshots
-description: Rozruch i migawki CachyOS: Limine, GRUB, systemd-boot, rEFInd, Snapper, Btrfs Assistant, odzyskiwanie z Live ISO.
+description: Prowadzi zmiany parametrów rozruchu, przywracanie migawek i naprawę systemu, który nie startuje. Użyj przy Limine, GRUB, systemd-boot, rEFInd, Snapper, Btrfs Assistant i pracy z Live ISO.
 ---
 
 # Rozruch i migawki CachyOS
 
 Najpierw ustal program rozruchowy i system plików. Nie zakładaj ich: CachyOS obsługuje kilka. Wskazówki: `pacman -Q limine grub systemd refind`, `findmnt /`, `findmnt /boot`.
+
+## Procedura
+
+1. Ustal program rozruchowy i system plików, jak wyżej.
+2. Ustal, czy system startuje. Jeśli nie, przejdź do ostatniej sekcji.
+3. Przed przywróceniem migawki sprawdź, czy obejmuje aktualizację jądra, i uprzedź o skutkach.
+4. Polecenia zmieniające rozruch opisz jako plan. Nazwę dysku ma potwierdzić użytkownik.
 
 ## Parametry jądra
 

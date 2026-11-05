@@ -1,6 +1,6 @@
 ---
 name: cachyos-diagnostics
-description: Diagnoza awarii i stanu systemu CachyOS: od czego zacząć, skąd brać logi, jak zgłosić błąd.
+description: Prowadzi diagnozę awarii CachyOS od zmian i logów do przyczyny. Użyj, gdy coś przestało działać, usługa nie startuje, system działa wolno albo trzeba zgłosić błąd.
 ---
 
 # Diagnostyka CachyOS

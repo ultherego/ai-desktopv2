@@ -1,11 +1,18 @@
 ---
 name: cachyos-scheduler
-description: Planisty sched-ext w CachyOS: scx_loader, scxctl, profile i typowe problemy.
+description: Diagnozuje i ustawia planistów sched-ext w CachyOS. Użyj przy pytaniach o scx_loader, scxctl, profile planisty albo gdy planista nie działa lub zawiesza system.
 ---
 
 # Sched-ext w CachyOS
 
 Sched-ext pozwala uruchomić planistę BPF zamiast domyślnego w jądrze. Zatrzymanie go przywraca domyślny. Nie działa na `linux-cachyos-bmq` i `linux-cachyos-hardened`.
+
+## Procedura
+
+1. Sprawdź, czy jądro obsługuje sched-ext i czy planista jest w ogóle używany.
+2. Odczytaj stan usługi i dziennik, poniżej.
+3. Sprawdź konflikty: `scx.service` razem ze `scx_loader`, `ananicy-cpp`.
+4. Zmianę zaproponuj najpierw jako test na czas sesji, a stałą konfigurację dopiero potem.
 
 ## Stan (tylko odczyt)
 

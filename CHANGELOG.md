@@ -2,6 +2,8 @@
 
 ## Niewydane
 
+- Nowe Skille `arch-*` oparte na Arch Wiki: pacman, systemd, Btrfs, amdgpu, dźwięk, sieć, Bluetooth, zram, Docker.
+- `ai-desktop ask`: Skille ładowane na żądanie. Przy każdym pytaniu idą tylko nazwy i opisy; treść idzie wtedy, gdy model o nią poprosi, a program to pokazuje. Skille CachyOS zaczynają się teraz od procedury.
 - Rozumowanie `xhigh` i `max`: model może odpowiadać do 15 minut (było 260 s). Gdy czas minie, komunikat mówi o czasie, a nie o wygasłej zgodzie.
 - Za duża wklejka jest odrzucana w całości. Wcześniej jej reszta mogła trafić do następnego wiersza.
 - `ai-desktop ask`: wiadomość do 128 KiB razem z wklejkami (było 2 KiB), pamięć 32 ostatnich wymian (było 8), odpowiedź w historii do 8 KiB (było 3 KiB). Za duża wklejka nie kończy już rozmowy. `material` i `project` zachowują swoje limity.

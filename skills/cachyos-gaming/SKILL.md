@@ -1,11 +1,18 @@
 ---
 name: cachyos-gaming
-description: Gry na CachyOS: pakiety, proton-cachyos, game-performance, opcje Steam, logi Protona.
+description: Diagnozuje uruchamianie i wydajność gier na CachyOS. Użyj przy problemach z grami, Steam, Protonem, Lutris, Heroic, game-performance lub gamemode.
 ---
 
 # Gry na CachyOS
 
 Najpierw ustal: kartę graficzną i sterownik, grę, wersję Protona, sposób uruchamiania. Sterowniki muszą działać, zanim zaczniesz stroić.
+
+## Procedura
+
+1. Ustal to, co wyżej: kartę i sterownik, grę, wersję Protona, sposób uruchamiania.
+2. Sprawdź system plików biblioteki gier oraz zgodność gry i jej zabezpieczeń.
+3. Włącz log Protona i przeczytaj go, zanim coś zmienisz.
+4. Zmieniaj po jednej rzeczy: najpierw wersję Protona dla tej gry, potem opcje uruchamiania.
 
 ## Pakiety
 
