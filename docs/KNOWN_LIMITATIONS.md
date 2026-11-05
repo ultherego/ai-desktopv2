@@ -1,24 +1,24 @@
-# Znane ograniczenia
+# Known limitations
 
-AI Desktop jest wersją rozwojową, nie wydaniem 1.0. Testy automatyczne nie dowodzą izolacji; ta lista mówi, czego jeszcze nie ma lub co nie zostało sprawdzone.
+AI Desktop is a development version, not a 1.0 release. Automated tests do not prove isolation; this list says what is still missing or has not been checked.
 
-## Bezpieczeństwo
-- Piaskownica poleceń odczytu nie izoluje gniazd Unix hosta. Szablon w `[commands] allow`, który może zmieniać stan przez D-Bus lub Dockera, nie jest zatrzymany przez samą piaskownicę, a takie polecenia działają bez pytania. Dotyczy to np. `docker`, który działa z piaskownicy i sięga do demona na hoście, dlatego nie ma go w szablonie. Wpisuj do `allow` tylko polecenia wyłącznie do odczytu.
-- Treść pliku lub wynik polecenia może skłonić model do kolejnych dozwolonych odczytów, a ich wyniki trafiają do dostawcy. Granicą są `permissions.toml` i budżety na pytanie.
-- Klient Claude Code ma dostęp do własnego profilu logowania w osobnym koncie `ai-desktop`. Nie ma ogólnego filtra wywołań systemowych dla klienta.
-- Suma SHA-256 klienta Claude jest sprawdzana przy budowie pakietu. Potem, przy każdym użyciu, program sprawdza już tylko zgłaszaną wersję pliku należącego do roota. Klient Codex ma sprawdzaną sumę archiwum przy pobieraniu przez `scripts/fetch_codex_client.py`, a `PKGBUILD` sprawdza u niego tylko nagłówek pliku.
-- Nie ma ochrony przed wrogim procesem tego samego użytkownika ani gwarancji przy utracie zasilania.
-- Model nie widzi znaku BOM ani końców linii Windows, więc nie odpowie, czy plik je ma. Plik z pomieszanymi końcami linii można przeczytać, ale nie edytować, bo zapis nie odtworzyłby jego bajtów. Plik z samym znakiem CR w środku tekstu jest odrzucany także przy odczycie. Sprawdzenie na kopii działa na zwykłym tekście, a nie na bajtach z BOM i CRLF.
+## Security
+- The sandbox for read commands does not isolate the host's Unix sockets. A template in `[commands] allow` that can change state through D-Bus or Docker is not stopped by the sandbox alone, and such commands run without asking. This applies for example to `docker`, which runs from the sandbox and reaches the daemon on the host, so it is not in the template. Put only strictly read-only commands in `allow`.
+- A file's content or a command's output can lead the model to further allowed reads, and their results go to the provider. The boundary is `permissions.toml` and the per-question budgets.
+- The Claude Code client has access to its own login profile in the separate `ai-desktop` account. There is no general system call filter for the client.
+- The SHA-256 sum of the Claude client is checked when the package is built. After that, on each use, the program only checks the reported version of the root-owned file. The Codex client has its archive sum checked when it is downloaded with `scripts/fetch_codex_client.py`, and `PKGBUILD` checks only the file header for it.
+- There is no protection against a hostile process of the same user and no guarantee on power loss.
+- The model does not see a BOM or Windows line endings, so it will not answer whether a file has them. A file with mixed line endings can be read but not edited, because the write would not reproduce its bytes. A file with a bare CR in the middle of the text is refused on read as well. The check on the copy works on plain text, not on the bytes with BOM and CRLF.
 
-## Zachowanie
-- Zapis istniejącego pliku wymienia go atomowo i odrzuca zapis, gdy edytor zmienił plik po ostatnim sprawdzeniu. Zapis do pliku, który edytor już trzymał otwarty, może jeszcze trafić do starej wersji tuż po porównaniu, zanim zostanie usunięta. Wymaga systemu plików z `RENAME_EXCHANGE` (Btrfs, ext4, xfs, tmpfs); na innych zapis jest odrzucany.
-- Gdy zgoda wygaśnie lub uprawnienia zmienią się podczas polecenia z `[commands] change`, program nie uruchamia testu ani wycofania: pokazuje je do uruchomienia ręcznie. Taka tura kończy się odmową, więc wynik zostaje na ekranie, ale może nie trafić do pamięci rozmowy.
-- Ucięty dziennik zadania blokuje zapis w danym katalogu do czasu ręcznego sprawdzenia. Kosz zadania nie ma automatycznego czyszczenia, a limit to 128 wpisów na katalog.
-- Nazwa pliku w `deny` musi być zapisana tak samo jak na dysku: reguły nie normalizują znaków Unicode.
-- W jednym pytaniu żądanie edycji nie zawiera wyników wcześniejszych poleceń, a edytowane pliki mają limit 64 KiB (razem 128 KiB).
-- Polecenia działają w piaskownicy bez sieci i sesji użytkownika, więc np. `ip`, `wpctl` i `glxinfo` nie widzą stanu hosta.
+## Behavior
+- Writing an existing file replaces it atomically and refuses the write if an editor changed the file after the last check. A write through a file the editor already held open can still land in the old version right after the comparison, before that version is removed. This requires a file system with `RENAME_EXCHANGE` (Btrfs, ext4, xfs, tmpfs); on others the write is refused.
+- If consent expires or permissions change during a `[commands] change` command, the program does not run the test or the undo: it shows them for you to run by hand. Such a turn ends in a refusal, so the result stays on screen but may not reach the conversation memory.
+- A truncated task journal blocks writing in that directory until it is checked by hand. The task trash has no automatic cleanup, and the limit is 128 entries per directory.
+- A file name in `deny` must be written exactly as it is on disk: the rules do not normalize Unicode characters.
+- Within one question, the edit request does not contain the results of earlier commands, and edited files are limited to 64 KiB (128 KiB in total).
+- Commands run in a sandbox without network or user session, so for example `ip`, `wpctl` and `glxinfo` do not see the host's state.
 
-## Niesprawdzone
-- Wygaśnięcie i odświeżenie logowania oraz rzeczywiste awarie sieci z oficjalnym klientem.
-- Niezależny przegląd bezpieczeństwa i instalacja na świeżym systemie.
-- Warunki Anthropic dla programu uruchamiającego Claude Code z logowaniem subskrypcyjnym; korzystasz z klienta na własnym koncie i według własnej oceny.
+## Not checked
+- Login expiry and refresh, and real network failures with the official client.
+- An independent security review and installation on a fresh system.
+- Anthropic's terms for a program that runs Claude Code with a subscription login; you use the client on your own account and at your own judgment.

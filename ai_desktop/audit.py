@@ -18,48 +18,48 @@ def read_command(args):
             timeout=8
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        return None, f"Niedostępne: {type(exc).__name__}"
+        return None, f"Unavailable: {type(exc).__name__}"
     if result.returncode != 0:
-        return result.returncode, "Nie udało się odczytać danych"
-    return 0, result.stdout.strip() or "(pusty wynik)"
+        return result.returncode, "Could not read the data"
+    return 0, result.stdout.strip() or "(empty result)"
 
 
 def audit_lines():
-    desktop = os.environ.get("XDG_CURRENT_DESKTOP", "brak")
-    session = os.environ.get("XDG_SESSION_TYPE", "brak")
-    shell = Path(os.environ.get("SHELL", "brak")).name
+    desktop = os.environ.get("XDG_CURRENT_DESKTOP", "none")
+    session = os.environ.get("XDG_SESSION_TYPE", "none")
+    shell = Path(os.environ.get("SHELL", "none")).name
     output = [
-        "=== AI Desktop: audyt tylko do odczytu ===",
+        "=== AI Desktop: read-only audit ===",
         f"Kernel: {platform.release()}",
-        f"Pulpit: {desktop}",
-        f"Sesja: {session}",
+        f"Desktop: {desktop}",
+        f"Session: {session}",
         f"Shell: {shell}",
-        "", "=== NARZĘDZIA ==="
+        "", "=== TOOLS ==="
     ]
     for tool in TOOLS:
-        present = "TAK" if shutil.which(tool) else "NIE"
+        present = "YES" if shutil.which(tool) else "NO"
         output.append(f"{tool}: {present}")
-    output.extend(["", "=== PUNKTY MONTOWANIA ==="])
+    output.extend(["", "=== MOUNT POINTS ==="])
     for path in ("/", str(Path.home())):
         code, value = read_command(
             ("findmnt", "-T", path, "-n", "-o", "TARGET,SOURCE,FSTYPE")
         )
         output.append(
-            f"{path}: {value}" if code == 0 else f"{path}: brak danych"
+            f"{path}: {value}" if code == 0 else f"{path}: no data"
         )
     output.extend(["", "=== SNAPPER ==="])
     if shutil.which("snapper"):
         code, value = read_command(("snapper", "list-configs"))
         output.append(
-            value if code == 0 else "Nie udało się odczytać konfiguracji"
+            value if code == 0 else "Could not read the configuration"
         )
     else:
-        output.append("Snapper niedostępny")
+        output.append("Snapper unavailable")
     output.extend([
-        "", "=== UWAGI ===",
-        "Snapshot / nie obejmuje automatycznie osobnego podwoluminu /home.",
-        "Snapshot na tym samym dysku nie jest niezależnym backupem.",
-        "Obecność bwrap nie dowodzi poprawnej izolacji agenta.",
-        "Audyt nie uruchamia AI, nie zapisuje konfiguracji i nie wymaga sudo."
+        "", "=== NOTES ===",
+        "A snapshot of / does not automatically include a separate /home subvolume.",
+        "A snapshot on the same disk is not an independent backup.",
+        "Having bwrap does not prove that the agent is correctly isolated.",
+        "The audit does not start AI, does not save any configuration and does not need sudo."
     ])
     return output

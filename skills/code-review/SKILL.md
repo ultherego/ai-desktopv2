@@ -1,31 +1,31 @@
 ---
 name: code-review
-description: Sprawdza kod lub diff pod kątem konkretnych błędów i regresji bez edycji. Użyj przy prośbie o review, ocenę poprawki, bezpieczeństwa lub brakujących testów.
+description: Checks code or a diff for specific bugs and regressions without editing. Use for a request for review, an assessment of a fix or of security, or missing tests.
 ---
 
-# Przegląd poprawności kodu
+# Code correctness review
 
-## Wyznacz zakres
+## Set the scope
 
-Ustal ocenianą zmianę lub komponent oraz dostępny stan kodu. Jeśli nie masz wersji bazowej, przejrzyj bieżące zachowanie i zaznacz, że nie oceniasz regresji względem nieznanego diffu. Nie rozszerzaj przeglądu całego projektu bez powodu.
+Establish the change or component under review and the available state of the code. If you do not have the base version, review the current behavior and note that you are not assessing regression against an unknown diff. Do not extend the review to the whole project without a reason.
 
-## Prześledź zachowanie
+## Trace the behavior
 
-1. Przeczytaj zmieniony kod wraz z wywołaniami, typami danych i najbliższymi testami. Prześledź wejście przez walidację do skutku i obsługi wyniku.
-2. Sprawdź zwykły przypadek oraz istotne granice: puste i błędne dane, uprawnienia, częściowy zapis, przerwanie, błąd zależności, konkurencyjna zmiana stanu. Dobierz przypadki do mechanizmu; nie produkuj hipotetycznych ostrzeżeń niezwiązanych z kodem.
-3. Przy podejrzeniu błędu wskaż osiągalny warunek. Potwierdź go minimalnym przykładem lub istniejącym testem, jeśli dostępny wykonawca to umożliwia. Bez wykonania oznacz wniosek jako analizę kodu; brak dowodu nie jest potwierdzeniem defektu.
-4. Sprawdź, czy testy odróżniają poprawne zachowanie od starego. PASS składni lub atrapy nie dowodzi poprawności całego przepływu ani działania na docelowym hoście.
+1. Read the changed code together with its callers, data types and nearest tests. Trace the input through validation to the effect and the handling of the result.
+2. Check the ordinary case and the relevant boundaries: empty and invalid data, permissions, partial write, interruption, dependency failure, concurrent change of state. Match the cases to the mechanism; do not produce hypothetical warnings unrelated to the code.
+3. When you suspect a bug, name a reachable condition. Confirm it with a minimal example or an existing test if the available executor allows it. Without execution, mark the conclusion as code analysis; missing evidence does not confirm a defect.
+4. Check whether the tests distinguish correct behavior from the old one. A syntax PASS or a mock does not prove the whole flow is correct or that it works on the target host.
 
-## Klasyfikuj ustalenia
+## Classify the findings
 
-- **P1:** osiągalna utrata danych, naruszenie dostępu lub błąd blokujący podstawowy scenariusz; opisz wymagane warunki.
-- **P2:** błąd funkcjonalny lub regresja o ograniczonym skutku.
-- **P3:** mniejsza usterka; uwagi stylistyczne podawaj tylko, jeśli wpływają na utrzymanie lub wymaganie zadania.
+- **P1:** reachable data loss, an access violation or a bug blocking the core scenario; describe the required conditions.
+- **P2:** a functional bug or regression with limited effect.
+- **P3:** a minor flaw; give style remarks only if they affect maintenance or a task requirement.
 
-Łącz duplikaty o tej samej przyczynie. Nie podnoś wagi wyłącznie na podstawie groźnie brzmiącej nazwy. Oddziel potwierdzone defekty, hipotezy i brakujące dowody.
+Merge duplicates with the same cause. Do not raise severity merely because a name sounds dangerous. Separate confirmed defects, hypotheses and missing evidence.
 
-## Wynik
+## Result
 
-Dla każdego defektu podaj: priorytet, plik i miejsce, warunek wystąpienia, skutek oraz dowód lub minimalną reprodukcję. Zalecenie ma usuwać przyczynę; nie przygotowuj edycji w trybie review.
+For each defect, give: priority, file and location, the condition under which it occurs, the effect, and evidence or a minimal reproduction. A recommendation must remove the cause; do not prepare edits in review mode.
 
-Jeżeli nie znalazłeś błędów, napisz to wraz z zakresem sprawdzenia i istotną luką w weryfikacji. Nie wystawiaj ogólnego certyfikatu bezpieczeństwa. Nie uruchamiaj testów na żywym systemie ani nie rozszerzaj dostępu, aby dokończyć przegląd.
+If you found no bugs, say so together with the scope of the check and any relevant gap in verification. Do not issue a general security certificate. Do not run tests on a live system or widen access to finish the review.

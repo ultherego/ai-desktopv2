@@ -21,15 +21,15 @@ def desktop_main(session=None, *, reader=input):
         gate = ConsentSession()
         preview = gate.preview(report)
         # The user must see exactly what would be sent before confirming.
-        print("=== RAPORT TYLKO DO ODCZYTU ===")
+        print("=== READ-ONLY REPORT ===")
         print(preview.payload)
-        print("ODBIORCA:", preview.recipient)
-        print("CEL:", preview.purpose)
+        print("RECIPIENT:", preview.recipient)
+        print("PURPOSE:", preview.purpose)
         print("SHA256:", preview.sha256)
         if session is None:
-            print("Tryb offline: tylko odbior raportu przez osobny UID; bez Claude i OAuth.")
-        answer = reader("Wpisz UDOSTEPNIJ " + preview.sha256 + " aby przekazac raport: ")
-        if answer != "UDOSTEPNIJ " + preview.sha256:
+            print("Offline mode: the report is only received by a separate UID; no Claude or OAuth.")
+        answer = reader("Type SHARE " + preview.sha256 + " to send the report: ")
+        if answer != "SHARE " + preview.sha256:
             raise ConsentDenied("CONSENT: REFUSED")
         auth = gate.authorize(report, confirmed_sha256=preview.sha256, nonce=preview.nonce)
         digest = (e2_socket_activation.send_once(auth) if session is None

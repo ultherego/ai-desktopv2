@@ -81,10 +81,10 @@ FIXTURES = {
     "small.py": (lambda: SMALL.encode(), None),
     "medium.log": (medium_log, None),
     "log1m.txt": (good_log, None),
-    "over.txt": (lambda: b"x" * (CEILING + 1), "przekracza"),
-    "ansi.txt": (lambda: b"\x1b[31mred\x1b[0m failed\n", "sterujące"),
+    "over.txt": (lambda: b"x" * (CEILING + 1), "is over"),
+    "ansi.txt": (lambda: b"\x1b[31mred\x1b[0m failed\n", "control"),
     "bad-utf8.txt": (lambda: b"valid start\n\xff\xfe broken\n", "UTF-8"),
-    "empty.txt": (lambda: b"", "pusty"),
+    "empty.txt": (lambda: b"", "empty"),
 }
 
 
@@ -162,7 +162,7 @@ def main(argv=None):
         except ValueError as exc:
             outcome = "REFUSED: " + str(exc)
             ok = (phrase is not None and phrase in str(exc)) or (
-                phrase is None and (root / name).stat().st_size > limit and "przekracza" in str(exc))      # a smaller file_size is the owner's choice
+                phrase is None and (root / name).stat().st_size > limit and "is over" in str(exc))      # a smaller file_size is the owner's choice
         print("%-13s %s %s" % (name, "OK  " if ok else "FAIL", outcome))
         failures += not ok
     print("REFUSALS=" + ("PASS" if not failures else "FAIL"))

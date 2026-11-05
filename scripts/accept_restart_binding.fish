@@ -76,10 +76,10 @@ if test $aid_worktree -eq 0
 end
 set -l aid_cleanup $status
 rmdir "$aid_tmp" 2>/dev/null
-printf '\n=== WYNIKI ===\n'
+printf '\n=== RESULTS ===\n'
 printf 'MODE=%s SHA_MATCH=%s FETCH=%s WORKTREE=%s SCRIPT_MATCH=%s\n' "$aid_mode" $aid_sha $aid_fetch $aid_worktree $aid_script_match
 printf 'INSTALLED=%s HELPER=%s MAIN_UNCHANGED=%s BACK=%s WORKTREE_CLEANUP=%s\n' $aid_installed $aid_helper $aid_main $aid_back $aid_cleanup
-printf 'Komputer nie byl restartowany przez skrypt; ~/hello.py i dawne dzienniki nie sa dotykane.\n'
+printf 'The computer was not restarted by this script; ~/hello.py and older journals are not touched.\n'
 test $aid_helper -eq 0; and test $aid_main -eq 0; and test $aid_back -eq 0; and exit 0
 test $aid_helper -ne 99; and test $aid_helper -ne 0; and exit $aid_helper
 exit 2

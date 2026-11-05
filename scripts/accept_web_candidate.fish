@@ -76,11 +76,11 @@ function __aid18_part_profile --argument-names aid_tree
     or return $status
     set -l aid_data (mktemp -d "$HOME/ai-part-bench-XXXXXXXX")
     or return $status
-    printf 'Dane testowe (swiezy katalog): %s\n' "$aid_data"
+    printf 'Test data (fresh directory): %s\n' "$aid_data"
     __aid18_step PART_DATA python3 -B scripts/part_benchmark.py write "$aid_data"
     or return $status
     for aid_kib in 240 512
-        set -l aid_prompt (printf 'Ustaw w SWOIM permissions.toml: part_size = "%sKiB" (skrypt tego nie zmienia), potem Enter: ' $aid_kib)
+        set -l aid_prompt (printf 'Set in YOUR permissions.toml: part_size = "%sKiB" (this script does not change it), then press Enter: ' $aid_kib)
         read -P "$aid_prompt" aid_ack
         or return 2
         __aid18_step CONFIG_$aid_kib python3 -B scripts/part_benchmark.py check-config $aid_kib
@@ -92,7 +92,7 @@ function __aid18_part_profile --argument-names aid_tree
     end
     __aid18_step PART_REPORT python3 -B scripts/part_benchmark.py report "$aid_data"
     or return $status
-    printf 'Wyniki i meta-logi zachowano w %s\n' "$aid_data"
+    printf 'Results and meta-logs kept in %s\n' "$aid_data"
     return 0
 end
 function __aid18_cycle --argument-names aid_expected aid_repo aid_tmp aid_script aid_mode aid_branch
@@ -151,7 +151,7 @@ with os.fdopen(os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.
     fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
     if any(getattr(before, key) != getattr(after, key) for key in fields):
         raise SystemExit("NATIVE COPY: REFUSED changed source")
-print("Natywny klient skopiowany z przyjętego pakietu; bez uruchamiania i OAuth.")
+print("Native client copied from the accepted package; not run, no OAuth.")
 ' "$aid_tree/packaging/arch/claude-code"
     or return $status
     __aid18_step NATIVE_MATCH cmp /usr/lib/ai-desktop/claude-code "$aid_tree/packaging/arch/claude-code"
@@ -195,7 +195,7 @@ print("Natywny klient skopiowany z przyjętego pakietu; bez uruchamiania i OAuth
         return $status
     end
     # Keep native answers and human consent on the original TTY, without tee.
-    printf "\nNowy odbior: jedno pytanie o Python, dwa zapytania Claude z WebSearch; bez danych lokalnych.\n"
+    printf "\nNew acceptance: one question about Python, two Claude requests with WebSearch; no local data.\n"
     __aid18_step HOST_WEB python3 -B tests/host_web_acceptance.py --allow-subscription-web-test
     or return $status
     return 0
@@ -237,13 +237,13 @@ if test "$aid_return" -eq 0
         set aid_cycle "$aid_main_check"
     end
 end
-printf '\n=== WYNIKI ===\n'
+printf '\n=== RESULTS ===\n'
 printf '%s\n' $aid18_results
 printf 'MODE=%s UPGRADE=%s HOST_WEB=%s\n' "$aid_mode" "$aid18_install" "$aid18_web"
 printf '\nCYCLE=%s RETURN=%s\n' "$aid_cycle" "$aid_return"
-printf 'Logi i worktree zachowano: %s\n' "$aid_tmp"
-printf 'Rozmowa HOST WEB nie byla zapisywana; rzeczywisty permissions.toml pozostaje bez zmian.\n'
-printf 'Testy nie modyfikuja dokumentacji, nie wykonuja commit/push ani merge.\n'
+printf 'Logs and worktree kept: %s\n' "$aid_tmp"
+printf 'The HOST WEB conversation was not saved; the real permissions.toml stays unchanged.\n'
+printf 'The tests do not change documentation and do not commit, push or merge.\n'
 if test "$aid_cycle" -ne 0
     exit "$aid_cycle"
 end

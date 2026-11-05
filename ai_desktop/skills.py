@@ -12,13 +12,13 @@ MAX_SKILL_BYTES = 96 * 1024           # one Skill plus its label and a role text
 
 TEMPLATE = """---
 name: {name}
-description: Krótko: kiedy model ma z tego korzystać.
+description: Briefly: when the model should use this.
 ---
 
 # {name}
 
-Opisz tu własnymi słowami to, co model ma wiedzieć o Twoim systemie lub pracy.
-Skill to tylko instrukcja: nie daje dostępu do plików ani poleceń, o nich decyduje permissions.toml.
+Describe here, in your own words, what the model should know about your system or work.
+A Skill is only an instruction: it gives no access to files or commands; permissions.toml decides those.
 """
 
 
@@ -44,7 +44,7 @@ def names() -> tuple:
 def create(name: str) -> Path:
     """Start one private Skill from the template; an existing one is never overwritten."""
     if type(name) is not str or not SLUG.fullmatch(name):
-        raise ValueError("Niepoprawna nazwa skilla (małe litery, cyfry i myślniki)")
+        raise ValueError("Invalid Skill name (lowercase letters, digits and hyphens)")
     directory = user_root() / name
     os.makedirs(directory, mode=0o700, exist_ok=False)
     target = directory / "SKILL.md"
@@ -57,58 +57,58 @@ def create(name: str) -> Path:
 def parse_skill(data: str, name: str) -> tuple[str, str]:
     """Validate already bounded Skill text; no tools or file authority are loaded."""
     if not SLUG.fullmatch(name):
-        raise ValueError("Niepoprawna nazwa skilla")
+        raise ValueError("Invalid Skill name")
     lines = data.splitlines()
 
     if len(lines) < 5 or lines[0] != "---":
-        raise ValueError("Brak frontmatter")
+        raise ValueError("Missing frontmatter")
 
     try:
         end = lines.index("---", 1)
     except ValueError as exc:
-        raise ValueError("Niezamkniety frontmatter") from exc
+        raise ValueError("Unclosed frontmatter") from exc
 
     fields = {}
     for line in lines[1:end]:
         if ":" not in line:
-            raise ValueError("Niepoprawne pole frontmatter")
+            raise ValueError("Invalid frontmatter field")
         key, value = line.split(":", 1)
         key, value = key.strip(), value.strip()
         if key in fields:
-            raise ValueError("Powtorzone pole frontmatter")
+            raise ValueError("Repeated frontmatter field")
         fields[key] = value
 
     if fields.get("name") != name:
-        raise ValueError("Nazwa nie odpowiada katalogowi")
+        raise ValueError("The name does not match the directory")
 
     desc = fields.get("description", "").strip("\"")
     if not desc or not "\n".join(lines[end + 1:]).strip():
-        raise ValueError("Brak opisu lub tresci")
+        raise ValueError("Missing description or content")
 
     return desc, data
 
 
 def inspect_skill(root: Path, name: str, *, secure=False) -> tuple[str, str]:
     if type(name) is not str or not SLUG.fullmatch(name):
-        raise ValueError("Niepoprawna nazwa skilla")
+        raise ValueError("Invalid Skill name")
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
     try:
         root_fd = os.open(root, flags)
     except OSError:
-        raise ValueError("Brak katalogu Skills lub wykryto symlink") from None
+        raise ValueError("Skills directory missing, or a symlink was found") from None
     directory = descriptor = None
     try:
         directory = os.open(name, flags, dir_fd=root_fd)
         if secure and any(os.fstat(fd).st_uid not in (0, os.getuid()) or os.fstat(fd).st_mode & 0o022
                           for fd in (root_fd, directory)):
-            raise ValueError("Niebezpieczny katalog Skill")
+            raise ValueError("Unsafe Skill directory")
         descriptor = os.open("SKILL.md", os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC,
                              dir_fd=directory)
         before = os.fstat(descriptor)
         if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1
                 or before.st_size > MAX_SKILL_BYTES
                 or (secure and (before.st_uid not in (0, os.getuid()) or before.st_mode & 0o022))):
-            raise ValueError("Niepoprawny plik SKILL.md")
+            raise ValueError("Invalid SKILL.md file")
         raw = os.read(descriptor, MAX_SKILL_BYTES + 1)
         after = os.fstat(descriptor)
         linked = os.stat("SKILL.md", dir_fd=directory, follow_symlinks=False)
@@ -117,10 +117,10 @@ def inspect_skill(root: Path, name: str, *, secure=False) -> tuple[str, str]:
                                     info.st_mtime_ns, info.st_ctime_ns)
         if (len(raw) > MAX_SKILL_BYTES or fingerprint(before) != fingerprint(after)
                 or fingerprint(before) != fingerprint(linked)):
-            raise ValueError("Skill zmienił się podczas odczytu")
+            raise ValueError("The Skill changed while being read")
         return parse_skill(raw.decode("utf-8"), name)
     except OSError:
-        raise ValueError("Brak SKILL.md lub wykryto symlink") from None
+        raise ValueError("SKILL.md missing, or a symlink was found") from None
     finally:
         if descriptor is not None:
             os.close(descriptor)
@@ -137,18 +137,18 @@ def main(argv=None):
 
     if args.action == "menu":
         if args.name is not None:
-            parser.error("menu nie przyjmuje nazwy skilla")
+            parser.error("menu does not take a Skill name")
         from .management_cli import main as manage
         return manage(["skills"])
 
     if args.action == "new":
         if not args.name:
-            parser.error("new wymaga nazwy")
+            parser.error("new requires a name")
         try:
-            print("Utworzono: " + str(create(args.name)))
-            print("Przypisz go agentowi: ai-desktop agents")
+            print("Created: " + str(create(args.name)))
+            print("Assign it to an agent: ai-desktop agents")
         except FileExistsError:
-            print("SKILL: FAIL: taki Skill już istnieje")
+            print("SKILL: FAIL: this Skill already exists")
             return 1
         except (ValueError, OSError) as exc:
             print(f"SKILL: FAIL: {exc}")
@@ -157,7 +157,7 @@ def main(argv=None):
 
     if args.action == "show":
         if not args.name:
-            parser.error("show wymaga nazwy")
+            parser.error("show requires a name")
         try:
             print(inspect_skill(locate(args.name), args.name)[1])
         except (ValueError, OSError) as exc:
@@ -166,7 +166,7 @@ def main(argv=None):
         return 0
 
     if args.name is not None:
-        parser.error("Nieoczekiwana nazwa skilla")
+        parser.error("Unexpected Skill name")
 
     if not ROOT.is_dir() or ROOT.is_symlink():
         print("SKILLS: FAIL")
@@ -175,7 +175,7 @@ def main(argv=None):
     failed = False
     for name in names():
         root = locate(name)
-        mark = " (własny)" if root != ROOT else ""
+        mark = " (your own)" if root != ROOT else ""
         try:
             desc, _ = inspect_skill(root, name)
             print(f"{name}{mark}: {desc}")

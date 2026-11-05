@@ -87,12 +87,12 @@ if contains -- "$aid_mode" --native --native-c; and test $aid_ci -eq 0; and test
     set aid_installed $status
 end
 if test "$aid_mode" = --native-c; and test "$aid_installed" = 0
-    printf '\n=== PLAN: TYLKO SESJA C (nic nie jest jeszcze wysylane) ===\n'
-    printf 'Prosba o caly plik medium.log: zwykle 4-5 zadan, caly plik (ok. 266 KiB) zostanie wyslany w 3 czesciach. Zapis plikow: brak. Internet: brak.\n'
-    printf 'Odmowy plikow oraz sesje A i B zaliczono w przerwanym przebiegu --native; ten tryb ich nie powtarza.\n'
-    printf '\n--- Sesja C: log ok. 200 KB, prosba o caly plik ---\n'
-    printf '  Przeanalizuj caly plik i powiedz, jakie bledy w nim wystepuja.   >>> tak (plan), tak (etap 1)\n'
-    printf '  Oczekiwane: 3 czesci, pokrycie 3 z 3 (100%%), wnioski z kodami E-100 i E-2900. /rejestr, /koniec\n\n'
+    printf '\n=== PLAN: SESSION C ONLY (nothing is sent yet) ===\n'
+    printf 'Request for the whole file medium.log: usually 4-5 requests, the whole file (about 266 KiB) will be sent in 3 parts. File writes: none. Internet: none.\n'
+    printf 'The file refusals and sessions A and B passed in the interrupted --native run; this mode does not repeat them.\n'
+    printf '\n--- Session C: log of about 200 KB, request for the whole file ---\n'
+    printf '  Analyze the whole file and tell me which errors it contains.   >>> y (plan), y (stage 1)\n'
+    printf '  Expected: 3 parts, coverage 3 of 3 (100%%), conclusions with codes E-100 and E-2900. /log, /exit\n\n'
     /usr/bin/ai-desktop material "$aid_project/medium.log" --v
     set aid_session_c $status
     python3 -I -B "$aid_tree/scripts/lc1_check.py" check-unchanged
@@ -101,45 +101,45 @@ if test "$aid_mode" = --native-c; and test "$aid_installed" = 0
         python3 -I -B "$aid_tree/scripts/lc1_check.py" cleanup
         set aid_clean $status
     else
-        printf 'Katalog %s zachowano do ogledzin.\n' "$aid_project"
+        printf 'Directory %s kept for inspection.\n' "$aid_project"
     end
 end
 if test "$aid_mode" = --native; and test "$aid_installed" = 0
-    printf '\n=== PLAN ODBIORU NATYWNEGO (nic nie jest jeszcze wysylane) ===\n'
-    printf 'Katalog testowy: %s (swieze pliki syntetyczne; Twoje pliki nie sa uzywane)\n' "$aid_project"
-    printf 'Zadania do Claude: razem zwykle 12-18, najwyzej ok. 30 (kazde pytanie ma twardy limit 8 zadan).\n'
-    printf '  Sesja A, maly plik (1 KiB): 1 zadanie, wysylany jest CALY ten plik.\n'
-    printf '  Sesja B, log 1 MiB (limit pliku to 5 MiB): Claude sam wybiera fragmenty (wyszukiwanie i odczyt tego jednego pliku), do 8 zadan na pytanie;\n'
-    printf '            odmowa zgody = 0 zadan; pytanie nastepcze: po najwyzej 8.\n'
-    printf '  Sesja C, log ok. 200 KB: prosba o caly plik = 1 zadanie planujace + 3 czesci + 1 podsumowanie (5), caly plik zostanie wyslany.\n'
-    printf 'Dane: pytanie + tylko fragmenty, o ktore Claude poprosi (w sesji B nigdy caly 1 MiB). Zapis plikow: brak. Internet: brak.\n'
-    printf 'Odpowiedzi wpisujesz Ty. Pytania zadajesz zwyklymi zdaniami (bez /pytaj i numerow wierszy).\n\n'
+    printf '\n=== NATIVE ACCEPTANCE PLAN (nothing is sent yet) ===\n'
+    printf 'Test directory: %s (fresh synthetic files; your files are not used)\n' "$aid_project"
+    printf 'Requests to Claude: usually 12-18 in total, at most about 30 (each question has a hard limit of 8 requests).\n'
+    printf '  Session A, small file (1 KiB): 1 request, this WHOLE file is sent.\n'
+    printf '  Session B, 1 MiB log (the file limit is 5 MiB): Claude picks fragments itself (search and read of this one file), up to 8 requests per question;\n'
+    printf '            consent refused = 0 requests; follow-up question: at most 8 each.\n'
+    printf '  Session C, log of about 200 KB: request for the whole file = 1 planning request + 3 parts + 1 summary (5), the whole file will be sent.\n'
+    printf 'Data: the question + only the fragments Claude asks for (in session B never the whole 1 MiB). File writes: none. Internet: none.\n'
+    printf 'You type the answers. You ask the questions in plain sentences (without /ask and line numbers).\n\n'
     python3 -I -B "$aid_tree/scripts/lc1_check.py" prepare
     set aid_prepare $status
 end
 if test "$aid_prepare" = 0
-    printf '\n--- Odmowy plikow na ZAINSTALOWANYM kodzie i Twojej polityce (bez modelu) ---\n'
+    printf '\n--- File refusals on the INSTALLED code and your policy (no model) ---\n'
     python3 -I -B "$aid_tree/scripts/lc1_check.py" refusals --lib /usr/lib/ai-desktop
     set aid_refusals $status
 end
 if test "$aid_refusals" = 0
-    printf '\n--- Sesja A: maly plik. Wpisz zwyklym zdaniem, potem na pytanie o wyslanie: tak ---\n'
-    printf '  Przeanalizuj ten plik i wskaz mozliwe bledy.        >>> tak   (cale small.py, 1 zadanie)\n'
-    printf '  /rejestr   potem   /koniec\n\n'
+    printf '\n--- Session A: small file. Type a plain sentence, then at the question about sending: y ---\n'
+    printf '  Analyze this file and point out possible bugs.      >>> y   (whole small.py, 1 request)\n'
+    printf '  /log   then   /exit\n\n'
     /usr/bin/ai-desktop material "$aid_project/small.py" --v
     set aid_session_a $status
-    printf '\n--- Sesja B: duzy log 1 MiB. Pytaj zwyklymi zdaniami ---\n'
-    printf '  1  Co oznaczaja wpisy ERROR-MARKER w tym logu?        >>> najpierw: nie  (0 zadan)\n'
-    printf '  2  to samo pytanie jeszcze raz                          >>> tak   (Claude sam szuka i czyta)\n'
-    printf '  3  Wyjasnij pierwszy punkt poprzedniej odpowiedzi       >>> tak   (pamiec rozmowy)\n'
-    printf '  (wiecej pytan nie trzeba; /rejestr, /koniec)\n'
-    printf '  /rejestr   potem   /koniec\n'
-    printf 'Wklej mi: /rejestr z obu sesji, linie CZAS, liste krokow (Krok n/8) i odpowiedzi.\n\n'
+    printf '\n--- Session B: large 1 MiB log. Ask in plain sentences ---\n'
+    printf '  1  What do the ERROR-MARKER entries in this log mean?  >>> first: n  (0 requests)\n'
+    printf '  2  the same question again                             >>> y   (Claude searches and reads by itself)\n'
+    printf '  3  Explain the first point of the previous answer      >>> y   (conversation memory)\n'
+    printf '  (no more questions needed; /log, /exit)\n'
+    printf '  /log   then   /exit\n'
+    printf 'Paste back: /log from both sessions, the TIME lines, the list of steps (Step n/8) and the answers.\n\n'
     /usr/bin/ai-desktop material "$aid_project/log1m.txt" --v
     set aid_session $status
-    printf '\n--- Sesja C: log ok. 200 KB, prosba o caly plik ---\n'
-    printf '  Przeanalizuj caly plik i powiedz, jakie bledy w nim wystepuja.   >>> tak (plan), tak (etap 1)\n'
-    printf '  Oczekiwane: 3 czesci, pokrycie 3 z 3 (100%%), wnioski z kodami E-100 i E-2900. /rejestr, /koniec\n\n'
+    printf '\n--- Session C: log of about 200 KB, request for the whole file ---\n'
+    printf '  Analyze the whole file and tell me which errors it contains.   >>> y (plan), y (stage 1)\n'
+    printf '  Expected: 3 parts, coverage 3 of 3 (100%%), conclusions with codes E-100 and E-2900. /log, /exit\n\n'
     /usr/bin/ai-desktop material "$aid_project/medium.log" --v
     set aid_session_c $status
     python3 -I -B "$aid_tree/scripts/lc1_check.py" check-unchanged
@@ -148,11 +148,11 @@ if test "$aid_refusals" = 0
         python3 -I -B "$aid_tree/scripts/lc1_check.py" cleanup
         set aid_clean $status
     else
-        printf 'Katalog %s zachowano do ogledzin.\n' "$aid_project"
+        printf 'Directory %s kept for inspection.\n' "$aid_project"
     end
 else if test "$aid_prepare" = 0
-    printf '\nPRZERWANO przed sesja: weryfikacja odmow/polityki nie przeszla; zadne zadanie do Claude nie zostalo wyslane.\n'
-    printf 'Katalog %s zachowano do ogledzin (usun: python3 scripts/lc1_check.py cleanup).\n' "$aid_project"
+    printf '\nSTOPPED before the session: the refusal/policy check did not pass; no request to Claude was sent.\n'
+    printf 'Directory %s kept for inspection (remove: python3 scripts/lc1_check.py cleanup).\n' "$aid_project"
 end
 cd "$aid_repo"
 set -l aid_back $status
@@ -164,12 +164,12 @@ if test $aid_worktree -eq 0
 end
 set -l aid_wt_cleanup $status
 rmdir "$aid_tmp" 2>/dev/null
-printf '\n=== WYNIKI ===\n'
+printf '\n=== RESULTS ===\n'
 printf 'MODE=%s FETCH=%s SHA_MATCH=%s WORKTREE=%s SCRIPT_MATCH=%s\n' "$aid_mode" $aid_fetch $aid_sha $aid_worktree $aid_script_match
 printf 'CI=%s LC_TESTS=%s INSTALLED=%s PREPARE=%s REFUSALS=%s\n' $aid_ci $aid_lc $aid_installed $aid_prepare $aid_refusals
 printf 'SESSION_A=%s SESSION_B=%s SESSION_C=%s SOURCES_UNCHANGED=%s CLEANUP=%s\n' $aid_session_a $aid_session $aid_session_c $aid_unchanged $aid_clean
 printf 'MAIN_UNCHANGED=%s BACK=%s WORKTREE_CLEANUP=%s\n' $aid_main $aid_back $aid_wt_cleanup
-printf 'Oczekiwane: wszystko 0; w trybie --offline pola natywne maja NOT_RUN (to nie jest PASS natywny).\n'
+printf 'Expected: all 0; in --offline mode the native fields show NOT_RUN (that is not a native PASS).\n'
 if test "$aid_mode" = --offline
     test $aid_ci -eq 0; and test $aid_lc -eq 0; and test $aid_main -eq 0; and test $aid_back -eq 0; and exit 0
     exit 1

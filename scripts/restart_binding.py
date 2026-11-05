@@ -104,7 +104,7 @@ def prepare(base):
               "files": [{"path": TARGET, "content": ORIGINAL, "writable": True}]}
     plan = TaskPlan(before, source, {"summary": "synthetic", "files": [
         {"path": TARGET, "content": CHANGED}]}, "text")
-    w.apply(plan, plan.authorize("ZAPISZ " + plan.sha256))
+    w.apply(plan, plan.authorize("SAVE " + plan.sha256))
     journal = ws / w.STATE / (plan.sha256 + ".json")
     value = json.loads(journal.read_text())
     if value["schema"] != 3 or value["before"]["fs"] != before["fs"]:
@@ -122,7 +122,7 @@ def prepare(base):
         os.fsync(handle.fileno())
     print("PREPARED: schema=3 st_dev=%d boot_id=%s plan=%s" % (evidence["dev"], evidence["boot_id"], evidence["plan"]))
     print("Fs: " + json.dumps(evidence["fs"], sort_keys=True))
-    print("Teraz zrestartuj komputer ręcznie, potem uruchom verify. Nie ruszaj " + str(base) + ".")
+    print("Now restart the computer by hand, then run verify. Do not touch " + str(base) + ".")
     return 0
 
 
@@ -173,7 +173,7 @@ def verify(base):
     out = io.StringIO()
     with contextlib.redirect_stdout(out):
         task_cli_code = task_cli.main(["status", "--workspace", str(ws)])
-    if task_cli_code != 0 or "Stan: zapisano" not in out.getvalue() or "niepowiązana" in out.getvalue():
+    if task_cli_code != 0 or "State: saved" not in out.getvalue() or "unlinked" in out.getvalue():
         print("FAIL: task status does not show a normal stored task")
         return 1
     if not w.rollback(str(ws), evidence["plan"], expected_journal=records[0]["journal_sha256"]):
@@ -191,7 +191,7 @@ def verify(base):
     result = "REBOUND_OBSERVED" if dev_changed else "RESTART_CHECKED_REBOUND_NOT_OBSERVED"
     print("RESULT=" + result)
     if not dev_changed:
-        print("Restart sprawdzony, rebound niezaobserwowany: st_dev się nie zmienił, więc ten scenariusz NIE jest zaliczony.")
+        print("Restart checked, rebound not observed: st_dev did not change, so this scenario is NOT passed.")
     return 0
 
 

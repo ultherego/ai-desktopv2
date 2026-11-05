@@ -9,15 +9,15 @@ PROBE = chr(10).join([
     "from pathlib import Path",
     "home = Path(os.environ[\"HOST_HOME\"])",
     "checks = {",
-    "  \"home hosta ukryty\": not home.exists(),",
-    "  \"brak hostowego etc\": not Path(\"/etc/passwd\").exists(),",
-    "  \"osobna siec\": os.readlink(\"/proc/self/ns/net\") != os.environ[\"HOST_NETNS\"],",
-    "  \"osobna przestrzen uzytkownika\": os.readlink(\"/proc/self/ns/user\") != os.environ[\"HOST_USERNS\"],",
+    "  \"host home hidden\": not home.exists(),",
+    "  \"no host etc\": not Path(\"/etc/passwd\").exists(),",
+    "  \"separate network\": os.readlink(\"/proc/self/ns/net\") != os.environ[\"HOST_NETNS\"],",
+    "  \"separate user namespace\": os.readlink(\"/proc/self/ns/user\") != os.environ[\"HOST_USERNS\"],",
     "  \"usr read-only\": bool(os.statvfs(\"/usr\").f_flag & os.ST_RDONLY),",
     "}",
     "p = Path(\"/home/sandbox/test\")",
     "p.write_text(\"probe\")",
-    "checks[\"tmpfs dziala\"] = p.read_text() == \"probe\"",
+    "checks[\"tmpfs works\"] = p.read_text() == \"probe\"",
     "for label, ok in checks.items():",
     "  status = \"PASS\" if ok else \"FAIL\"",
     "  print(f\"{label}: {status}\")",
@@ -48,10 +48,10 @@ def build_command(home, netns, userns):
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv != ["self-test"]:
-        print("Uzycie: python3 -B -m ai_desktop.sandbox self-test")
+        print("Usage: python3 -B -m ai_desktop.sandbox self-test")
         return 2
     if not shutil.which("bwrap"):
-        print("Nie znaleziono bwrap")
+        print("bwrap not found")
         return 2
     cmd = build_command(
         Path.home(),
@@ -61,7 +61,7 @@ def main(argv=None):
     try:
         result = subprocess.run(cmd, timeout=20, check=False)
     except (OSError, subprocess.TimeoutExpired) as exc:
-        print(f"Blad testu: {type(exc).__name__}")
+        print(f"Test error: {type(exc).__name__}")
         return 2
     print("SANDBOX: PASS" if result.returncode == 0 else "SANDBOX: FAIL")
     return 0 if result.returncode == 0 else 1

@@ -94,12 +94,14 @@ def code_with_dependencies(rng, size=240000):
 
 
 def polish_text(rng, size=40000):
-    words = ["żółć", "gęślą", "jaźń", "łąka", "świt", "źdźbło", "ćma", "księgarnia", "wąż", "chrząszcz"]
+    # Fixture data: Polish words kept as escapes, so the multibyte bytes of this dataset stay the same.
+    words = ["\u017c\u00f3\u0142\u0107", "g\u0119\u015bl\u0105", "ja\u017a\u0144", "\u0142\u0105ka", "\u015bwit",
+             "\u017ad\u017ab\u0142o", "\u0107ma", "ksi\u0119garnia", "w\u0105\u017c", "chrz\u0105szcz"]
     lines = [" ".join(rng.choice(words) for _ in range(12)) + "." for _ in range(size)]
     facts = []
     for slot, ident in zip(_slots(rng, size, 8), _ids(rng, 8, "PL-%04d", 10000)):
         code = str(rng.randrange(1000, 9999))
-        lines[slot] = "Uwaga %s: zażółć gęślą jaźń — kod %s, termin ważności upływa w piątek." % (ident, code)
+        lines[slot] = "Uwaga %s: za\u017c\u00f3\u0142\u0107 g\u0119\u015bl\u0105 ja\u017a\u0144 \u2014 kod %s, termin wa\u017cno\u015bci up\u0142ywa w pi\u0105tek." % (ident, code)
         facts.append({"id": ident, "values": [code], "line": slot + 1})
     return lines, facts, [], r"PL-\d{4}"
 
@@ -117,12 +119,12 @@ def json_with_escapes(rng, size=40000):
 DATASETS = {"powtarzalny-log": repetitive_log, "log-zroznicowany": varied_events_log, "specyfikacja": dense_spec,
             "kod-zaleznosci": code_with_dependencies, "polski-utf8": polish_text, "json-escaping": json_with_escapes}
 QUESTIONS = {
-    "powtarzalny-log": "Wypisz każdy wiersz z poziomem ERROR: kod ERR-… i wartość latency_ms.",
-    "log-zroznicowany": "Wypisz wszystkie zdarzenia incident: identyfikator INC-…, severity i retries.",
-    "specyfikacja": "Wypisz każdy wyjątek EXCEPTION: identyfikator EXC-… i przekroczony limit.",
-    "kod-zaleznosci": "Który symbol jest przyczyną nieudanego assert i gdzie został wyzerowany? Podaj oba znaczniki DEP-….",
-    "polski-utf8": "Wypisz każdą uwagę 'Uwaga PL-…' z jej kodem.",
-    "json-escaping": "Wypisz każdy rekord z polem flag: identyfikator JS-… i wartość count.",
+    "powtarzalny-log": "List every line with the ERROR level: the ERR-… code and the latency_ms value.",
+    "log-zroznicowany": "List all incident events: the INC-… identifier, severity and retries.",
+    "specyfikacja": "List every EXCEPTION: the EXC-… identifier and the exceeded limit.",
+    "kod-zaleznosci": "Which symbol causes the failed assert, and where was it zeroed? Give both DEP-… markers.",
+    "polski-utf8": "List every 'Uwaga PL-…' note with its code.",
+    "json-escaping": "List every record with a flag field: the JS-… identifier and the count value.",
 }
 
 
@@ -166,7 +168,7 @@ REQUEST_LIMIT = 45
 WORST_NOTE = '"' * step.NOTE_BYTES          # JSON doubles " \\ newline and tab: 2x is the largest expansion of an allowed note
 
 
-def plan_row(raw, part_bytes, question="Pytanie?"):
+def plan_row(raw, part_bytes, question="Question?"):
     """Dynamic data and an UPPER BOUND of the serialized application packets for a run with this very question.
     Every request carries the real question; the synthesis is measured with maximal notes made of the worst escape
     character (whole note budget of `"`), the first request with the widest step/bytes_left numbers."""
@@ -210,30 +212,30 @@ def check_run(label, directory):
     out, row, problems = Path(directory), run_rows()[label], []
     status, log = out / ("status-%s.txt" % label), out / ("meta-%s.jsonl" % label)
     if not status.exists():
-        problems.append("brak kodu wyjścia procesu")
+        problems.append("process exit code missing")
     elif status.read_text().strip() != "0":
-        problems.append("kod wyjścia procesu %s" % status.read_text().strip())
+        problems.append("process exit code %s" % status.read_text().strip())
     if not log.exists():
-        problems.append("brak meta-logu")
+        problems.append("meta-log missing")
         return problems
     handoffs, results = split_log(log)
     phases = [h["phase"] for h in handoffs]
     expected = ["loop"] + ["map"] * row["parts"] + ["reduce"]
     if phases != expected:
-        problems.append("fazy niezgodne z planem (%d przekazań, oczekiwano %d: pętla, %d map, synteza)" % (len(handoffs), len(expected), row["parts"]))
+        problems.append("phases do not match the plan (%d hand-offs, expected %d: loop, %d maps, synthesis)" % (len(handoffs), len(expected), row["parts"]))
     elif [h["part"] for h in handoffs if h["phase"] == "map"] != list(range(1, row["parts"] + 1)):
-        problems.append("części poza kolejnością")
+        problems.append("parts out of order")
     if [h["n"] for h in handoffs] != list(range(1, len(handoffs) + 1)):
-        problems.append("numeracja przekazań niespójna")
+        problems.append("hand-off numbering inconsistent")
     if len(handoffs) > row["cap"]:
-        problems.append("liczba przekazań %d > cap %d" % (len(handoffs), row["cap"]))
+        problems.append("hand-off count %d > cap %d" % (len(handoffs), row["cap"]))
     if len(results) != 1:
-        problems.append("brak wyniku kontrolera" if not results else "kilka wyników kontrolera")
+        problems.append("controller result missing" if not results else "several controller results")
     else:
         result = results[0]
         if (result.get("outcome") != "complete" or result.get("covered") != row["parts"] or result.get("total") != row["parts"]
                 or result.get("synthesis") not in ("answer", "salvaged")):
-            problems.append("kontroler: %s (przyjęto %s z %s części, synteza %s)" % (
+            problems.append("controller: %s (accepted %s of %s parts, synthesis %s)" % (
                 result.get("outcome"), result.get("covered"), result.get("total"), result.get("synthesis")))
     return problems
 
@@ -248,10 +250,10 @@ def execute(label, directory):
     out, cap = Path(directory), run_rows()[label]["cap"]
     binary = shutil.which("ai-desktop")
     if binary is None:
-        print("EXECUTE: brak ai-desktop w PATH")
+        print("EXECUTE: ai-desktop not in PATH")
         return 2
     print("\n=== %s: %s, part_size %dKiB, --max-requests %d ===" % (label, name, kib, cap))
-    print("Pytanie (podane aplikacji automatycznie; zgody wpisujesz Ty): %s\n" % QUESTIONS[name])
+    print("Question (given to the app automatically; you type the consents): %s\n" % QUESTIONS[name])
     command = [binary, "material", "--v", "--only-whole", "--max-requests", str(cap), "--first-question", QUESTIONS[name],
                "--meta-log", str(out / ("meta-%s.jsonl" % label)), "--answer-file", str(out / ("answer-%s.txt" % label)),
                str(out / "data" / (name + ".txt"))]
@@ -262,9 +264,9 @@ def execute(label, directory):
     (out / ("status-%s.txt" % label)).write_text("%d\n" % code)
     problems = check_run(label, out)
     if code != 0 or problems:
-        print("RUN %s: NIEKOMPLETNY - zatrzymuję odbiór (dowody zachowane w %s): %s" % (label, out, "; ".join(problems) or "kod %d" % code))
+        print("RUN %s: INCOMPLETE - stopping the acceptance (evidence kept in %s): %s" % (label, out, "; ".join(problems) or "code %d" % code))
         return code if code else 1
-    print("RUN %s: kompletny (kod 0, fazy i wynik kontrolera zgodne z planem)" % label)
+    print("RUN %s: complete (code 0, phases and controller result match the plan)" % label)
     return 0
 
 
@@ -272,11 +274,11 @@ def check_config(expected_kib):
     from ai_desktop import permissions                  # read-only: the same loader the app uses
     policy = permissions.load_policy(optional=True)
     if policy is None:
-        print("CONFIG: brak permissions.toml")
+        print("CONFIG: permissions.toml missing")
         return 3
     actual = policy.part_size()
     ok = actual == expected_kib * KIB
-    print("CONFIG: part_size=%dKiB oczekiwano %dKiB -> %s" % (actual // KIB, expected_kib, "OK" if ok else "NIEZGODNE"))
+    print("CONFIG: part_size=%dKiB expected %dKiB -> %s" % (actual // KIB, expected_kib, "OK" if ok else "MISMATCH"))
     return 0 if ok else 3
 
 
@@ -292,14 +294,14 @@ def _quality(path, expected):
 
 def _cell(result):
     if result is None:
-        return "brak"
+        return "none"
     return "%.2f/%.2f/%d/%d" % (result["identifier_recall"], result["value_correct"], len(result["wrong"]), len(result["fabricated"]))
 
 
 def report(directory):
     out, rows, identities, limited, failed = Path(directory), run_rows(), set(), [], []
-    print("%-9s %-16s %5s %4s %-20s %-17s %-17s %s" % ("przebieg", "zbiór", "żąd.", "cap", "transport",
-                                                        "odpowiedź r/w/b/z", "notatki r/w/b/z", "kod"))
+    print("%-9s %-16s %5s %4s %-20s %-17s %-17s %s" % ("run", "dataset", "req.", "cap", "transport",
+                                                        "answer r/v/w/f", "notes r/v/w/f", "code"))
     for label, (name, kib) in RUNS.items():
         log, code = out / ("meta-%s.jsonl" % label), out / ("status-%s.txt" % label)
         handoffs = split_log(log)[0] if log.exists() else []
@@ -307,27 +309,27 @@ def report(directory):
         problems = check_run(label, out)
         entries = [e for r in handoffs for e in r["models"]]
         if any(e is None for e in entries):                      # missing metadata limits the QUALITY comparison only
-            limited.append("%s: brak metadanych w %d z %d żądań" % (label, sum(e is None for e in entries), len(entries)))
+            limited.append("%s: metadata missing in %d of %d requests" % (label, sum(e is None for e in entries), len(entries)))
         identities |= {(e["model"], e["window"]) for e in entries if e is not None}
         answer = _quality(out / ("answer-%s.txt" % label), expected)
         notes = _quality(out / ("answer-%s.txt.notes" % label), expected)
         if problems:
             failed.append("%s: %s" % (label, "; ".join(problems)))
-            limited.append("%s: transport niekompletny" % label)
+            limited.append("%s: transport incomplete" % label)
         if answer is None:
-            limited.append("%s: brak odpowiedzi końcowej" % label)
+            limited.append("%s: final answer missing" % label)
         if notes is None:
-            limited.append("%s: brak notatek" % label)
-        print("%-9s %-16s %5d %4d %-20s %-17s %-17s %s" % (label, name, len(handoffs), row["cap"], "NIEPEŁNY/NIEZGODNY" if problems else "OK",
+            limited.append("%s: notes missing" % label)
+        print("%-9s %-16s %5d %4d %-20s %-17s %-17s %s" % (label, name, len(handoffs), row["cap"], "INCOMPLETE/MISMATCH" if problems else "OK",
               _cell(answer), _cell(notes), code.read_text().strip() if code.exists() else "?"))
     if len(identities) > 1:
-        limited.append("zmiana modelu lub okna w przebiegach: %s" % sorted(identities))
-    print("\n(r/w/b/z = identifier recall / poprawne wartości / błędne / zmyślone; powiązania: patrz score)")
-    print("TRANSPORT: %s" % ("OK we wszystkich czterech przebiegach" if not failed else "NIEUDANY - " + " | ".join(failed)))
-    print("MODEL/OKNO: %s" % (", ".join("%s okno %s" % pair for pair in sorted(identities)) or "niedostępne"))
-    print("PORÓWNANIE JAKOŚCI: %s" % ("porównywalne (komplet czterech przebiegów, jeden model i okno)" if not limited and identities
-                                      else "OGRANICZONE - " + ("; ".join(limited) or "brak metadanych")))
-    print("To wstępne porównanie dwóch zbiorów (4 przebiegi), nie dowód ogólnej przewagi 512 KiB; domyślna porcja pozostaje 240 KiB.")
+        limited.append("model or window changed across runs: %s" % sorted(identities))
+    print("\n(r/v/w/f = identifier recall / correct values / wrong / fabricated; links: see score)")
+    print("TRANSPORT: %s" % ("OK in all four runs" if not failed else "FAILED - " + " | ".join(failed)))
+    print("MODEL/WINDOW: %s" % (", ".join("%s window %s" % pair for pair in sorted(identities)) or "not available"))
+    print("QUALITY COMPARISON: %s" % ("comparable (all four runs, one model and window)" if not limited and identities
+                                      else "LIMITED - " + ("; ".join(limited) or "metadata missing")))
+    print("This is a preliminary comparison of two datasets (4 runs), not proof of a general advantage of 512 KiB; the default part size stays 240 KiB.")
     return 1 if failed else 0
 
 
@@ -355,23 +357,23 @@ def main(argv=None):
     args = parser.parse_args(argv)
     if args.cmd == "plan":
         rows = run_rows()
-        print("Trzy różne wielkości: data_bytes = dane dynamiczne (tekst części + notatki 3 KiB x części + historia);")
-        print("packet_bytes_max = GÓRNA GRANICA serializowanych pakietów aplikacji (rzeczywiste pytania, żądanie wstępne, mapy,")
-        print("synteza przy maksymalnych notatkach z samych \"); rzeczywisty ruch sieciowy klienta (TLS) NIE jest mierzony.")
-        print("cap = żądania planu + 1 wstępne = wartość --max-requests.\n")
-        print("%-8s %-17s %-7s %5s %5s %6s %12s %16s %4s" % ("przebieg", "zbiór", "profil", "części", "żąd.", "etapy", "data_bytes", "packet_bytes_max", "cap"))
+        print("Three different quantities: data_bytes = dynamic data (part text + notes 3 KiB x parts + history);")
+        print("packet_bytes_max = UPPER BOUND of the serialized application packets (real questions, initial request, maps,")
+        print("synthesis with maximal notes made only of \"); the client's real network traffic (TLS) is NOT measured.")
+        print("cap = plan requests + 1 initial = the --max-requests value.\n")
+        print("%-8s %-17s %-7s %5s %5s %6s %12s %16s %4s" % ("run", "dataset", "profile", "parts", "req.", "stages", "data_bytes", "packet_bytes_max", "cap"))
         total = {"cap": 0, "data": 0, "packet": 0}
         for label, (name, kib) in RUNS.items():
             row = rows[label]
             if row.get("refused"):
-                print("%-8s %-17s odrzucony przed wysyłką" % (label, name))
+                print("%-8s %-17s refused before sending" % (label, name))
                 return 1
             print("%-8s %-17s %-7s %5d %5d %6d %12d %16d %4d" % (label, name, "%dKiB" % kib, row["parts"], row["requests"], row["stages"],
                                                                 row["data_bytes"], row["packet_bytes_max"], row["cap"]))
             total["cap"] += row["cap"]; total["data"] += row["data_bytes"]; total["packet"] += row["packet_bytes_max"]
-        print("%-8s %-17s %-7s %5s %5s %6s %12d %16d %4d" % ("RAZEM", "", "", "", "", "", total["data"], total["packet"], total["cap"]))
+        print("%-8s %-17s %-7s %5s %5s %6s %12d %16d %4d" % ("TOTAL", "", "", "", "", "", total["data"], total["packet"], total["cap"]))
         if args.limit is not None and total["cap"] > args.limit:
-            print("LIMIT PRZEKROCZONY: %d > %d" % (total["cap"], args.limit))
+            print("LIMIT EXCEEDED: %d > %d" % (total["cap"], args.limit))
             return 1
     elif args.cmd == "write":
         out = Path(args.directory)
@@ -382,7 +384,7 @@ def main(argv=None):
             (out / "data" / (name + ".txt")).write_bytes(raw)
             (out / "expected" / (name + ".json")).write_text(json.dumps(expected, ensure_ascii=False, indent=1))
         (out / "questions.json").write_text(json.dumps(QUESTIONS, ensure_ascii=False, indent=1))
-        print("zapisano %d zbiorów: dane w %s, oczekiwane odpowiedzi w %s (poza zakresem odczytu modelu)" % (
+        print("saved %d datasets: data in %s, expected answers in %s (outside what the model may read)" % (
             len(DATASETS), out / "data", out / "expected"))
     elif args.cmd == "score":
         _, expected = build(args.dataset)

@@ -1,37 +1,37 @@
 ---
 name: code-development
-description: Przygotowuje poprawkę kodu z uzasadnionym testem i weryfikacją. Użyj przy naprawie błędu, zmianie zachowania lub poleceniu „zmień i przetestuj” w udostępnionym projekcie.
+description: Prepares a code fix with a justified test and verification. Use for fixing a bug, changing behavior or a "change and test" request in a shared project.
 ---
 
-# Zmiana kodu z weryfikacją
+# Code change with verification
 
-## Ustal kontrakt
+## Establish the contract
 
-1. Wyprowadź z zadania oczekiwane zachowanie: konkretne wejście, obecny wynik i wymagany wynik. Zachowaj ustalenia rozmowy. Dopytaj tylko, gdy brak informacji zmienia poprawność lub zakres zmiany.
-2. Odczytaj reguły projektu, manifest, zmieniany kod, jego wywołania i najbliższe testy. Reguły projektu nie zmieniają uprawnień aplikacji. Jeśli brakuje zależności lub pliku, wskaż tę lukę zamiast zakładać jego zawartość.
-3. Ustal przyczynę przed poprawką. Jeżeli dostępny wykonawca potrafi odtworzyć błąd na kopii, sprawdź go. W przeciwnym razie opisz dowód z kodu i oznacz reprodukcję jako niewykonaną.
+1. Derive the expected behavior from the task: a specific input, the current result and the required result. Keep what the conversation has established. Ask only when missing information changes the correctness or scope of the change.
+2. Read the project rules, the manifest, the code being changed, its callers and the nearest tests. Project rules do not change the application's permissions. If a dependency or file is missing, point out this gap instead of assuming its content.
+3. Establish the cause before the fix. If the available executor can reproduce the bug on a copy, check it. Otherwise describe the evidence from the code and mark the reproduction as not performed.
 
-## Przygotuj zmianę
+## Prepare the change
 
-- Zachowaj istniejące API, format danych i styl projektu, chyba że zadanie wymaga ich zmiany. Popraw wspólną przyczynę błędu; sprawdź inne wywołania tego samego mechanizmu.
-- Dodaj test konkretnego wejścia lub ryzyka, który odróżnia stare zachowanie od poprawnego. Test ma sprawdzać wynik lub niepożądany skutek, a nie powtarzać implementację. Uwzględnij odmowę lub awarię, jeśli zmiana dotyka granicy dostępu albo zapisu.
-- Nie zmieniaj oczekiwań testu tylko po to, aby uzyskać PASS. Nie dokładaj niezależnego refaktoru ani nowych zależności bez potrzeby wynikającej z zadania.
+- Keep the existing API, data format and project style unless the task requires changing them. Fix the shared cause of the bug; check other callers of the same mechanism.
+- Add a test of the specific input or risk that distinguishes the old behavior from the correct one. The test must check a result or an unwanted effect, not repeat the implementation. Include a denial or failure if the change touches an access or write boundary.
+- Do not change test expectations just to get a PASS. Do not add an unrelated refactor or new dependencies without a need that follows from the task.
 
-## Dobierz rzeczywiste sprawdzenie
+## Choose a real check
 
-AI Desktop sprawdza wybrane pliki na odizolowanej kopii. Dostępne są:
+AI Desktop checks selected files on an isolated copy. Available:
 
-| Check | Co może potwierdzić |
+| Check | What it can confirm |
 |---|---|
-| `python-unittest` | Testy znalezione w przekazanej kopii, z ograniczeniami środowiska. |
-| `python-syntax`, `bash-syntax`, `fish-syntax` | Składnię odpowiedniego języka. |
-| `json`, `toml` | Poprawność parsowania danego formatu. |
-| `text` | Tylko integralność UTF-8; bez składni i działania. |
+| `python-unittest` | Tests found in the supplied copy, within the environment's limits. |
+| `python-syntax`, `bash-syntax`, `fish-syntax` | The syntax of the respective language. |
+| `json`, `toml` | Correct parsing of the given format. |
+| `text` | UTF-8 integrity only; not syntax or behavior. |
 
-Test Python nie może tworzyć procesów, wątków ani gniazd. Kopia nie ma sieci, HOME ani całego projektu, którego nie przekazano. Nie deklaruj uruchomienia `pytest`, `go test`, `npm test` ani instalacji zależności: obecny wykonawca tego nie obsługuje. Wynik składni nie zastępuje testu zachowania. Gdy brakuje odpowiedniego sprawdzenia, nazwij niezweryfikowaną część i ryzyko.
+A Python test cannot create processes, threads or sockets. The copy has no network, no HOME and none of the project that was not supplied. Do not claim to have run `pytest`, `go test`, `npm test` or a dependency installation: the current executor does not support these. A syntax result does not replace a behavior test. When a suitable check is missing, name the unverified part and the risk.
 
-## Przegląd i zakończenie
+## Review and completion
 
-Przed zapisem sprawdź kompletny diff: wymaganie, niezamierzone zmiany, test i zachowanie formatu plików. Zapis wykonuje kontroler po osobnej zgodzie. Odmowa lub nieudany check kończy tę próbę; nie obchodź ich innym trybem ani poleceniem na hoście.
+Before writing, check the complete diff: the requirement, unintended changes, the test and preservation of the file format. The controller does the writing after separate consent. A denial or a failed check ends this attempt; do not get around them with another mode or a command on the host.
 
-W wyniku podaj: co zmieniono i dlaczego, sprawdzenie faktycznie wykonane przez kontroler, jego zakres i rezultat, stan zapisu oraz pozostałe ograniczenie. Polecenie cofania cytuj z wyniku kontrolera, nie twórz własnego identyfikatora zadania. Dopóki brak potwierdzenia zapisu, opisuj poprawkę jako propozycję.
+In the result, give: what was changed and why, the check actually run by the controller, its scope and outcome, the write state and the remaining limit. Quote the undo command from the controller's result; do not make up your own task identifier. Until a write is confirmed, describe the fix as a proposal.

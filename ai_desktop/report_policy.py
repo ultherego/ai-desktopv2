@@ -22,29 +22,29 @@ MAX_REPORT_BYTES = 4096
 
 def _exact_fields(data, expected, path):
     if type(data) is not dict or set(data) != set(expected):
-        raise ValueError(f"Nieprawidlowy zestaw pol: {path}")
+        raise ValueError(f"Invalid set of fields: {path}")
 
 
 def _choice(value, allowed, path):
     if type(value) is not str or value not in allowed:
-        raise ValueError(f"Niedozwolona wartosc: {path}")
+        raise ValueError(f"Value not allowed: {path}")
 
 
 def _bounded_number(value, upper, path):
     if value == "unknown" and type(value) is str:
         return
     if type(value) is not int or not 0 <= value <= upper:
-        raise ValueError(f"Niedozwolona liczba: {path}")
+        raise ValueError(f"Number not allowed: {path}")
 
 
 def validate_report(report):
     """Reject unexpected fields, binary data, arbitrary text and noncanonical values."""
-    _exact_fields(report, FIELDS, "raport")
+    _exact_fields(report, FIELDS, "report")
 
     for key in ("kernel", "desktop", "shell"):
         value = report[key]
         if type(value) is not str or not SAFE_LABEL.fullmatch(value):
-            raise ValueError(f"Niedozwolona etykieta: {key}")
+            raise ValueError(f"Label not allowed: {key}")
 
     _choice(report["session"], {"wayland", "x11", "tty", "unknown"}, "session")
     for key in ("root_fs", "home_fs"):
@@ -60,7 +60,7 @@ def validate_report(report):
     _bounded_number(btrfs["free_percent"], 100, "btrfs_health.free_percent")
     if report["root_fs"] != "btrfs":
         if btrfs != {"compression": "unknown", "free_percent": "unknown"}:
-            raise ValueError("Dane Btrfs dla innego systemu plikow")
+            raise ValueError("Btrfs data for a different file system")
 
     return report
 
@@ -70,5 +70,5 @@ def serialize_report(report):
     validate_report(report)
     payload = json.dumps(report, indent=2, ensure_ascii=False)
     if len(payload.encode("utf-8")) > MAX_REPORT_BYTES:
-        raise ValueError("Raport przekracza limit rozmiaru")
+        raise ValueError("The report exceeds the size limit")
     return payload

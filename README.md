@@ -1,75 +1,77 @@
 # AI Desktop
 
-Terminalowy asystent po polsku do diagnozy, konfiguracji i pracy z plikami na CachyOS i Arch Linux x86_64. Uruchamiasz `ai-desktop ask`, piszesz zwykłym zdaniem, a program sam zbiera dane, na które pozwala Twój plik `~/.config/ai-desktop/permissions.toml`, i wysyła je do modelu. Każdy zapis pokazuje pełny diff i czeka na Twoją zgodę.
+A terminal assistant for diagnostics, configuration and file work on CachyOS and Arch Linux x86_64. You start `ai-desktop ask`, write a plain sentence, and the program itself collects the data your `~/.config/ai-desktop/permissions.toml` file allows and sends it to the model. Every write shows a full diff and waits for your consent.
 
-Pod spodem działa oficjalny klient Claude Code w dokładnej wersji **2.1.312**, który pobierasz sam. Klient pracuje na osobnym koncie systemowym `ai-desktop`, w piaskownicy Bubblewrap, a do sieci wychodzi tylko przez filtrujące proxy. Opcjonalnie można użyć Codexa.
+The interface and settings are in English, and Claude answers in the language of your question.
 
-**Czym to nie jest:**
+Underneath runs the official Claude Code client in the exact version **2.1.312**, which you download yourself. The client works under a separate system account `ai-desktop`, in a Bubblewrap sandbox, and reaches the network only through a filtering proxy. Codex can be used optionally.
 
-- Nie jest usługą w tle ani autonomicznym agentem. Działa wtedy, gdy o coś zapytasz.
-- Model nie dostaje powłoki ani narzędzi. Proponuje kroki, a program sprawdza je i wykonuje tylko to, na co pozwalają uprawnienia i Twoja zgoda.
-- Nie używa klucza API i nie przełącza się na inną usługę, gdy coś zawiedzie.
-- Nie jest certyfikowaną izolacją ani skanerem sekretów. Zobacz [SECURITY.md](SECURITY.md).
+**What this is not:**
 
-## Stan rozwoju
+- It is not a background service or an autonomous agent. It runs when you ask it something.
+- The model gets no shell and no tools. It proposes steps, and the program checks them and runs only what the permissions and your consent allow.
+- It does not use an API key and does not switch to another service when something fails.
+- It is not certified isolation or a secret scanner. See [SECURITY.md](SECURITY.md).
 
-To wersja rozwojowa, nie wydanie 1.0.
+## Development status
 
-Aktualny pakiet kandydata ma numer **0.1.0-70** (zmiany: [CHANGELOG.md](CHANGELOG.md)).
+This is a development version, not a 1.0 release.
 
-Czego jeszcze nie ma i co nie zostało sprawdzone, opisuje [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md). Przeczytaj ten plik przed użyciem na ważnych danych. Plan do wersji 1.0: [docs/ROADMAP.md](docs/ROADMAP.md), zadania: [docs/TODO.md](docs/TODO.md).
+The current candidate package is **0.1.0-70** (changes: [CHANGELOG.md](CHANGELOG.md)).
 
-## Instalacja na laptopie (CachyOS / Arch x86_64)
+What is still missing and what has not been checked is described in [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md). Read that file before using this on important data. The plan up to version 1.0: [docs/ROADMAP.md](docs/ROADMAP.md), tasks: [docs/TODO.md](docs/TODO.md).
 
-Potrzebujesz zwykłego użytkownika z `sudo`, terminala i konta Claude (subskrypcja). Kroki w `fish`:
+## Installation on a laptop (CachyOS / Arch x86_64)
+
+You need a regular user with `sudo`, a terminal and a Claude account (subscription). Steps in `fish`:
 
 ```fish
-# 1. Zależności i narzędzia budowy
+# 1. Dependencies and build tools
 sudo pacman -S --needed base-devel git fish python bubblewrap libseccomp sudo python-rich python-cryptography
 
-# 2. Kod
-git clone https://github.com/ultherego/ai-desktopv2.git ~/Projekty/ai-desktop
-cd ~/Projekty/ai-desktop/packaging/arch
+# 2. Code
+git clone https://github.com/ultherego/ai-desktopv2.git ~/ai-desktop
+cd ~/ai-desktop/packaging/arch
 
-# 3. Oficjalny klient Claude Code 2.1.312 (jednorazowo). Przy błędnej sumie plik nie zostanie uruchomiony,
-#    a budowa w kroku 4 odmówi: usuń wtedy plik i pobierz go ponownie.
+# 3. Official Claude Code 2.1.312 client (once). With a wrong checksum the file will not be run,
+#    and the build in step 4 will refuse: then delete the file and download it again.
 curl -fL -o claude-code https://downloads.claude.ai/claude-code-releases/2.1.312/linux-x64/claude
 echo '4f4178ce41d83e23341ebfbaecdbcf8ea6bf7baea0690025abe49eeec3a5d01d  claude-code' | sha256sum -c -
 and chmod 755 claude-code
-and ./claude-code --version  # ma być: 2.1.312 (Claude Code)
+and ./claude-code --version  # must print: 2.1.312 (Claude Code)
 
-# 4. Budowa i instalacja pakietu (wersja w nazwie pliku = pkgrel z PKGBUILD)
+# 4. Build and install the package (the version in the file name = pkgrel from PKGBUILD)
 makepkg --cleanbuild
 sudo pacman -U ai-desktop-0.1.0-70-x86_64.pkg.tar.zst
 sudo systemctl daemon-reload
 
-# 5. Logowanie do Claude (interaktywnie, raz)
+# 5. Log in to Claude (interactive, once)
 ai-desktop login
 
-# 6. Twoja polityka dostępu — program nie czyta niczego, czego tu nie wpiszesz
+# 6. Your access policy: the program reads nothing you do not list here
 mkdir -p ~/.config/ai-desktop
-cp ~/Projekty/ai-desktop/config/permissions.example.toml ~/.config/ai-desktop/permissions.toml
+cp ~/ai-desktop/config/permissions.example.toml ~/.config/ai-desktop/permissions.toml
 chmod 600 ~/.config/ai-desktop/permissions.toml
-$EDITOR ~/.config/ai-desktop/permissions.toml     # uzupełnij files.read; deny zawsze wygrywa
+$EDITOR ~/.config/ai-desktop/permissions.toml     # fill in files.read; deny always wins
 
-# 7. Sprawdzenie i start
+# 7. Check and start
 ai-desktop doctor
-ai-desktop ask --preview      # pokazuje uprawnienia, bez modelu i bez wysyłania czegokolwiek
-ai-desktop ask                # rozmowa
+ai-desktop ask --preview      # shows the permissions, without the model and without sending anything
+ai-desktop ask                # conversation
 ```
 
-Uwagi:
+Notes:
 
-- **Klient Claude (krok 3).** Pakiet nie pobiera go sam. Bez pliku `claude-code` w `packaging/arch/` działają tylko polecenia lokalne, a pytania do modelu są odrzucane. Korzystanie z klienta podlega warunkom Anthropic. Nie dodawaj tego pliku do Gita i go nie rozpowszechniaj.
-- **Sudo.** Sesję klienta uruchamia stały pomocnik z prawami administratora, więc `ask`, `material`, `project`, `task run`, `login` i `stop` mogą pytać o hasło `sudo`. Pakiet nie dodaje reguł sudoers ani polkit.
-- **Wymagania.** Python 3.12 lub nowszy, systemd, działające przestrzenie nazw bez roota i zwykły terminal: bez niego program nie pyta o zgodę, tylko odmawia.
-- **Świeży system.** Te kroki nie były jeszcze powtarzane na zupełnie świeżej instalacji.
+- **Claude client (step 3).** The package does not download it itself. Without the `claude-code` file in `packaging/arch/` only local commands work, and questions to the model are refused. Use of the client is subject to Anthropic's terms. Do not add this file to Git and do not redistribute it.
+- **Sudo.** The client session is started by a fixed helper with administrator rights, so `ask`, `material`, `project`, `task run`, `login` and `stop` may ask for your `sudo` password. The package adds no sudoers or polkit rules.
+- **Requirements.** Python 3.12 or newer, systemd, working unprivileged namespaces and a regular terminal: without one the program does not ask for consent, it refuses.
+- **Fresh system.** These steps have not yet been repeated on a completely fresh installation.
 
-## Pierwsze uruchomienie i uprawnienia
+## First run and permissions
 
-`ai-desktop ask --preview` pokazuje dostępy bez modelu i bez odczytu danych. Bez pliku `permissions.toml` działają tylko pytania ogólne: żadnych plików, systemd, poleceń, pogody ani wyszukiwarki.
+`ai-desktop ask --preview` shows the access without the model and without reading data. Without a `permissions.toml` file only general questions work: no files, systemd, commands, weather or web search.
 
-Przykładowa polityka (`config/permissions.example.toml` to pełny szablon):
+Example policy (`config/permissions.example.toml` is the full template):
 
 ```toml
 version = 2
@@ -78,63 +80,63 @@ version = 2
 claude = true
 codex = false
 weather = true       # Open-Meteo
-web = false          # wyszukiwanie w Internecie przez Claude
+web = false          # web search through Claude
 
 [system]
 systemd = ["system", "user"]
 
 [files]
-read = ["~/Projekty/moj-projekt/"]
-write = ["~/Projekty/moj-projekt/"]
+read = ["~/Projects/my-project/"]
+write = ["~/Projects/my-project/"]
 deny = ["~/.ssh/", "~/.gnupg/", "~/.claude/", "~/.config/ai-desktop/"]
 
 [commands]
 allow = ["uptime", "systemctl status <unit> --no-pager", "journalctl -b -p err --no-pager -n <int>"]
 ```
 
-Zasady czytania tego pliku:
+How to read this file:
 
-- Pole, którego nie ma, oznacza odmowę, także `network.claude`. Nieznany klucz lub wadliwa wartość zatrzymują program, a komunikat wskazuje problem.
-- Plik musi należeć do Ciebie i mieć prawa `0600`. Jego katalogi nie mogą być dowiązaniami ani umożliwiać zapisu innym. Limit to 16 KiB, 64 reguły na listę i 128 szablonów poleceń na listę.
-- `~/x` to jeden plik, `~/x/*` to pliki bezpośrednio w katalogu, a `~/x/` i `~/x/**` to katalog z podkatalogami. `~/` to cały katalog domowy. Dwie reguły o tym samym zakresie (`~/` i `~/**`) są błędem.
-- **`deny` wygrywa i chroni wszystko pod wskazaną ścieżką**, bez względu na zapis: `~/x`, `~/x/`, `~/x/*` i `~/x/**` działają tak samo.
-- W `version = 2` nie ma ukrytej listy zabronionych nazw ani wykrywania kluczy prywatnych. **`deny` jest jedyną ochroną sekretów w dozwolonym drzewie.** Szablon zawiera listę popularnych katalogów poświadczeń; możesz ją zmienić, ale nie rozpoznaje ona wszystkich sekretów. Starszy format `version = 1` jest nadal rozpoznawany i ma wbudowane wykluczenia.
-- Edycja istniejącego pliku wymaga `read` i `write`. Nowy plik wymaga `write` i istniejącego katalogu: program nie tworzy katalogów. Usuwanie wymaga `write`.
+- A missing field means refusal, including `network.claude`. An unknown key or a bad value stops the program, and the message points to the problem.
+- The file must belong to you and have mode `0600`. Its directories must not be links or writable by others. The limit is 16 KiB, 64 rules per list and 128 command templates per list.
+- `~/x` is one file, `~/x/*` is the files directly in the directory, and `~/x/` and `~/x/**` are the directory with its subdirectories. `~/` is the whole home directory. Two rules with the same scope (`~/` and `~/**`) are an error.
+- **`deny` wins and protects everything under the given path**, regardless of how it is written: `~/x`, `~/x/`, `~/x/*` and `~/x/**` work the same.
+- In `version = 2` there is no hidden list of forbidden names and no detection of private keys. **`deny` is the only protection for secrets in an allowed tree.** The template contains a list of common credential directories; you can change it, but it does not recognize all secrets. The older `version = 1` format is still recognized and has built-in exclusions.
+- Editing an existing file requires `read` and `write`. A new file requires `write` and an existing directory: the program does not create directories. Deleting requires `write`.
 
-Pola poniżej są opcjonalne. Dopisz je w podanej sekcji, gdy chcesz zmienić wartość domyślną. Program odrzuca wartości spoza zakresu.
+The fields below are optional. Add them in the given section when you want to change the default value. The program rejects out-of-range values.
 
-| Sekcja i pole | Domyślnie | Najwyżej | Znaczenie |
+| Section and field | Default | At most | Meaning |
 |---|---|---|---|
-| `[files] file_size` | `"5MiB"` | `"16MiB"` | największy plik dla `material` |
-| `[files] part_size` | `"240KiB"` | `"512KiB"` | porcja przy analizie całego pliku |
-| `[files] read_files` | 64 | 128 | plików w jednym kontekście |
-| `[files] read_file_size` | `"64KiB"` | `"128KiB"` | bajtów na plik |
-| `[files] read_total_size` | `"128KiB"` | `"256KiB"` | bajtów wszystkich plików kontekstu |
-| `[files] listing_entries` | 128 | 512 | wpisów w kroku list/find |
-| `[files] discovery_bytes` | `"128KiB"` | `"256KiB"` | bajtów kroków rozpoznania wysłanych do modelu w jednym pytaniu |
-| `[files] search_results` | 40 | 200 | trafień w kroku find |
-| `[files] search_scan` | 20000 | 100000 | wpisów katalogów na pytanie |
-| `[files] discovery_rounds` | 4 | 8 | kroków list/find na pytanie |
-| `[files] plan_corrections` | 2 | 4 | poprawek planu odczytu na pytanie |
-| `[files] command_rounds` | 24 | 32 | poleceń na pytanie (0 wyłącza) |
-| `[files] command_output` | `"8KiB"` | `"128KiB"` | bajtów wyniku jednego polecenia |
-| `[files] command_timeout` | 20 | 60 | sekund na jedno polecenie |
-| `[commands] share_processes` | `false` | | `true`: polecenia widzą procesy hosta i ich linie poleceń |
-| `[commands] change` | brak | | szablony zmian: działają na żywym systemie, wymagają `tak`, testu z `allow` i wycofania |
+| `[files] file_size` | `"5MiB"` | `"16MiB"` | largest file for `material` |
+| `[files] part_size` | `"240KiB"` | `"512KiB"` | portion when analyzing a whole file |
+| `[files] read_files` | 64 | 128 | files in one context |
+| `[files] read_file_size` | `"64KiB"` | `"128KiB"` | bytes per file |
+| `[files] read_total_size` | `"128KiB"` | `"256KiB"` | bytes of all context files |
+| `[files] listing_entries` | 128 | 512 | entries in a list/find step |
+| `[files] discovery_bytes` | `"128KiB"` | `"256KiB"` | bytes of discovery steps sent to the model in one question |
+| `[files] search_results` | 40 | 200 | matches in a find step |
+| `[files] search_scan` | 20000 | 100000 | directory entries per question |
+| `[files] discovery_rounds` | 4 | 8 | list/find steps per question |
+| `[files] plan_corrections` | 2 | 4 | read plan corrections per question |
+| `[files] command_rounds` | 24 | 32 | commands per question (0 turns them off) |
+| `[files] command_output` | `"8KiB"` | `"128KiB"` | bytes of the output of one command |
+| `[files] command_timeout` | 20 | 60 | seconds per command |
+| `[commands] share_processes` | `false` | | `true`: commands see host processes and their command lines |
+| `[commands] change` | none | | change templates: they run on the live system and require `yes`, a test from `allow` and an undo |
 
-`read_file_size` nie może przekraczać `read_total_size`. Niezależnie od tych pól działają stałe limity: 384 KiB kontekstu JSON i 512 KiB całego żądania. Pliki zmieniane przez model mają limit 64 KiB na plik i 128 KiB łącznie, także gdy limity odczytu podniesiesz.
+`read_file_size` must not exceed `read_total_size`. Regardless of these fields, fixed limits apply: 384 KiB of JSON context and 512 KiB for the whole request. Files changed by the model are limited to 64 KiB per file and 128 KiB in total, even if you raise the read limits.
 
-### Polecenia: `[commands]`
+### Commands: `[commands]`
 
-Domyślnie model nie uruchamia niczego. `allow` to lista dokładnych szablonów, bez powłoki. `<unit>` oznacza jedną nazwę jednostki systemd, `<int>` liczbę do 99999, a `<word>` jedno proste słowo. Szablony zaczynające się od powłoki, interpretera, `sudo`, klienta sieciowego lub programu zapisującego (`rm`, `tee`, `git`, `find`, `sed` i podobne) są odrzucane przy wczytaniu polityki.
+By default the model runs nothing. `allow` is a list of exact templates, without a shell. `<unit>` means one systemd unit name, `<int>` a number up to 99999, and `<word>` one simple word. Templates starting with a shell, an interpreter, `sudo`, a network client or a writing program (`rm`, `tee`, `git`, `find`, `sed` and similar) are rejected when the policy is loaded.
 
-**Polecenia z `allow` działają bez pytania, a ich wyniki trafiają do modelu.** Usuń z listy to, czego nie chcesz udostępniać, także z szablonu, który zawiera m.in. `journalctl`, `ps aux` i `docker ps`. `deny` nie filtruje wyniku polecenia.
+**Commands from `allow` run without asking, and their output goes to the model.** Remove from the list what you do not want to share, including from the template, which contains among others `journalctl`, `ps aux` and `docker ps`. `deny` does not filter command output.
 
-Polecenia z `allow` działają w piaskownicy: system plików tylko do odczytu, ukryte `/home`, `/root` i `/run/user`, bez sieci i bez wejścia. Nie izoluje ona gniazd Unix hosta, więc wpisuj tu tylko polecenia, które niczego nie zmieniają. Część programów nie zobaczy stanu hosta (np. `ip`, `wpctl`, `glxinfo`).
+Commands from `allow` run in a sandbox: read-only file system, hidden `/home`, `/root` and `/run/user`, no network and no input. It does not isolate host Unix sockets, so only list commands that change nothing. Some programs will not see the host state (e.g. `ip`, `wpctl`, `glxinfo`).
 
-Znacznik nie może stać tam, gdzie mogłoby być polecenie narzędzia. Opcję, która przyjmuje wartość, zapisz razem z nią (`--output=json`) albo podaj polecenie dalej: `systemctl -H host restart <unit>` jest poprawny, a `systemctl -H host <word>` nie.
+A placeholder must not stand where a tool's command could be. Write an option that takes a value together with it (`--output=json`) or give the command further on: `systemctl -H host restart <unit>` is valid, and `systemctl -H host <word>` is not.
 
-`change` to polecenia, które zmieniają system, np.:
+`change` holds commands that change the system, e.g.:
 
 ```toml
 [commands]
@@ -142,222 +144,222 @@ allow = ["systemctl status <unit> --no-pager"]
 change = ["systemctl restart <unit>"]
 ```
 
-Model musi podać zmianę razem z testem z listy `allow` i wycofaniem z listy `change` lub `allow`. Widzisz wszystkie trzy i wpisujesz całe słowo `tak`. Program wykonuje zmianę, potem test. Gdy któreś zawiedzie, pokazuje wycofanie i znów wymaga `tak`: nigdy nie cofa sam. **Zmiana, test i wycofanie działają na żywym systemie, z Twoimi uprawnieniami, bez piaskownicy**, z oczyszczonym środowiskiem, bez wejścia i z limitem czasu.
+The model must give the change together with a test from the `allow` list and an undo from the `change` or `allow` list. You see all three and type the whole word `yes`. The program runs the change, then the test. When either fails, it shows the undo and again requires `yes`: it never undoes anything by itself. **The change, test and undo run on the live system, with your permissions, without a sandbox**, with a cleaned environment, no input and a time limit.
 
-## Codzienna praca
+## Daily work
 
-Wszędzie `--v` pokazuje szczegóły i wysyłane dane, a nie zmienia zgód. `--format plain` wyłącza formatowanie odpowiedzi, `--format markdown` wypisuje źródłowy Markdown (`ask`, `material`, `project`, `task run`).
+Everywhere, `--v` shows details and the data being sent, and does not change consents. `--format plain` turns off answer formatting, `--format markdown` prints the source Markdown (`ask`, `material`, `project`, `task run`).
 
 ### `ai-desktop ask`
 
 ```fish
 ai-desktop ask
-ai-desktop ask --question "Dlaczego jednostka nie startuje?"
-ai-desktop ask --question "Czym jest inode?" --no-context
+ai-desktop ask --question "Why does the unit not start?"
+ai-desktop ask --question "What is an inode?" --no-context
 ```
 
-Bez `--question` to jedna rozmowa: po każdej odpowiedzi wraca `>`. Pusta linia lub dwa Ctrl-D kończą rozmowę, a program pyta, czy ją zapisać. Ctrl-C podczas oczekiwania przerywa tylko bieżącą turę. Wiadomość ma do 128 KiB razem z wklejkami (duża wklejka pojawia się jako znacznik).
+Without `--question` this is one conversation: after each answer `>` comes back. An empty line or two Ctrl-D end the conversation, and the program asks whether to save it. Ctrl-C while waiting stops only the current turn. A message can be up to 128 KiB including pastes (a large paste appears as a placeholder).
 
-Jak działają zgody:
+How consents work:
 
-1. **Jedno `Przekazać żądanie do Claude [t/n]:` na rozmowę.** Obejmuje kolejne pytania, odczyty i polecenia z `allow`. Program pyta ponownie, gdy zmieni się `permissions.toml` lub wybrana usługa albo agent.
-2. **Odczyty i rozpoznanie bez pytania.** Model listuje i szuka nazw (nie treści), potem czyta to, co znalazł albo co wpisałeś. Zgadnięta ścieżka jest odrzucana. Budżety są w tabeli wyżej.
-3. **Polecenia z `allow` bez pytania**, do 16 w jednym kroku modelu i 24 na pytanie (`command_rounds`).
-4. **Każdy zapis osobno.** Edycja lub nowy plik może wynikać z wcześniejszego rozpoznania. Program sprawdza propozycję na odizolowanej kopii, pokazuje pełny diff i pyta `[t/n]`. Niezaliczony test blokuje zapis.
-5. **Usuwanie osobno.** Program wypisuje pliki i pyta `[t/n]`. Pliki nie są kasowane, tylko trafiają do kosza zadania: najwyżej 8 plików na raz, do 16 MiB każdy.
-6. **Zmiany z listy `change`** wymagają wpisania `tak`.
+1. **One `Send this request to Claude? [y/n]:` per conversation.** It covers further questions, reads and commands from `allow`. The program asks again when `permissions.toml` or the chosen service or agent changes.
+2. **Reads and discovery without asking.** The model lists and searches names (not content), then reads what it found or what you typed. A guessed path is rejected. The budgets are in the table above.
+3. **Commands from `allow` without asking**, up to 16 in one model step and 24 per question (`command_rounds`).
+4. **Each write separately.** An edit or a new file may follow from earlier discovery. The program checks the proposal on an isolated copy, shows the full diff and asks `[y/n]`. A failed test blocks the write.
+5. **Deletion separately.** The program lists the files and asks `[y/n]`. Files are not erased, they go to the task trash: at most 8 files at a time, up to 16 MiB each.
+6. **Changes from the `change` list** require typing `yes`.
 
-Po zastosowanej zmianie model sam podejmuje następny krok albo kończy odpowiedź, najwyżej 5 automatycznych kroków. Każdy kolejny zapis znów pokazuje diff i pyta. Odrzucenie lub błąd oddaje głos Tobie. Napisz „rób dalej”, aby kontynuować po limicie.
+After an applied change the model takes the next step by itself or finishes the answer, at most 5 automatic steps. Each further write again shows the diff and asks. A refusal or error hands the turn back to you. Type `continue` to go on after the limit.
 
-Sprawdzenie na kopii pochodzi z listy: `python-unittest`, `python-syntax`, `json`, `toml`, `bash-syntax`, `fish-syntax`, `text`. Check `text` potwierdza tylko poprawny tekst UTF-8: **składnia i działanie nie są sprawdzane**. Żaden check nie dowodzi poprawności projektu.
+The check on the copy comes from a list: `python-unittest`, `python-syntax`, `json`, `toml`, `bash-syntax`, `fish-syntax`, `text`. The `text` check only confirms valid UTF-8 text: **syntax and behaviour are not checked**. No check proves the project is correct.
 
-Rozmowa pamięta ostatnie 32 wymiany (razem do 128 KiB, najstarsze wypadają pierwsze) i krótką pamięć zadania. Długa historia zużywa limit usługi, bo idzie z każdym pytaniem. Jeśli cofniesz dostęp do pliku, zależne od niego odpowiedzi znikają z pamięci przed kolejnym pytaniem. Limit czasu lub limit usługi kończy rozmowę, a niezapisana historia przepada.
+A conversation remembers the last 32 exchanges (up to 128 KiB in total, the oldest drop out first) and a short task memory. A long history uses up the service limit, because it goes with every question. If you revoke access to a file, the answers that depend on it disappear from memory before the next question. A timeout or service limit ends the conversation, and unsaved history is lost.
 
-Wyszukiwanie internetowe włączasz przez `web = true`. Jest to osobne żądanie: tylko Twoje pytanie, bez plików i danych lokalnych. Pogoda (`weather = true`) ujawnia nazwę miejscowości i Twój adres IP serwisowi Open-Meteo, a wynik idzie do modelu.
+You turn on web search with `web = true`. It is a separate request: only your question, without files or local data. Weather (`weather = true`) reveals the place name and your IP address to the Open-Meteo service, and the result goes to the model.
 
-Podczas rozmowy możesz wpisać polecenie zaczynające się od `/`. Po wpisaniu `/` pod wierszem pojawia się lista, strzałki wybierają, Tab uzupełnia. Polecenia działają lokalnie, nic nie wysyłają i nie kasują rozmowy: `/pomoc`, `/model`, `/sila`, `/skills`, `/agent`, `/ustawienia`, `/uprawnienia`, `/koniec`. Po zmianie modelu lub Skilli program raz jeszcze pyta o zgodę na wysyłkę. `/skills` działa w tej rozmowie; na stałe służy `ai-desktop agents`. Pytanie zaczynające się od ścieżki, np. `/etc/fstab co to?`, idzie do modelu normalnie. Aby wysłać pojedyncze słowo z `/`, zacznij od spacji.
+During a conversation you can type a command starting with `/`. After you type `/` a list appears under the line, arrows select, Tab completes. Commands work locally, send nothing and do not erase the conversation: `/help`, `/model`, `/effort`, `/skills`, `/agent`, `/settings`, `/permissions`, `/exit`. After a change of model or Skills the program asks once more for consent to send. `/skills` works in this conversation; use `ai-desktop agents` to make it permanent. A question starting with a path, e.g. `/etc/fstab what is it?`, goes to the model normally. To send a single word starting with `/`, start with a space.
 
-### `ai-desktop material PLIK`
+### `ai-desktop material FILE`
 
-Jeden plik tekstowy UTF-8 do `file_size`, objęty `files.read`. Pytasz zwykłym zdaniem; przed pytaniem nic nie jest wysyłane.
+One UTF-8 text file up to `file_size`, covered by `files.read`. You ask in a plain sentence; nothing is sent before the question.
 
-- Plik do 200 KiB trafia do modelu w całości.
-- Przy większym model prosi o wyszukania i odczyt wierszy, najwyżej 8 żądań na pytanie, do 256 KiB na żądanie i 2 MiB łącznie. Widzisz każdy krok, a reszta pliku nie jest wysyłana.
-- „Przeanalizuj cały plik”: program dzieli plik na części, pokazuje plan i pyta raz o całe zadanie. Zgoda wygasa po 30 minutach. Najwyżej 24 części, więc większy plik wymaga większego `part_size`. Pokrycie liczy program, a przerwana analiza jest oznaczona jako częściowa.
-- Odpowiedź podaje wiersze, które model naprawdę dostał. Pamięć sesji to 4 ostatnie pytania i odpowiedzi.
-- Bez zapisu, Internetu i uruchamiania kodu. Odmowa dotyczy m.in. pustego pliku, dowiązania, znaków sterujących i niepoprawnego UTF-8.
+- A file up to 200 KiB goes to the model whole.
+- With a larger one the model asks for searches and line reads, at most 8 requests per question, up to 256 KiB per request and 2 MiB in total. You see each step, and the rest of the file is not sent.
+- "Analyze the whole file": the program splits the file into parts, shows a plan and asks once for the whole task. The consent expires after 30 minutes. At most 24 parts, so a larger file needs a larger `part_size`. Coverage is counted by the program, and an interrupted analysis is marked as partial.
+- The answer gives the lines the model really received. Session memory is the last 4 questions and answers.
+- No writing, no Internet and no running code. Refusals cover among others an empty file, a link, control characters and invalid UTF-8.
 
-Polecenia lokalne, które nic nie wysyłają: `/znajdz TEKST`, `/pokaz A-B`, `/rejestr`, `/koniec`. `/pytaj A-B PYTANIE` zawęża pytanie do wierszy. Usługa przyjmuje 4 uruchomienia sesji na minutę, więc program sam czeka między krokami.
+Local commands that send nothing: `/find TEXT`, `/show A-B`, `/log`, `/exit`. `/ask A-B QUESTION` narrows the question to those lines. The service accepts 4 session starts per minute, so the program waits between steps by itself.
 
-### `ai-desktop project KATALOG`
+### `ai-desktop project DIRECTORY`
 
-Jeden katalog objęty `files.read`. Skan jest lokalny i powtarzany przed każdym pytaniem. Limity: 20 000 plików, 100 000 wpisów, głębokość
-16. Pomijane i liczone są wpisy z `deny`, dowiązania, pliki specjalne i `.git`.
+One directory covered by `files.read`. The scan is local and repeated before each question. Limits: 20,000 files, 100,000 entries, depth
+16. Entries from `deny`, links, special files and `.git` are skipped and counted.
 
-- **Czytanie.** Jedna zgoda na pytanie. Model prosi o nazwy, wyszukiwanie w treści i odczyt wierszy, najwyżej 8 żądań i 2 MiB danych. Nazwy plików, trafienia i fragmenty są wysyłane. Przy dużym projekcie kolejne etapy (do 5) zatwierdzasz po jednym.
-- **Zmiany.** Tryb nie jest tylko do odczytu: po prośbie o zmianę model proponuje pliki, a dalej działa ten sam tryb co w `ask` (zgoda na przekazanie, test na kopii, diff, osobna zgoda na zapis, cofanie). Potrzebny jest wpis `files.write` z katalogiem i podkatalogami obejmujący projekt, np. `~/Projekty/**`. Ograniczenia: 8 plików, 5 poziomów ścieżki, 64 KiB na plik.
-- **Usuwanie.** Lista plików, `[t/n]`, kosz zadania i wypisane polecenie przywracania.
-- `project` nie uruchamia poleceń i nie korzysta z Internetu.
+- **Reading.** One consent per question. The model asks for names, a content search and line reads, at most 8 requests and 2 MiB of data. File names, matches and fragments are sent. With a large project you approve further stages (up to 5) one by one.
+- **Changes.** This mode is not read-only: after a request for a change the model proposes files, and from there the same flow as in `ask` applies (consent to send, test on a copy, diff, separate consent to write, undo). This needs a `files.write` entry with the directory and subdirectories covering the project, e.g. `~/Projects/**`. Restrictions: 8 files, 5 path levels, 64 KiB per file.
+- **Deletion.** A list of files, `[y/n]`, the task trash and a printed restore command.
+- `project` does not run commands and does not use the Internet.
 
-Polecenia lokalne: `/pliki [KATALOG]`, `/szukaj TEKST`, `/odswiez`, `/rejestr`, `/koniec`. Duże wklejki (do 32 KiB) pojawiają się jako znacznik i idą do modelu jako dane. Enter wysyła, a Alt+Enter łamie wiersz. Dwa Ctrl+C w ciągu 3 sekund kończą sesję.
+Local commands: `/files [DIR]`, `/search TEXT`, `/refresh`, `/log`, `/exit`. Large pastes (up to 32 KiB) appear as a placeholder and go to the model as data. Enter sends, and Alt+Enter breaks the line. Two Ctrl+C within 3 seconds end the session.
 
 ### `ai-desktop task`
 
-Zmiana dokładnie wskazanych plików, bez `permissions.toml`: wybór należy do Ciebie.
+A change to exactly the files you name, without `permissions.toml`: the choice is yours.
 
 ```fish
-ai-desktop task run "Popraw dodawanie w calc.py" --workspace /sciezka/do/projektu \
+ai-desktop task run "Fix the addition in calc.py" --workspace /path/to/project \
     --file calc.py --context test_calc.py --test python-unittest
 ```
 
-`--file` może być zmieniony, `--context` jest tylko do odczytu. Katalog musi być podany ścieżką bezwzględną i nie może być całym katalogiem domowym. Limity: 64 pliki wejściowe, 32 proponowane, 64 KiB na plik, 128 KiB łącznie, instrukcja do 128 KiB. Testy biegną na kopii, bez sieci i katalogu domowego. Testy Python nie mogą tworzyć procesów, wątków ani gniazd, więc nie każdy zestaw testów tu zadziała. `--preview` pokazuje dane bez modelu i testu. Są dwie zgody: na wysłanie i na zapis.
+`--file` may be changed, `--context` is read-only. The directory must be given as an absolute path and must not be the whole home directory. Limits: 64 input files, 32 proposed, 64 KiB per file, 128 KiB in total, instruction up to 128 KiB. Tests run on a copy, without network or home directory. Python tests cannot create processes, threads or sockets, so not every test suite will work here. `--preview` shows the data without the model or a test. There are two consents: to send and to write.
 
-### Cofanie i przywracanie
+### Undo and restore
 
-Po zapisie program wypisuje gotowe polecenie.
+After a write the program prints the ready command.
 
 ```fish
-ai-desktop task status   --workspace KATALOG              # stany, także kosz
-ai-desktop task rollback --workspace KATALOG              # cofnięcie zapisu, osobna zgoda
-ai-desktop task restore  --workspace KATALOG --plan ID    # powrót usuniętych plików
+ai-desktop task status   --workspace DIRECTORY              # states, including the trash
+ai-desktop task rollback --workspace DIRECTORY              # undo a write, separate consent
+ai-desktop task restore  --workspace DIRECTORY --plan ID    # bring deleted files back
 ```
 
-- Cofanie porównuje **bajty i tryb pliku**, więc zapis tej samej treści przez edytor go nie blokuje. Gdy plik później zmieniono, cofanie odmawia i zostawia Twoją wersję.
-- Taki konflikt widać w `task status` i można go ponowić, ale nie blokuje innych zapisów. Nowe zapisy blokują tylko nierozstrzygnięte pliki tymczasowe i niedokończone zadania.
-- Przywracanie działa tylko na wolne nazwy, nigdy nie nadpisuje nowszego pliku.
-- Dziennik mieści się w `.ai-desktop-tasks` w katalogu zadania, zawiera starą i nową treść plików i ma prawa prywatne. Limit to 128 dzienników na katalog, bez automatycznego czyszczenia. Nie usuwaj go, aby obejść odmowę, bo tracisz możliwość cofnięcia.
-- Dziennik jest związany z katalogiem: przeniesiony lub zastąpiony katalog może dać bezpieczną odmowę, a historia z innego miejsca jest oznaczana jako niepowiązana i nie służy do cofania.
+- Undo compares **bytes and file mode**, so an editor saving the same content does not block it. When the file was changed later, undo refuses and leaves your version.
+- Such a conflict shows in `task status` and can be retried, but it does not block other writes. New writes are blocked only by unresolved temporary files and unfinished tasks.
+- Restore works only on free names and never overwrites a newer file.
+- The journal lives in `.ai-desktop-tasks` in the task directory, contains the old and new content of files and has private permissions. The limit is 128 journals per directory, with no automatic cleanup. Do not delete it to get around a refusal, because you lose the ability to undo.
+- The journal is tied to the directory: a moved or replaced directory may give a safe refusal, and history from another place is marked as unlinked and is not used for undo.
 
-### Które polecenia są w szablonie
+### Which commands are in the template
 
-Lista `allow` w szablonie to ogólne polecenia, które działają w piaskownicy na każdym systemie i nie wysyłają logów, nazw sieci ani danych o logowaniach. Są one uruchamiane bez pytania, a ich wyniki trafiają do modelu. Celowo nie ma w niej:
+The `allow` list in the template is general commands that work in the sandbox on any system and do not send logs, network names or login data. They run without asking, and their output goes to the model. Deliberately not in it:
 
-- `journalctl` z treścią logów, `dmesg`, `who`, `last`, `id`: logi i dane o użytkownikach;
-- `nmcli`, `bluetoothctl`: nazwy sieci i urządzeń;
-- `docker`: sięga do demona na hoście mimo piaskownicy;
-- `ip`, `ss`, `ps`, `top`, `df`, `findmnt`: w piaskownicy pokazują jej widok, nie stan systemu;
-- `systemctl --user`, `pactl`, `wpctl`, `glxinfo`: nie mają dostępu do sesji użytkownika.
+- `journalctl` with log content, `dmesg`, `who`, `last`, `id`: logs and data about users;
+- `nmcli`, `bluetoothctl`: network and device names;
+- `docker`: reaches the daemon on the host despite the sandbox;
+- `ip`, `ss`, `ps`, `top`, `df`, `findmnt`: in the sandbox they show its view, not the system state;
+- `systemctl --user`, `pactl`, `wpctl`, `glxinfo`: they have no access to the user session.
 
-Możesz dopisać je u siebie, jeśli świadomie tego chcesz. Program niezainstalowany w systemie jest pomijany.
+You can add them on your own system if you consciously want to. A program not installed on the system is skipped.
 
-## Własne Skille
+## Your own Skills
 
-Pakietowe Skille prowadzą od objawu przez potrzebne odczyty i interpretację wyników do ustalonej przyczyny albo jasno wskazanego braku danych. Uwzględniają ograniczenia piaskownicy: brak dostępu do sesji lub sieci nie jest dowodem awarii hosta. Proponowana naprawa wymaga oddzielnego planu, zgody i sprawdzenia wyniku; wczytanie procedury niczego nie wykonuje.
+The packaged Skills lead from a symptom through the needed reads and interpretation of results to an established cause or a clearly stated lack of data. They take the sandbox restrictions into account: lack of access to the session or network is not proof of a host failure. A proposed fix requires a separate plan, consent and a check of the result; loading a procedure runs nothing.
 
-Skill to instrukcja dla modelu do 96 KiB, nie uprawnienie. Agent może mieć dowolnie wiele Skilli, ale razem z rolą do 104 KiB: cała instrukcja idzie do klienta Claude jako jeden argument, a Linux ogranicza go do 128 KiB. W `ask` przy każdym pytaniu idą tylko nazwy i opisy przypisanych Skilli. Treść idzie dopiero wtedy, gdy model o nią poprosi, a program pokazuje to wierszem `Skill NAZWA`. W `material`, `project` i `task` treść przypisanych Skilli idzie przy każdym żądaniu. Skill ma opisywać, jak coś zrobić, a nie jak wygląda Twój komputer: fakty model odczyta sam, gdy będą potrzebne. O plikach i poleceniach decyduje `permissions.toml`. Pakiet zawiera tylko ogólne Skille; to, co dotyczy Twojego komputera, trzymasz u siebie:
+A Skill is an instruction for the model of up to 96 KiB, not a permission. An agent can have any number of Skills, but together with its role up to 104 KiB: the whole instruction goes to the Claude client as one argument, and Linux limits that to 128 KiB. In `ask` only the names and descriptions of the assigned Skills go with each question. The content goes only when the model asks for it, and the program shows that with a `Skill NAME` line. In `material`, `project` and `task` the content of the assigned Skills goes with each request. A Skill should describe how to do something, not what your computer looks like: the model reads the facts itself when needed. Files and commands are decided by `permissions.toml`. The package contains only general Skills; what concerns your computer you keep on your side:
 
 ```fish
-ai-desktop skills new moj-system      # tworzy ~/.config/ai-desktop/skills/moj-system/SKILL.md
-ai-desktop skills                     # lista dostępnych
-ai-desktop skills show moj-system     # podgląd
-ai-desktop agents                     # przypisanie Skilla do agenta
+ai-desktop skills new my-system      # creates ~/.config/ai-desktop/skills/my-system/SKILL.md
+ai-desktop skills                    # list of available Skills
+ai-desktop skills show my-system     # preview
+ai-desktop agents                    # assign a Skill to an agent
 ```
 
-Własny Skill o nazwie ogólnego ma pierwszeństwo. **Nie wpisuj do niego sekretów ani danych o sobie: opis i treść Skilla mogą trafić do modelu.** Ścieżka wpisana w Skillu liczy się jak podana przez Ciebie, więc model może ją przeczytać bez rozpoznania; `deny` nadal decyduje.
+Your own Skill with the name of a general one takes priority. **Do not put secrets or data about yourself in it: the description and content of a Skill may go to the model.** A path written in a Skill counts as one given by you, so the model can read it without discovery; `deny` still decides.
 
-## Agenci i modele
+## Agents and models
 
-Agent to zapisany zestaw: usługa, model, poziom rozumowania, dostęp (`changes` lub `read-only`), instrukcje i Skille. Agent nie dodaje uprawnień. Agent `read-only` nie zapisuje, nie usuwa i nie dostaje poleceń `change`.
+An agent is a saved set: service, model, reasoning level, access (`changes` or `read-only`), instructions and Skills. An agent adds no permissions. A `read-only` agent does not write, does not delete and does not get `change` commands.
 
 ```fish
-ai-desktop settings                                 # menu ustawień
-ai-desktop settings models                          # dostępne modele i poziomy
+ai-desktop settings                                 # settings menu
+ai-desktop settings models                          # available models and levels
 ai-desktop settings set --model sonnet --effort high
-ai-desktop agents setup                             # gotowe role i Skille, nie zmienia Twoich
+ai-desktop agents setup                             # ready-made roles and Skills, does not change yours
 ai-desktop ask --agent reviewer --model opus --effort high
-ai-desktop sessions                                 # zapisane rozmowy
+ai-desktop sessions                                 # saved conversations
 ```
 
-Szczegóły: [docs/AGENT_MANAGEMENT.md](docs/AGENT_MANAGEMENT.md).
+Details: [docs/AGENT_MANAGEMENT.md](docs/AGENT_MANAGEMENT.md).
 
-## Codex (opcjonalnie)
+## Codex (optional)
 
-Bez tej sekcji wszystko działa na Claude. Tę ścieżkę traktuj jako eksperymentalną.
+Without this section everything runs on Claude. Treat this path as experimental.
 
 ```fish
-cd ~/Projekty/ai-desktop
-python3 -B scripts/fetch_codex_client.py     # pobiera Codex 0.166.0 i sprawdza sumę; bez logowania i uruchamiania
-# potem przebuduj i zainstaluj pakiet jak w krokach 4 instalacji
+cd ~/ai-desktop
+python3 -B scripts/fetch_codex_client.py     # downloads Codex 0.166.0 and checks the checksum; no login and no running
+# then rebuild and install the package as in step 4 of the installation
 ai-desktop codex status
-ai-desktop login --codex                     # logowanie subskrypcją ChatGPT i wybór usługi
+ai-desktop login --codex                     # log in with a ChatGPT subscription and choose the service
 ```
 
-W `permissions.toml` ustaw `codex = true` w `[network]`: pozwolenia Claude i Codexa są osobne, a Codex jest domyślnie zablokowany. Codex nie ma wyszukiwania internetowego. Odłączenie konta: `ai-desktop codex logout --allow-chatgpt-logout`.
+In `permissions.toml` set `codex = true` in `[network]`: the Claude and Codex permissions are separate, and Codex is blocked by default. Codex has no web search. Disconnecting the account: `ai-desktop codex logout --allow-chatgpt-logout`.
 
-## Aktualizacja
+## Updating
 
 ```fish
 ai-desktop stop
 ai-desktop status
-cd ~/Projekty/ai-desktop
+cd ~/ai-desktop
 git pull
 cd packaging/arch
 makepkg --cleanbuild
-sudo pacman -U ai-desktop-WERSJA-x86_64.pkg.tar.zst    # WERSJA = pkgver-pkgrel z PKGBUILD
+sudo pacman -U ai-desktop-VERSION-x86_64.pkg.tar.zst    # VERSION = pkgver-pkgrel from PKGBUILD
 sudo systemctl daemon-reload
 ai-desktop status
 ```
 
-Nie aktualizuj w trakcie zadania. Aktualizacja nie jest atomowa: pliki są podmieniane po kolei i nie ma automatycznego wycofania pakietu. Po przerwanej aktualizacji zainstaluj ponownie ten sam plik i sprawdź `pacman -Qkk ai-desktop`. Pakiet nie zmienia `permissions.toml`, profilu logowania ani dzienników. Nieznany lub uszkodzony format pliku oznacza odmowę, nie migrację; nie poprawiaj wersji ani hashy ręcznie.
+Do not update during a task. An update is not atomic: files are replaced one after another and there is no automatic package rollback. After an interrupted update install the same file again and check `pacman -Qkk ai-desktop`. The package does not change `permissions.toml`, the login profile or the journals. An unknown or damaged file format means refusal, not migration; do not fix versions or hashes by hand.
 
-## Odinstalowanie
+## Uninstalling
 
-1. Zakończ sesję: `ai-desktop stop`, potem `ai-desktop status`.
-2. Sprawdź `ai-desktop task status --workspace KATALOG` dla używanych katalogów. Odinstalowanie nie cofa zapisanych zmian.
-3. `sudo pacman -R ai-desktop`, potem `sudo systemctl daemon-reload`.
+1. End the session: `ai-desktop stop`, then `ai-desktop status`.
+2. Check `ai-desktop task status --workspace DIRECTORY` for the directories you used. Uninstalling does not undo saved changes.
+3. `sudo pacman -R ai-desktop`, then `sudo systemctl daemon-reload`.
 
-**Na dysku zostaje:**
+**What stays on disk:**
 
-| Co | Gdzie |
+| What | Where |
 |---|---|
-| Konto systemowe `ai-desktop` | system |
-| Profile logowania Claude i Codex | `/var/lib/ai-desktop/claude`, `/var/lib/ai-desktop/codex` |
-| Polityka, agenci, własne Skille | `~/.config/ai-desktop/` |
-| Zapisane rozmowy | `~/.local/state/ai-desktop/conversations/` |
-| Dzienniki i kosz zadań | `.ai-desktop-tasks` w każdym katalogu, w którym coś zapisano |
-| Twoje pliki projektów i pliki zmienione przez program | na miejscu |
+| The `ai-desktop` system account | system |
+| Claude and Codex login profiles | `/var/lib/ai-desktop/claude`, `/var/lib/ai-desktop/codex` |
+| Policy, agents, your own Skills | `~/.config/ai-desktop/` |
+| Saved conversations | `~/.local/state/ai-desktop/conversations/` |
+| Task journals and trash | `.ai-desktop-tasks` in every directory where something was saved |
+| Your project files and files changed by the program | in place |
 
-Program nie ma polecenia „usuń wszystko”. Usuwasz te dane sam i na własną odpowiedzialność; skasowanie `.ai-desktop-tasks` odbiera cofanie i przywracanie, a pliki z kosza znikają razem z nim. Historia terminala, logi systemowe i dane po stronie dostawcy nie są czyszczone.
+The program has no "remove everything" command. You remove this data yourself and at your own risk; erasing `.ai-desktop-tasks` takes away undo and restore, and files from the trash disappear with it. Terminal history, system logs and data on the provider's side are not cleaned.
 
-## Dane i prywatność
+## Data and privacy
 
-Do dostawcy trafia: Twoje pytanie, instrukcje programu i agenta (z przypisanymi Skillami), wzorce `read` i `write` oraz szablony poleceń, nazwy z rozpoznania, treść i **bezwzględne ścieżki** czytanych plików, wyniki poleceń, dane systemd i pogody oraz pamięć rozmowy. Reguły `deny` nie są wysyłane. Oficjalny klient dodaje własny kontekst techniczny, więc `--v` nie jest zapisem całego ruchu. Pełna lista: [SECURITY.md](SECURITY.md).
+The provider receives: your question, the instructions of the program and the agent (with assigned Skills), the `read` and `write` patterns and command templates, names from discovery, the content and **absolute paths** of files read, command output, systemd and weather data and the conversation memory. `deny` rules are not sent. The official client adds its own technical context, so `--v` is not a record of all traffic. The full list: [SECURITY.md](SECURITY.md).
 
-- Wysłanych danych nie można wycofać: ani przerwanie, ani cofnięcie, ani odinstalowanie nie usuwa ich u dostawcy.
-- Rozmowa jest zapisywana lokalnie tylko po Twoim „tak” na końcu albo z `--session new`, w plikach prywatnych. Odpowiedź może cytować przeczytane pliki.
-- Terminal może zachować przewijaną treść, a `--question` trafia do historii powłoki. Nie dołączaj wyniku `--v` do publicznych zgłoszeń.
+- Data that was sent cannot be withdrawn: neither stopping, nor undo, nor uninstalling removes it from the provider.
+- A conversation is saved locally only after your `y` at the end or with `--session new`, in private files. An answer may quote files it read.
+- The terminal may keep the scrollback, and `--question` goes to the shell history. Do not attach `--v` output to public reports.
 
-## Gdy coś nie działa
+## When something does not work
 
-| Objaw | Co zrobić |
+| Symptom | What to do |
 |---|---|
-| `Brak zaufanego klienta Claude Code 2.1.312` | Pakiet zbudowano bez `claude-code` albo z inną wersją. Powtórz kroki 3 i 4 instalacji. |
-| `doctor` pisze „Klient Claude: brak” | W pakiecie nie ma pliku `claude-code`. Dodaj go według kroku 3 instalacji i zbuduj pakiet ponownie. |
-| `status`: `auth=unchecked` | To normalne: `status` i `doctor` nie sprawdzają logowania ani sieci. |
-| Prośba o logowanie | `ai-desktop login`, potem nowe pytanie. |
-| Limit usługi, błąd sieci, przekroczony czas | Nic nie jest ponawiane samo. Odczekaj i zadaj pytanie ponownie. Czas oczekiwania to 110 s, a dla `xhigh` i `max` 15 minut. |
-| Sesja zajęta lub niepotwierdzone zatrzymanie | `ai-desktop status`, potem `ai-desktop stop` (zatrzymuje tylko Twoją sesję). |
-| `Niepoprawny permissions.toml` | Komunikat wskazuje klucz. Sprawdź też prawa `0600`. |
-| `Claude jest zablokowany` | Ustaw `claude = true` w `[network]`. |
-| Odmowa odczytu | Sprawdź `read` i `deny`. Dowiązanie, plik specjalny, obcy właściciel lub twardy link to odmowa. Limit podaje komunikat. |
-| `Nie zapisano zmian` | Sprawdź `read` i `write` oraz czy katalog istnieje; potem `task status`. |
-| Zapis odmawia po przerwanym zadaniu | Zostały pliki tymczasowe. `task status`, potem `task rollback`. Nie kasuj dziennika. |
-| Limit 128 zadań | Zapis nie zostanie wykonany. Historii nie czyści żadne polecenie: oceń ją ręcznie. |
+| `The trusted Claude Code 2.1.312 client is missing` | The package was built without `claude-code` or with another version. Repeat steps 3 and 4 of the installation. |
+| `doctor` says `Claude client: missing` | The package has no `claude-code` file. Add it according to step 3 of the installation and build the package again. |
+| `status`: `auth=unchecked` | This is normal: `status` and `doctor` do not check login or network. |
+| Request to log in | `ai-desktop login`, then a new question. |
+| Service limit, network error, timeout | Nothing is retried by itself. Wait and ask the question again. The waiting time is 110 s, and for `xhigh` and `max` 15 minutes. |
+| Session busy or unconfirmed stop | `ai-desktop status`, then `ai-desktop stop` (stops only your session). |
+| `Invalid permissions.toml` | The message points to the key. Also check mode `0600`. |
+| `Claude is blocked` | Set `claude = true` in `[network]`. |
+| Read refused | Check `read` and `deny`. A link, special file, foreign owner or hard link means refusal. The message gives the limit. |
+| `Nothing was saved` | Check `read` and `write` and whether the directory exists; then `task status`. |
+| A write refuses after an interrupted task | Temporary files were left. `task status`, then `task rollback`. Do not erase the journal. |
+| Limit of 128 tasks | The write will not be performed. No command cleans the history: review it by hand. |
 
-## Testy
+## Tests
 
 ```fish
-python3 -B scripts/verify.py --mode ci --fail-fast     # składnia, testy jednostkowe, bez dostawcy AI
-python3 -B scripts/verify.py --mode local --fail-fast  # dodatkowo prawdziwe próby Bubblewrap na tym komputerze
+python3 -B scripts/verify.py --mode ci --fail-fast     # syntax, unit tests, no AI provider
+python3 -B scripts/verify.py --mode local --fail-fast  # additionally real Bubblewrap probes on this computer
 ```
 
-`--json NOWY_PLIK` zapisuje nazwy etapów i kody zakończenia, bez logów i bez nadpisywania. Tryby `compat` i `ai` wymagają jawnych flag (`--allow-claude-compat`, `--allow-ai-request`), a `ai` zużywa subskrypcję. Zielone testy nie dowodzą izolacji na Twoim komputerze.
+`--json NEW_FILE` saves stage names and exit codes, without logs and without overwriting. The `compat` and `ai` modes require explicit flags (`--allow-claude-compat`, `--allow-ai-request`), and `ai` uses your subscription. Green tests do not prove isolation on your computer.
 
-## Dokumentacja
+## Documentation
 
-- [SECURITY.md](SECURITY.md): zgłaszanie problemów, granice zaufania, co nie jest gwarantowane.
-- [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md): architektura i zagrożenia.
-- [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md): znane ograniczenia.
-- [docs/AGENT_MANAGEMENT.md](docs/AGENT_MANAGEMENT.md): agenci, modele, rozmowy, Codex.
-- [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md): lista dla opiekunów wydania.
-- [CHANGELOG.md](CHANGELOG.md) i [LICENSE](LICENSE).
+- [SECURITY.md](SECURITY.md): reporting problems, trust boundaries, what is not guaranteed.
+- [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md): architecture and threats.
+- [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md): known limitations.
+- [docs/AGENT_MANAGEMENT.md](docs/AGENT_MANAGEMENT.md): agents, models, conversations, Codex.
+- [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md): list for release maintainers.
+- [CHANGELOG.md](CHANGELOG.md) and [LICENSE](LICENSE).

@@ -47,19 +47,19 @@ def _operations(specs):
 def _parser():
     parser = argparse.ArgumentParser(prog="ai-desktop workspace")
     actions = parser.add_subparsers(dest="action", required=True)
-    for name, help_text in (("plan", "Dry-run: diff i hashe planu, bez zapisu"),
-                            ("apply", "Zatwierdz i utworz nowe pliki")):
+    for name, help_text in (("plan", "Dry run: diff and plan hashes, nothing is written"),
+                            ("apply", "Approve and create new files")):
         sub = actions.add_parser(name, help=help_text)
         sub.add_argument("workspace")
         sub.add_argument("--create", action="append", required=True,
-                         metavar="SCIEZKA=PLIK",
-                         help="nowy plik w workspace z zawartoscia lokalnego pliku")
-    sub = actions.add_parser("status", help="Lista dziennikow operacji (bez tresci)")
+                         metavar="PATH=FILE",
+                         help="new file in the workspace with the content of a local file")
+    sub = actions.add_parser("status", help="List operation journals (without contents)")
     sub.add_argument("workspace")
-    sub = actions.add_parser("recover", help="Cofnij przerwane operacje po restarcie")
+    sub = actions.add_parser("recover", help="Undo interrupted operations after a restart")
     sub.add_argument("workspace")
     sub.add_argument("--rollback", action="append", default=[], metavar="PLAN_SHA256",
-                     help="dodatkowo cofnij zakonczone zastosowanie tego planu")
+                     help="also undo the finished application of this plan")
     return parser
 
 
@@ -90,7 +90,7 @@ def main(argv=None, *, input_stream=None, output_stream=None):
             preview = PlanSession().preview(args.workspace, operations,
                                             state_sha256=state)
             print(approval_ui.render_plan(preview), file=out)
-            print("PLAN: DRY-RUN (nic nie zapisano)", file=out)
+            print("PLAN: DRY-RUN (nothing was saved)", file=out)
             return 0
 
         session, authorization = approval_ui.confirm_plan(
@@ -105,7 +105,7 @@ def main(argv=None, *, input_stream=None, output_stream=None):
             result["status"], result["count"], result["plan_sha256"]), file=out)
         return 0
     except approval_ui.ApprovalDenied:
-        print("WORKSPACE: ODMOWA (brak zatwierdzenia)", file=out)
+        print("WORKSPACE: DENIED (not approved)", file=out)
         return 2
     except (ExecutionDenied, PlanDenied, ValueError, OSError):
         print("WORKSPACE: REFUSED", file=out)

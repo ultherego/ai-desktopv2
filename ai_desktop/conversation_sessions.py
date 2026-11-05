@@ -65,7 +65,7 @@ def _cut(value, limit):
     raw = value.encode("utf-8")
     if len(raw) <= limit:
         return value
-    return raw[:limit].decode("utf-8", "ignore") + " …[skrócono]"
+    return raw[:limit].decode("utf-8", "ignore") + " …[shortened]"
 
 
 def _binding(kind, path, binding):

@@ -228,7 +228,7 @@ def prepare(*, root=ROOT, fetch=None):
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv == ["--help"]:
-        print("Przygotuj oficjalny Codex " + VERSION + " do lokalnej budowy pakietu; bez logowania i uruchamiania AI.")
+        print("Prepare the official Codex " + VERSION + " for a local package build; no login and no AI run.")
         return 0
     if argv:
         print("CODEX ASSET: REFUSED reason=target", file=sys.stderr)
@@ -241,7 +241,7 @@ def main(argv=None):
     except AssetDenied as failure:
         print(str(failure), file=sys.stderr)
         return 2
-    print("Codex " + VERSION + ": przygotowano klienta do budowy pakietu.")
+    print("Codex " + VERSION + ": client prepared for the package build.")
     return 0
 
 

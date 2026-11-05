@@ -1,42 +1,42 @@
 ---
 name: cachyos-kernel
-description: Diagnozuje regresje po zmianie jądra CachyOS i zgodność jego modułów. Użyj przy wyborze wariantu, błędach initramfs, DKMS albo potrzebie porównania z działającym jądrem.
+description: Diagnoses regressions after a CachyOS kernel change and the compatibility of its modules. Use for choosing a variant, initramfs or DKMS errors, or when comparing with a working kernel.
 ---
 
-# Jądro i moduły CachyOS
+# CachyOS kernel and modules
 
-## Ustal punkt odniesienia
+## Establish a reference point
 
-Ustal objaw, ostatnie działające jądro, moment aktualizacji i czy wykonano restart. Odczytaj `uname -r` oraz dozwolone zapytania pakietowe, np. `pacman -Qs linux-cachyos` i `pacman -Qi NAZWA`. Działające jądro może być starsze od zainstalowanego; sama ta różnica przed restartem nie dowodzi awarii.
+Establish the symptom, the last working kernel, the time of the update and whether a restart was done. Read `uname -r` and allowed package queries, e.g. `pacman -Qs linux-cachyos` and `pacman -Qi NAME`. The running kernel can be older than the installed one; this difference alone before a restart does not prove a failure.
 
-Nie wybieraj wariantu na podstawie samej obietnicy wydajności. Nazwy, dostępność i funkcje pakietów sprawdzaj w aktualnej dokumentacji i repozytoriach, zamiast zakładać niezmienny katalog wariantów.
+Do not choose a variant on the promise of performance alone. Check package names, availability and features in current documentation and repositories, instead of assuming an unchanging catalog of variants.
 
-## Interpretacja
+## Interpretation
 
-| Obserwacja | Następny krok |
+| Observation | Next step |
 |---|---|
-| Objaw występuje tylko na nowym jądrze | Porównaj te same warunki na zachowanym działającym jądrze; zbierz odpowiedni dziennik. Zbieżność czasowa jest hipotezą regresji. |
-| `module not found` przy budowie initramfs | Ustal dokładny moduł i jądro, którego dotyczy błąd; sprawdź pliki właściwego pakietu. Nie usuwaj modułu z konfiguracji tylko po to, by ukryć błąd. |
-| Moduł DKMS nie został zbudowany | Sprawdź zgodne nagłówki i konkretny log budowy. Nie zakładaj, że pakiet modułu prekompilowanego pasuje do każdego wariantu. |
-| Błąd ładowania lub podpisu modułu | Oddziel niezgodność wersji, brak modułu i politykę podpisów. Nie wyłączaj Secure Boot jako pierwszej naprawy. |
-| System nie dochodzi do uruchomienia usług | Zastosuj procedurę rozpoznania rozruchu, np. `cachyos-boot-snapshots`, jeśli jest dostępna. |
-| Brak logu albo możliwości porównania | Podaj hipotezę i brakujący dowód; nie deklaruj potwierdzonej regresji. |
+| Symptom occurs only on the new kernel | Compare the same conditions on the preserved working kernel; collect the relevant journal. A coincidence in time is a hypothesis of a regression. |
+| `module not found` when building initramfs | Establish the exact module and the kernel the error concerns; check the files of the right package. Do not remove the module from the configuration just to hide the error. |
+| DKMS module was not built | Check for compatible headers and the specific build log. Do not assume a precompiled module package fits every variant. |
+| Module load or signature error | Separate a version mismatch, a missing module and signature policy. Do not disable Secure Boot as the first fix. |
+| System does not reach the point of starting services | Apply the boot identification procedure, e.g. `cachyos-boot-snapshots`, if available. |
+| No log or no way to compare | Give the hypothesis and the missing evidence; do not declare a confirmed regression. |
 
-Logi jądra odczytuj tylko z właściwego czasu i zakresu udostępnionego przez kontroler. Odmowy nie obchodź przez `sudo` ani swobodną powłokę.
+Read kernel logs only from the right time and within the scope made available by the controller. Do not get around a denial through `sudo` or a free shell.
 
-## Zmiana i test
+## Change and test
 
-Przed instalacją lub usunięciem ustal zależne moduły, nagłówki dla DKMS oraz mechanizm generowania initramfs i wpisów bootloadera. Zachowaj co najmniej jedno sprawdzone jądro i możliwość wyboru go przy rozruchu. Nie usuwaj działającego wariantu podczas próby.
+Before an install or removal, establish the dependent modules, headers for DKMS and the mechanism that generates initramfs and bootloader entries. Keep at least one verified kernel and the ability to select it at boot. Do not remove the working variant during a trial.
 
-Przedstaw osobny plan z pakietami, zmianami w `/boot`, zgodą i drogą odzyskania. Po wykonaniu sprawdź wynik hooków i dostępność wpisów, a po kontrolowanym restarcie `uname -r`, stan potrzebnych modułów i pierwotny objaw. Sama instalacja pakietu nie dowodzi uruchomienia nowego jądra.
+Present a separate plan with packages, changes in `/boot`, consent and a recovery path. After execution, check the result of the hooks and the availability of the entries, and after a controlled restart `uname -r`, the state of the needed modules and the original symptom. Installing a package alone does not prove the new kernel is running.
 
-Cofnięcie wymaga zgodnych plików jądra, initramfs, modułów i konfiguracji. Migawka root może nie obejmować `/boot` lub ESP. Jeśli kontroler nie potrafi bezpiecznie wykonać operacji, zakończ na planie dla użytkownika.
+Undo needs compatible kernel, initramfs, module and configuration files. A root snapshot may not cover `/boot` or the ESP. If the controller cannot safely perform the operation, end at a plan for the user.
 
-## Wynik
+## Result
 
-Podaj jądro działające i zainstalowane, stan istotnego modułu, dowód diagnozy, wykonany test i jeden następny krok. Nie obiecuj poprawy wydajności bez porównania tego samego obciążenia.
+Give the running and installed kernels, the state of the relevant module, the evidence for the diagnosis, the test performed and one next step. Do not promise a performance improvement without comparing the same load.
 
-## Źródła
+## Sources
 
-- [Warianty i moduły prekompilowane](https://wiki.cachyos.org/features/kernel/#variants).
-- [Zakres przywracania migawek](https://wiki.cachyos.org/configuration/btrfs_snapshots/).
+- [Variants and precompiled modules](https://wiki.cachyos.org/features/kernel/#variants).
+- [Scope of snapshot restoring](https://wiki.cachyos.org/configuration/btrfs_snapshots/).

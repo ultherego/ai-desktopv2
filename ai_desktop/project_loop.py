@@ -126,12 +126,12 @@ class Loop:
     def _refuse(self, action, code, what=None, detail=""):
         """Record the closed refusal for the model; the returned line explains it to the user."""
         self.observations.append({"kind": "refused", "action": action, "code": code})
-        return "%s — odmowa: %s%s" % (what or ACTION_TEXT[action], REFUSAL_TEXT[code], " (%s)" % detail if detail else "")
+        return "%s — refused: %s%s" % (what or ACTION_TEXT[action], REFUSAL_TEXT[code], " (%s)" % detail if detail else "")
 
     def _overview(self):
         view = self.project.overview()
         self.observations.append(dict(kind="overview", **view))
-        return "przegląd projektu: %d plików, %d pozycji na najwyższym poziomie" % (view["files"], len(view["top"]))
+        return "a project overview: %d file(s), %d top-level item(s)" % (view["files"], len(view["top"]))
 
     def _tree(self, prefix, cursor):
         try:
@@ -139,8 +139,8 @@ class Loop:
         except scope.ProjectError:
             return self._refuse("list", "PATH")
         self.observations.append({"kind": "tree", "prefix": prefix.rstrip("/"), "items": items, "total": total, "next": following})
-        where = " %s" % prefix.rstrip("/") if prefix else " projektu"
-        return "zawartość katalogu%s: %d z %d pozycji%s" % (where, len(items), total, " (są kolejne)" if following else "")
+        where = " of %s" % prefix.rstrip("/") if prefix else " of the project"
+        return "the directory contents%s: %d of %d items%s" % (where, len(items), total, " (more available)" if following else "")
 
     def _names(self, prefix, query, cursor):
         action = "find" if query else "list"
@@ -154,8 +154,8 @@ class Loop:
         self.observations.append({"kind": "names", "prefix": prefix, "query": query,
                                   "items": [{"path": e.path, "size": e.size} for e in items],
                                   "total": total, "next": following})
-        what = "wyszukanie nazw „%s”" % query if query else "listę plików%s" % (" w %s" % prefix if prefix else "")
-        return "%s: %d z %d%s" % (what, len(items), total, " (są kolejne)" if following else "")
+        what = "a file name search for \"%s\"" % query if query else "the file list%s" % (" in %s" % prefix if prefix else "")
+        return "%s: %d of %d%s" % (what, len(items), total, " (more available)" if following else "")
 
     def _search(self, needle, resume):
         cursor = (0, 0)
@@ -182,7 +182,7 @@ class Loop:
         self.observations.append({"kind": "search", "needle": needle, "complete": result.complete, "more": more,
                                   "hits": hits, "skipped": dict(result.skipped)})
         self.searches.append((needle, result.complete))
-        return "wyszukano „%s” w projekcie: %d trafień%s" % (needle, len(hits), " (są kolejne)" if more else "")
+        return "a project search for \"%s\": %d matches%s" % (needle, len(hits), " (more available)" if more else "")
 
     def _read(self, path, spans):
         try:
@@ -211,9 +211,9 @@ class Loop:
         lines = visible_lines(material)
         self.file_lines[path] = lines
         planned = []
-        what = "odczyt %s, %s" % (path, lines_label(spans))
+        what = "%s, %s" % (path, lines_label(spans))
         if any(first > lines for first, _ in spans):
-            return self._refuse("read", "RANGE_INVALID", what, "plik ma %s" % count_lines(lines))
+            return self._refuse("read", "RANGE_INVALID", what, "the file has %s" % count_lines(lines))
         cut = any(last > lines for _, last in spans)
         spans = sorted({(first, min(last, lines)) for first, last in spans})       # an end past the last line is cut to it
         for first, last in spans:
@@ -221,7 +221,7 @@ class Loop:
                 start, end = materials.line_range(material, first, last)
                 planned.extend(materials.split_range(material, start, end))
             except materials.MaterialError:
-                return self._refuse("read", "RANGE_INVALID", what, "plik ma %s" % count_lines(lines))
+                return self._refuse("read", "RANGE_INVALID", what, "the file has %s" % count_lines(lines))
         total = sum(b - a for a, b in planned)
         if total > max(0, step.DATA_BYTES - SEARCH_RESERVE - self.data_bytes()):
             self._compact_for(total)
@@ -234,7 +234,7 @@ class Loop:
             self.observations.append({"kind": "read", "path": path, "first": first, "last": last, "lines": lines,
                                       "ref": fragment.ref.to_json(), "text": fragment.text})
             self.read_bytes += end - start
-        return "odczyt %s, %s (%d B)%s" % (path, lines_label(spans), total, " — plik ma %s" % count_lines(lines) if cut else "")
+        return "%s, %s (%d B)%s" % (path, lines_label(spans), total, " — the file has %s" % count_lines(lines) if cut else "")
 
     # --- evidence ---------------------------------------------------------------
     def mark_handed_off(self, value):

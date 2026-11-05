@@ -19,21 +19,21 @@ from .terminal_style import rule
 ANSWER_SEPARATOR = "─" * 48
 
 HINTS = {
-    "network": "Nie udało się nawiązać dozwolonego połączenia. Sprawdź sieć i dostępność usługi; potem uruchom polecenie ponownie i zatwierdź wysyłkę.",
-    "rate-limit": "Usługa odrzuciła żądanie z powodu limitu. Odczekaj i uruchom polecenie ponownie z nową zgodą; bez automatycznej ponownej wysyłki.",
-    "provider-unavailable": "Usługa Claude zgłosiła chwilowy błąd. Spróbuj później, uruchamiając polecenie ponownie z nową zgodą.",
-    "runtime": "Brak zaufanego klienta Claude Code 2.1.312 w pakiecie ai-desktop.",
-    "version": "Klient lub izolacja nie przeszly kontroli wersji 2.1.312.",
-    "endpoint": "Nie udało się uruchomić lub połączyć sesji. Sprawdź ai-desktop status; odzyskanie: ai-desktop stop.",
-    "auth-required": "Połącz konto: ai-desktop login (wybierz Claude). Potem uruchom nową analizę i zatwierdź nowy podgląd.",
-    "auth-method": "Wymagane logowanie subskrypcji claude.ai w osobnym profilu; inne metody są odrzucone.",
-    "busy": "Sesja lub profil jest zajęty albo pozostał niedokończony cykl. Sprawdź ai-desktop status; odzyskanie własnej sesji: ai-desktop stop.",
-    "timeout": "Przekroczono limit czasu. Wynik nie jest potwierdzony; brak automatycznego ponowienia.",
-    "client": "Klient nie zakończył analizy. Sprawdź dostęp do sieci i stan subskrypcji. Brak automatycznego ponowienia i przejścia na API.",
-    "consent": "Nie zatwierdzono wysyłki lub zgoda wygasła. Przy nowej analizie sprawdź podgląd i wpisz tak (t), aby zatwierdzić, albo nie (n), aby odmówić. Raport nie został przekazany.",
-    "authorization": "Nie uzyskano uprawnień do uruchomienia osobnej sesji. Raport nie został przekazany.",
-    "cleanup": "Nie potwierdzono zatrzymania sesji. Uruchom ai-desktop stop; nie ponawiaj automatycznie wysyłki.",
-    "cancelled": "Przerwano analizę. Wysłanych danych nie można wycofać; brak automatycznego ponowienia.",
+    "network": "Could not make the allowed connection. Check your network and the service; then run the command again and approve the send.",
+    "rate-limit": "The service rejected the request because of a limit. Wait, then run the command again and approve it again; nothing is resent automatically.",
+    "provider-unavailable": "The Claude service reported a temporary error. Try later by running the command again and approving it again.",
+    "runtime": "The trusted Claude Code 2.1.312 client is missing from the ai-desktop package.",
+    "version": "The client or the isolation failed the version 2.1.312 check.",
+    "endpoint": "Could not start or connect the session. Check ai-desktop status; to recover: ai-desktop stop.",
+    "auth-required": "Connect your account: ai-desktop login (choose Claude). Then start a new analysis and approve the new preview.",
+    "auth-method": "A claude.ai subscription login in a separate profile is required; other methods are rejected.",
+    "busy": "The session or profile is busy, or an unfinished cycle remains. Check ai-desktop status; to recover your own session: ai-desktop stop.",
+    "timeout": "The time limit was exceeded. The result is not confirmed; there is no automatic retry.",
+    "client": "The client did not finish the analysis. Check your network access and subscription. There is no automatic retry or switch to the API.",
+    "consent": "The send was not approved or the approval expired. On a new analysis, check the preview and type yes (y) to approve or no (n) to decline. The report was not sent.",
+    "authorization": "Could not get permission to start a separate session. The report was not sent.",
+    "cleanup": "Could not confirm that the session stopped. Run ai-desktop stop; do not resend automatically.",
+    "cancelled": "The analysis was stopped. Data already sent cannot be taken back; there is no automatic retry.",
 }
 
 
@@ -54,7 +54,7 @@ def main(*, preview=False, question="", ask=False, report_path=None, output_form
             installation_ready()
         report = read_snapshot(report_path) if report_path is not None else diagnose.collect()
         if ask:
-            prompt = "Pytanie o raport (Enter = ogolna analiza): "
+            prompt = "Question about the report (Enter = general analysis): "
             question = fresh_input(prompt, max_bytes=MAX_QUESTION_BYTES) if reader is input else reader(prompt)
         gate = AnalysisConsent(report, question=question)
         envelope = json.loads(gate.payload)
@@ -63,30 +63,30 @@ def main(*, preview=False, question="", ask=False, report_path=None, output_form
         # the preview or the answer/error of an already prepared request.
         shown_execution = envelope.get("execution")
         print(label(config=shown_execution))
-        print("=== RAPORT DO ANALIZY ===" if details else "Raport do analizy:")
+        print("=== REPORT TO ANALYZE ===" if details else "Report to analyze:")
         print(serialize_report(envelope["report"]))
-        print("=== TWOJE PYTANIE ===" if details else "Pytanie:")
-        print(question if question else "Ogólna analiza raportu.")
+        print("=== YOUR QUESTION ===" if details else "Question:")
+        print(question if question else "General analysis of the report.")
         if details:
-            print("=== INSTRUKCJA APLIKACJI ===")
+            print("=== APPLICATION INSTRUCTIONS ===")
             print(envelope["system_prompt"])
-            print("=== ZASADY I ODBIORCA ===")
+            print("=== RULES AND RECIPIENT ===")
             print(envelope["client_context"])
-            print("Klient:", envelope["client_version"], "Zasady:", envelope["policy"])
-            print("SHA256 raportu, pytania, instrukcji i zasad:", gate.sha256)
+            print("Client:", envelope["client_version"], "Rules:", envelope["policy"])
+            print("SHA256 of the report, question, instructions and rules:", gate.sha256)
         else:
-            print(recipient("Do Claude trafią powyższe dane i stała instrukcja aplikacji. Wynik nie wykonuje zmian.",
+            print(recipient("Claude will receive the data above and the fixed application instructions. The result makes no changes.",
                             config=shown_execution))
         if preview:
             if details:
-                print("PREVIEW: PASS (offline; bez uruchamiania klienta i dostepu do profilu)")
+                print("PREVIEW: PASS (offline; no client started and no profile access)")
             else:
-                print("Podgląd offline — niczego nie wysłano.")
+                print("Offline preview — nothing was sent.")
             return 0
         if not confirm("transfer", reader=reader, config=shown_execution):
             if details:
                 raise AnalysisDenied("consent")
-            print("Anulowano. Raport nie został wysłany.")
+            print("Cancelled. The report was not sent.")
             return 2
         gate.check(report, question=question, sha256=gate.sha256, nonce=gate.nonce)
         with managed_session(**({} if details else {"quiet": True})):
@@ -95,11 +95,11 @@ def main(*, preview=False, question="", ask=False, report_path=None, output_form
             approval = gate.authorize(report, question=question, sha256=gate.sha256, nonce=gate.nonce)
             waiting = wait_message(config=shown_execution)
             if details:
-                waiting += " Wysłanego raportu nie można wycofać."
+                waiting += " A report already sent cannot be taken back."
             print(waiting, flush=True)
             submitted = True
             result = send_once(approval)
-        print("=== WYNIK " + recipient(config=shown_execution).upper() + " — propozycje do oceny, bez wykonania zmian ===" if details
+        print("=== RESULT FROM " + recipient(config=shown_execution).upper() + " — suggestions to review, no changes made ===" if details
               else "\n" + rule() + "\n")
         print(render_answer(result, output_format=output_format))
         if details:
@@ -111,19 +111,19 @@ def main(*, preview=False, question="", ask=False, report_path=None, output_form
     except AnalysisDenied as exc:
         if details:
             print(str(exc))
-        print(failure_hint(exc.reason, HINTS.get(exc.reason, "Analiza zatrzymana przez bramę bezpieczeństwa; brak zmian w systemie."),
+        print(failure_hint(exc.reason, HINTS.get(exc.reason, "The analysis was stopped by a safety check; the system was not changed."),
                            config=shown_execution,
                            **({"diagnostic": exc.diagnostic} if exc.diagnostic is not None else {})))
         return 2
     except (EOFError, KeyboardInterrupt):
         if details:
-            print("ANALYSIS: CANCELLED (brak automatycznego ponowienia; wyslanych danych nie mozna wycofac)")
+            print("ANALYSIS: CANCELLED (no automatic retry; data already sent cannot be taken back)")
         else:
-            print("Anulowano.")
+            print("Cancelled.")
             if submitted:
-                print("Wysłanych danych nie można wycofać; analiza nie zostanie ponowiona automatycznie.")
+                print("Data already sent cannot be taken back; the analysis will not be retried automatically.")
         return 2
     except (OSError, ValueError, TypeError):
         print("ANALYSIS: REFUSED reason=input" if details
-              else "Nie udało się przygotować analizy. Sprawdź raport i pytanie.")
+              else "Could not prepare the analysis. Check the report and the question.")
         return 2

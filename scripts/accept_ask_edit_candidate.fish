@@ -80,7 +80,7 @@ with os.fdopen(os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.
     fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
     if any(getattr(before, key) != getattr(after, key) for key in fields):
         raise SystemExit("NATIVE COPY: REFUSED changed source")
-print("Natywny klient skopiowany z przyjętego pakietu; bez uruchamiania i OAuth.")
+print("Native client copied from the accepted package; not run, no OAuth.")
 ' "$aid_tree/packaging/arch/claude-code"
     or return $status
     __aid15_step NATIVE_MATCH cmp /usr/lib/ai-desktop/claude-code "$aid_tree/packaging/arch/claude-code"
@@ -121,9 +121,9 @@ print("Natywny klient skopiowany z przyjętego pakietu; bez uruchamiania i OAuth
     cd "$aid_tree"; or return $status
     __aid15_step INSTALLED python3 -I -B -c 'import sys; sys.path.insert(0, sys.argv[1] + "/tests"); import host_analysis_acceptance as check; check.installed_matches(); print("INSTALLED MATCH: PASS")' "$aid_tree"
     or return $status
-    # Bez tee: zgoda na pytanie, pełny diff, zapis i rollback pozostają na TTY.
-    printf '\nNowy odbior: jedno pytanie edycyjne na syntetycznym projekcie; dwa zapytania Claude.\n'
-    printf 'Osobno zatwierdz zapis po tescie/diffie, a potem cofniecie. Twoja polityka nie jest zmieniana.\n'
+    # No tee: consent to the question, the full diff, the write and the rollback stay on the TTY.
+    printf '\nNew acceptance: one edit question on a synthetic project; two Claude requests.\n'
+    printf 'Approve the write after the test/diff, then the undo, separately. Your policy is not changed.\n'
     __aid15_step HOST_ASK_EDIT python3 -B tests/host_ask_edit_acceptance.py --allow-subscription-ask-edit-test
     or return $status
     return 0
@@ -164,8 +164,8 @@ if test "$aid_return" -eq 0
     end
 end
 printf '\nCYCLE=%s RETURN=%s\n' "$aid_cycle" "$aid_return"
-printf 'Logi i worktree zachowano: %s\n' "$aid_tmp"
-printf 'Nie zapisano rozmowy HOST ASK EDIT; test uzywa tylko danych i polityki syntetycznej.\n'
+printf 'Logs and worktree kept: %s\n' "$aid_tmp"
+printf 'The HOST ASK EDIT conversation was not saved; the test uses only synthetic data and policy.\n'
 if test "$aid_cycle" -ne 0
     exit "$aid_cycle"
 end

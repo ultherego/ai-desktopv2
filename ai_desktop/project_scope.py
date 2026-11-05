@@ -241,7 +241,7 @@ class Project:
         extensions = {}
         for entry in self.files:
             name = entry.path.rsplit("/", 1)[-1]
-            suffix = os.path.splitext(name)[1].lower()[:16] or "(brak)"
+            suffix = os.path.splitext(name)[1].lower()[:16] or "(none)"
             extensions[suffix] = extensions.get(suffix, 0) + 1
         common = sorted(extensions.items(), key=lambda item: (-item[1], item[0]))[:OVERVIEW_EXTENSIONS]
         key = sorted((e.path for e in self.files if _is_key_file(e.path)), key=lambda p: (p.count("/"), p))[:OVERVIEW_KEY_FILES]

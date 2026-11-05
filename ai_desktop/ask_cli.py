@@ -31,7 +31,7 @@ from .run_controls import add_arguments, configured
 
 ANSWER_SEPARATOR = "─" * 48
 MAX_AUTO_STEPS = 5
-CONTINUE_PREFIX = "Kontynuuj zadanie po zapisanej zmianie. Zadanie uzytkownika: "
+CONTINUE_PREFIX = "Continue the task after the saved change. The user's task: "
 # The provider or the network failed one request and the session closed normally: the conversation can go on. Anything
 # else (cleanup, identity, sandbox, consent...) still ends it, because the next request could not be trusted to be safe.
 SERVICE_FAILURES = frozenset({"timeout", "network", "rate-limit", "provider-unavailable", "web-no-results", "output-limit",
@@ -42,17 +42,17 @@ PREPARATION_PHASES = frozenset({"input", "session", "access", "plan-request", "p
 
 
 def build_parser():
-    parser = argparse.ArgumentParser(prog="ai-desktop ask", description="Zadaj pytanie wybranemu asystentowi")
-    parser.add_argument("--question", help="Pytanie zamiast wpisywania go w terminalu")
+    parser = argparse.ArgumentParser(prog="ai-desktop ask", description="Ask the selected assistant a question")
+    parser.add_argument("--question", help="The question, instead of typing it in the terminal")
     parser.add_argument("--systemd", nargs="?", const="both", choices=("system", "user", "both"),
-                        help="Jawnie dołącz stan jednostek systemd")
+                        help="Explicitly include the state of systemd units")
     parser.add_argument("--systemd-state", choices=("enabled", "active", "inactive", "failed", "all", "installed"),
-                        help="Wybierz zakres stanu systemd")
-    parser.add_argument("--weather", metavar="CITY", help="Jawnie pobierz pogodę dla wskazanego miasta")
-    parser.add_argument("--no-context", action="store_true", help="Wyślij samo pytanie, bez dobierania kontekstu")
+                        help="Choose which systemd states to include")
+    parser.add_argument("--weather", metavar="CITY", help="Explicitly fetch the weather for this city")
+    parser.add_argument("--no-context", action="store_true", help="Send only the question, with no added context")
     parser.add_argument("--v", "--verbose", "-v", "--details", dest="details", action="store_true",
-                        help="Pokaż szczegóły, pełne dane i diagnostykę")
-    parser.add_argument("--preview", action="store_true", help="Podgląd offline, bez modelu i dostępu do Internetu")
+                        help="Show details, full data and diagnostics")
+    parser.add_argument("--preview", action="store_true", help="Offline preview, with no model and no Internet access")
     parser.add_argument("--format", choices=("auto", "plain", "markdown"), default="auto")
     add_arguments(parser, session=True)
     return parser
@@ -76,13 +76,13 @@ def request(question, args, reader, *, context=None, access=None, task=None, wri
         question_consent.claim(gate, question, context=context, access=access, task=task,
                                write_grant=write_grant, web=web, **observed)
     if args.details:
-        print("=== DOKŁADNE DANE I ZASADY ===")
+        print("=== EXACT DATA AND RULES ===")
         print(json.dumps(json.loads(gate.payload), ensure_ascii=False, indent=2))
         print("SHA256:", gate.sha256)
     installation_ready()
     if question_consent is None and not confirm("ask-transfer", reader=reader, config=selected):
-        print("Anulowano. Wybrane dane nie zostały wysłane." if state and state["submitted"]
-              else "Anulowano. Pytanie nie zostało wysłane.")
+        print("Cancelled. The selected data was not sent." if state and state["submitted"]
+              else "Cancelled. The question was not sent.")
         raise assistant_flow.Declined()
     gate.check(None, question="" if task is not None else question, task=task,
                context=context, access=access, web=web, sha256=gate.sha256, nonce=gate.nonce, **observed)
@@ -156,10 +156,10 @@ def _offer_save(talk, phase):
         phase("session-save")
         saved = Store().create("ask", "", "", current())
         saved.save_state(conversation_state.export(talk))
-        print("Rozmowa zapisana lokalnie. Wrócisz do niej przy następnym ai-desktop ask.")
+        print("Conversation saved locally. You can return to it the next time you run ai-desktop ask.")
         return saved
     except (SessionError, OSError, ValueError):
-        print("Nie udało się zapisać rozmowy. Nic nie zostało zapisane.")
+        print("Could not save the conversation. Nothing was saved.")
         return None
 
 
@@ -172,13 +172,13 @@ def _continuation(question):
 
 def _explain_refusal(refusal):
     if isinstance(refusal, ContextBudgetExceeded):
-        print(f"Odmowa wysyłki: kontekst JSON przekracza limit {MAX_CONTEXT_BYTES} bajtów. "
-              + recipient("Wybrane dane nie zostały wysłane do Claude."))
+        print(f"Not sent: the JSON context is over the limit of {MAX_CONTEXT_BYTES} bytes. "
+              + recipient("The selected data was not sent to Claude."))
     elif isinstance(refusal, InputBudgetExceeded):
-        print(f"Odmowa wysyłki: całe żądanie JSON przekracza limit {MAX_PACKET} bajtów. "
-              + recipient("To żądanie nie zostało wysłane do Claude."))
+        print(f"Not sent: the whole JSON request is over the limit of {MAX_PACKET} bytes. "
+              + recipient("This request was not sent to Claude."))
     elif isinstance(refusal, ask_edit.EditDenied):
-        print("Nie zapisano zmian. Sprawdź files.read i files.write w permissions.toml oraz czy katalog i pliki istnieją.")
+        print("Nothing was saved. Check files.read and files.write in permissions.toml, and that the directory and files exist.")
     # FileReadDenied: the local collector has already explained it; session diagnostics would obscure the cause.
 
 
@@ -188,24 +188,24 @@ def _explain_denied(exc, args, state):
     if args.details or web_diagnostic(exc.diagnostic) is not None:
         print(str(exc))
     if exc.reason == "consent":
-        print("Minął czas na to pytanie: model myślał dłużej, niż pozwala limit. Pytanie zostało zatrzymane. Zadaj je ponownie "
-              "albo użyj niższego poziomu (/sila)." if getattr(exc, "expired", False)
-              else "Zgoda wygasła lub warunki dostępu uległy zmianie. Pytanie zostało zatrzymane.")
+        print("Time ran out for this question: the model took longer than the limit allows. The question was stopped. Ask it again "
+              "or use a lower level (/effort)." if getattr(exc, "expired", False)
+              else "Consent expired or the access rules changed. The question was stopped.")
     elif exc.reason == "web-no-results":
-        print("Nie uzyskano potwierdzonych wyników wyszukiwania. Pytanie zakończono bez odpowiedzi.")
+        print("No confirmed search results came back. The question ended without an answer.")
     else:
-        print(failure_hint(exc.reason, HINTS.get(exc.reason, "Nie udało się uzyskać odpowiedzi. Sprawdź ai-desktop status."),
+        print(failure_hint(exc.reason, HINTS.get(exc.reason, "Could not get an answer. Check ai-desktop status."),
                            config=state["execution"],
                            **({"diagnostic": exc.diagnostic} if exc.diagnostic is not None else {})))
         if exc.reason == "timeout" and "sent_at" in state:
             # Say how long the last call really waited and what the limit was, so a slow model is told from a stall.
-            print(paint("Ostatnie wywołanie czekało %d s (limit %d s)." % (
+            print(paint("The last call waited %d s (limit %d s)." % (
                 time.monotonic() - state["sent_at"], state["limit"]), "dim"))
 
 
 def _report_plan_error(exc, args):
     check = exc.check if type(exc.check) is str and exc.check in PLAN_CHECKS else "invalid"
-    print("Model zwrócił niepoprawny plan (plan-" + check + "). Ten plan nie został wykonany.")
+    print("The model returned an invalid plan (plan-" + check + "). This plan was not carried out.")
     if args.details:
         print("ASK: REFUSED stage=plan check=" + check)
 
@@ -222,7 +222,7 @@ def _read_message(session, followup):
         except QuestionInputError as refused:
             if refused.args != ("question paste",):
                 raise
-            print("Wklejka jest za duża: wiadomość może mieć razem %d KiB. Skróć ją albo użyj ai-desktop material PLIK."
+            print("The paste is too large: the whole message can be at most %d KiB. Shorten it or use ai-desktop material FILE."
                   % (MAX_MESSAGE_BYTES // 1024))
             followup = True
             continue
@@ -231,7 +231,7 @@ def _read_message(session, followup):
         size = len(text.encode("utf-8"))
         if size <= MAX_MESSAGE_BYTES:
             return text
-        print("Wiadomość po wklejeniu ma %d B, a limit to %d B. Skróć wklejony fragment (np. head -n 20) i wklej ponownie."
+        print("With the paste the message is %d B and the limit is %d B. Shorten the pasted text (for example head -n 20) and paste it again."
               % (size, MAX_MESSAGE_BYTES))
         followup = True
 
@@ -246,17 +246,17 @@ def _revoke_stale(talk):
         return          # an unreadable policy is reported when the question is sent; nothing is forgotten meanwhile
     removed = talk.revalidate((lambda path: False) if policy is None else policy.allows)
     if removed:
-        print("Dostęp do źródła użytego we wcześniejszej turze został cofnięty: usunięto z pamięci rozmowy "
-              "zależne odpowiedzi i ustalenia modelu (%d)." % removed)
+        print("Access to a source used earlier in this conversation was revoked: the answers and model notes "
+              "that depended on it were removed from the conversation memory (%d)." % removed)
 
 
 def _remember(talk, conversation, question, answer, ops, sources, phase, args):
     """Record a finished, approved turn; the task memory is updated from the FULL answer before any shortening."""
-    notes = talk.finish(question, answer or "[pusta odpowiedź]", ops, sources, actions=getattr(sources, "actions", ()))
+    notes = talk.finish(question, answer or "[empty answer]", ops, sources, actions=getattr(sources, "actions", ()))
     if "trimmed" in notes:
-        print("Pamięć ustaleń osiągnęła limit: najstarsze, mniej ważne wpisy zostały pominięte (liczone w pamięci).")
+        print("The task memory reached its limit: the oldest, less important entries were left out (the memory keeps count).")
     if args.details and "no-update" in notes:
-        print("Pamięć zadania: model nie przekazał poprawnej aktualizacji; zapisano tylko Twoją wiadomość.")
+        print("Task memory: the model sent no valid update; only your message was recorded.")
     if conversation is not None:
         phase("session-save")
         from .conversation_sessions import SessionError
@@ -264,7 +264,7 @@ def _remember(talk, conversation, question, answer, ops, sources, phase, args):
             conversation.save_state(conversation_state.export(talk))
         except (SessionError, ValueError, OSError):
             # A turn that cannot be stored must not end the conversation or lose the answer on the screen.
-            print("Nie udało się zapisać tej tury na dysku; rozmowa trwa, a tura zostaje w pamięci do wyjścia.")
+            print("Could not save this turn to disk; the conversation continues and the turn stays in memory until you exit.")
 
 
 @configured
@@ -288,14 +288,14 @@ def main(argv=None, *, reader=input):
         controls = ask_commands.Controls()
         controls.activate()
         if args.preview and args.session:
-            print("Podgląd nie zapisuje ani nie wznawia rozmowy. Usuń --session albo --preview.")
+            print("Preview does not save or resume a conversation. Remove --session or --preview.")
             return 2
         if question is None and not args.preview and args.session is None and reader is input:
             # The saved threads are offered BEFORE the first message, so a new question never has to be typed twice.
             phase("session")
             chosen = _choose_thread()
             if chosen is None:
-                print("Anulowano.")
+                print("Cancelled.")
                 return 0
             if chosen[0] == "resume":
                 args.session = chosen[1]
@@ -312,10 +312,10 @@ def main(argv=None, *, reader=input):
                     continue
                 if question.strip():
                     break
-                print("Wpisz pytanie.")
+                print("Type a question.")
         validate_question(question, MAX_MESSAGE_BYTES)
         if not question.strip():
-            print("Nie wpisano pytania. Uruchom ai-desktop ask, aby spróbować ponownie.")
+            print("No question was typed. Run ai-desktop ask to try again.")
             return 2
         if args.question is not None and not args.preview:
             print(question)
@@ -324,11 +324,11 @@ def main(argv=None, *, reader=input):
         from .conversation_sessions import load_session
         from .execution import current, using_history, using_memory
         if args.preview and args.session:
-            print("Podgląd nie zapisuje ani nie wznawia rozmowy. Usuń --session albo --preview.")
+            print("Preview does not save or resume a conversation. Remove --session or --preview.")
             return 2
         conversation = load_session(args, "ask", execution_config=current())
         if conversation is not None:
-            print("Rozmowa: %s · zapis lokalny" % conversation.session_id)
+            print("Conversation: %s · saved locally" % conversation.session_id)
         # Interactive loop only without --question/--preview. Every turn below is a fresh question under one yes for the
         # conversation; the conversation state is local data, never authority, and is re-validated against the CURRENT
         # policy before each turn (a revoked source takes what depended on it out of the next request).
@@ -350,7 +350,7 @@ def main(argv=None, *, reader=input):
             """A turn that fails after the program acted: what it really did must not be forgotten, or the model may
             propose the same change again. Nothing is recorded for a turn that did nothing."""
             if interactive and getattr(sources, "actions", None):
-                _remember(talk, conversation, question, "[Odpowiedź modelu nie dotarła. Wykonane akcje są zapisane.]",
+                _remember(talk, conversation, question, "[The model's answer did not arrive. The actions taken are recorded.]",
                           None, sources, phase, args)
         while True:
             _revoke_stale(talk)
@@ -382,7 +382,7 @@ def main(argv=None, *, reader=input):
                 if not interactive or denied.reason not in SERVICE_FAILURES:
                     raise
                 _explain_denied(denied, args, state)
-                print("Rozmowa trwa; pytanie nie zostało ponowione. Możesz je zadać jeszcze raz.")
+                print("The conversation continues; the question was not retried. You can ask it again.")
                 keep_actions()
                 answer, code = None, 2
             except KeyboardInterrupt:
@@ -390,14 +390,14 @@ def main(argv=None, *, reader=input):
                     raise
                 # The turn's own cleanup (session, consent, process) has already run in the flow's finally blocks;
                 # a failure there would have raised instead of landing here.
-                print("\nAnulowano. Ta tura została przerwana." + (" Wysłanych danych nie można wycofać; pytanie nie zostanie ponowione."
+                print("\nCancelled. This turn was stopped." + (" Data already sent cannot be taken back; the question will not be retried."
                                                 if state["submitted"] else ""))
                 keep_actions()
                 answer, code = None, 2
             if finished:
                 code = 0
                 if type(answer) is ask_edit.CompletedTask:
-                    note = "[Zakończono zadanie zmiany; wynik %d. Zapis i test według dziennika zadania.]" % answer.code
+                    note = "[Change task finished; result %d. See the task log for the write and the test.]" % answer.code
                     code = answer.code
                     _remember(talk, conversation, question, note, None, sources, phase, args)
                     if not interactive:
@@ -410,7 +410,7 @@ def main(argv=None, *, reader=input):
                             question = _continuation(question)
                             state["submitted"] = False
                             continue
-                        print("Limit %d kolejnych kroków w jednym pytaniu. Napisz „rób dalej”, aby kontynuować." % MAX_AUTO_STEPS)
+                        print("Reached the limit of %d steps in one question. Type \"continue\" to go on." % MAX_AUTO_STEPS)
                 elif answer is not None:
                     visible, raw = conversation_memory.split_marker(answer)
                     ops = conversation_memory.parse_ops(raw) if raw is not None else None
@@ -438,7 +438,7 @@ def main(argv=None, *, reader=input):
                     if idle >= 2:
                         print()
                         return leave(code)
-                    print("\nNaciśnij jeszcze raz Ctrl-D (albo wyślij pustą linię), aby zakończyć rozmowę.")
+                    print("\nPress Ctrl-D again (or send an empty line) to end the conversation.")
                     continue
                 except KeyboardInterrupt:
                     print()
@@ -461,7 +461,7 @@ def main(argv=None, *, reader=input):
         return 2
     except assistant_flow.AccessDenied as exc:
         if getattr(exc, "reason", None) == "policy-invalid":
-            print(paint("Niepoprawny permissions.toml. Sprawdź version i reguły read/write/deny.", "bold", "red"))
+            print(paint("Invalid permissions.toml. Check version and the read/write/deny rules.", "bold", "red"))
             if exc.problem:
                 print(paint("Problem:", "bold", "red"))
                 for line in exc.problem:
@@ -469,10 +469,10 @@ def main(argv=None, *, reader=input):
         elif getattr(exc, "reason", None) in ("network-claude-disabled", "network-codex-disabled"):
             provider = "codex" if exc.reason == "network-codex-disabled" else "claude"
             name = "Codex" if provider == "codex" else "Claude"
-            print(name + " jest zablokowany (network." + provider + "=false).")
-            print("Aby zezwolić na wysyłkę, ustaw " + provider + " = true w [network] pliku ~/.config/ai-desktop/permissions.toml.")
+            print(name + " is blocked (network." + provider + "=false).")
+            print("To allow sending, set " + provider + " = true in [network] of ~/.config/ai-desktop/permissions.toml.")
         else:
-            print("Polityka dostępu nie zezwala na tę operację albo została zmieniona. Sprawdź permissions.toml.")
+            print("The access policy does not allow this operation, or it has changed. Check permissions.toml.")
         return 2
     except LOCAL_REFUSALS as refusal:
         _explain_refusal(refusal)
@@ -481,18 +481,18 @@ def main(argv=None, *, reader=input):
         _explain_denied(exc, args, state)
         return 2
     except (EOFError, KeyboardInterrupt):
-        print("Anulowano.")
+        print("Cancelled.")
         if state["submitted"]:
-            print("Wysłanych danych nie można wycofać; pytanie nie zostanie ponowione automatycznie.")
+            print("Data already sent cannot be taken back; the question will not be retried automatically.")
         return 2
     except QuestionInputError:
-        print(f"Nie odczytano pytania. Użyj jednej linii zwykłego tekstu do {MAX_MESSAGE_BYTES} bajtów.")
+        print(f"Could not read the question. Use one line of plain text, up to {MAX_MESSAGE_BYTES} bytes.")
         return 2
     except (OSError, ValueError, TypeError, KeyError) as exc:
         if args.details:
             kind = "os" if isinstance(exc, OSError) else "type" if isinstance(exc, TypeError) else "key" if isinstance(exc, KeyError) else "value"
             print("ASK: REFUSED stage=" + state["phase"] + " check=prepare-" + kind)
-        print("Nie udało się ukończyć pytania (prepare-" + state["phase"] + ").")
+        print("Could not finish the question (prepare-" + state["phase"] + ").")
         return 2
     finally:
         if conversation is not None:

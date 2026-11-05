@@ -139,7 +139,7 @@ def prepare(plan, snapshot, args, reader, *, question_consent, expected_versions
             raise CreateCollision(exc.path, workspace=workspace) from None
         except ValueError as exc:
             if str(exc) == "text":
-                print("Tego pliku nie da się edytować bez zmiany jego bajtów: ma pomieszane końce linii albo znaki sterujące.")
+                print("This file cannot be edited without changing its bytes: it has mixed line endings or control characters.")
             raise
         files, targets = [], []
         for name in names:
@@ -191,33 +191,33 @@ def delete_files(plan, snapshot, reader):
     except (OSError, ValueError, TypeError, KeyError, AttributeError, ExecutionDenied):
         raise EditDenied("input") from None
     print()
-    print("Do usunięcia w " + terminal_text(workspace) + ":")
+    print("To delete in " + terminal_text(workspace) + ":")
     for name, size in zip(names, sizes):
         print("  " + terminal_text(name) + " (" + size_label(size) + ")")
     summary = ", ".join(names[:4])
     if not confirm("project-delete", reader=reader):
-        print("Anulowano. Nic nie usunięto.")
-        conversation_state.note_action("Usunięcie NIE zostało wykonane (odrzucone przez użytkownika): " + summary)
+        print("Cancelled. Nothing was deleted.")
+        conversation_state.note_action("Deletion NOT done (declined by the user): " + summary)
         return CompletedTask(2)
     restore = shlex.join(["ai-desktop", "task", "restore", "--workspace", workspace, "--plan", prepared.data()["plan"]])
     try:
         policy.recheck()
         plan_id = workspace_trash.execute(prepared, prepared.authorize())
     except workspace_trash.TrashRecoveryRequired:
-        print("Usuwanie przerwane; dane i dziennik zachowano. Stan: "
+        print("Deletion interrupted; the data and journal were kept. State: "
               + shlex.join(["ai-desktop", "task", "status", "--workspace", workspace]))
-        print("Przywrócenie: " + restore)
-        conversation_state.note_action("Usuwanie przerwane, wymaga sprawdzenia: " + summary)
+        print("Restore: " + restore)
+        conversation_state.note_action("Deletion interrupted, needs checking: " + summary)
         return CompletedTask(2)
     except KeyboardInterrupt:
-        print("\nPrzerwano usuwanie. Przywrócenie: " + restore)
-        conversation_state.note_action("Usuwanie przerwane, wymaga sprawdzenia: " + summary)
+        print("\nDeletion interrupted. Restore: " + restore)
+        conversation_state.note_action("Deletion interrupted, needs checking: " + summary)
         return CompletedTask(2)
     except (OSError, ValueError, ExecutionDenied):
         raise EditDenied("input") from None
-    print("Usunięto %d (w koszu zadania)." % len(names))
-    print("Przywrócenie: " + shlex.join(["ai-desktop", "task", "restore", "--workspace", workspace, "--plan", plan_id]))
-    conversation_state.note_action("Usunięto do kosza zadania, można przywrócić: " + summary)
+    print("Moved to the task trash: %d." % len(names))
+    print("Restore: " + shlex.join(["ai-desktop", "task", "restore", "--workspace", workspace, "--plan", plan_id]))
+    conversation_state.note_action("Moved to the task trash, can be restored: " + summary)
     return CompletedTask(0)
 
 
@@ -242,5 +242,5 @@ def _change_fact(response, code, check):
     except (ValueError, TypeError, KeyError, AttributeError):
         files, summary = "?", ""
     if code == 0:
-        return ("Zastosowano zmianę przez ask (test %s zaliczony, można ją cofnąć): %s [%s]" % (check, summary, files)).strip()
-    return "Zmiana NIE została zastosowana (kod %s; anulowana, odrzucona albo test niezaliczony): %s [%s]" % (code, summary, files)
+        return ("Change applied through ask (test %s passed, can be undone): %s [%s]" % (check, summary, files)).strip()
+    return "Change NOT applied (code %s; cancelled, refused or test failed): %s [%s]" % (code, summary, files)

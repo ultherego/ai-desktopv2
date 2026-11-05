@@ -81,7 +81,7 @@ with os.fdopen(os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.
     fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
     if any(getattr(before, key) != getattr(after, key) for key in fields):
         raise SystemExit("NATIVE COPY: REFUSED changed source")
-print("Natywny klient skopiowany z przyjętego pakietu; bez uruchamiania i OAuth.")
+print("Native client copied from the accepted package; not run, no OAuth.")
 ' "$aid_tree/packaging/arch/claude-code"
     or return $status
     __aid17_step NATIVE_MATCH cmp /usr/lib/ai-desktop/claude-code "$aid_tree/packaging/arch/claude-code"
@@ -163,8 +163,8 @@ if test "$aid_return" -eq 0
     end
 end
 printf '\nCYCLE=%s RETURN=%s\n' "$aid_cycle" "$aid_return"
-printf 'Logi i worktree zachowano: %s\n' "$aid_tmp"
-printf 'Nie uruchomiono Claude ani logowania; permissions.toml pozostaje bez zmian.\n'
+printf 'Logs and worktree kept: %s\n' "$aid_tmp"
+printf 'Neither Claude nor login was started; permissions.toml stays unchanged.\n'
 if test "$aid_cycle" -ne 0
     exit "$aid_cycle"
 end

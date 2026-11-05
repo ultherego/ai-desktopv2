@@ -1,120 +1,120 @@
-# Bezpieczeństwo
+# Security
 
-AI Desktop jest wersją rozwojową. Nie przeszedł niezależnego przeglądu bezpieczeństwa. Zielone testy nie są certyfikatem izolacji.
-Pełny opis architektury i zagrożeń: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md). Lista ograniczeń:
+AI Desktop is a development version. It has not gone through an independent security review. Green tests are not a certificate of isolation.
+Full description of the architecture and threats: [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md). List of limitations:
 [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md).
 
-## Zgłaszanie problemu
+## Reporting a problem
 
-Luki bezpieczeństwa zgłaszaj **prywatnie**: na stronie repozytorium <https://github.com/ultherego/ai-desktopv2> wybierz
-Security → „Report a vulnerability”. Zgłoszenie widzi tylko opiekun projektu. Zwykłe błędy i pytania możesz otworzyć jako
-publiczne zgłoszenie (issue).
+Report security vulnerabilities **privately**: on the repository page <https://github.com/ultherego/ai-desktopv2> choose
+Security → "Report a vulnerability". Only the project maintainer sees the report. You can open ordinary bugs and questions as a
+public issue.
 
-Publiczne zgłoszenie jest widoczne dla wszystkich, więc **nie umieszczaj w nim szczegółów wrażliwych**: tokenów, kodów logowania,
-treści prywatnych plików, wyniku `--v`, działającego exploita ani danych swojego komputera. Opisz wersję pakietu, ogólny objaw i
-stały komunikat błędu.
+A public issue is visible to everyone, so **do not put sensitive details in it**: tokens, login codes,
+the content of private files, `--v` output, a working exploit or data about your computer. Describe the package version, the general symptom and the
+fixed error message.
 
-## Granice zaufania
+## Trust boundaries
 
-| Element | Działa jako | Co widzi i co może |
+| Element | Runs as | What it sees and can do |
 |---|---|---|
-| Program `ai-desktop` (kontroler) | Twój zwykły użytkownik, odmawia pracy jako root | Czyta politykę i pliki w jej granicach, pyta o zgodę, wykonuje zatwierdzone zapisy. |
-| Pomocnik sesji | root, przez `sudo`, stały plik z pakietu | Tylko uruchamia i zatrzymuje jednostki Twojej sesji. Nie dostaje pytań, danych ani poświadczeń. |
-| Usługa analizy | konto systemowe `ai-desktop`, bez logowania i bez uprawnień | Jednostka systemd z ograniczeniami, trzyma proxy i uruchamia klienta. |
-| Klient Claude Code 2.1.312 | to samo konto, w Bubblewrap | Własny katalog logowania `/var/lib/ai-desktop/claude`, puste HOME i katalog roboczy, bez narzędzi (poza `WebSearch` w trybie web), bez bezpośredniej sieci. |
-| Proxy | usługa, poza piaskownicą klienta | Przepuszcza tylko TLS na porcie 443 do `api.anthropic.com`, `claude.ai`, `platform.claude.com`, na adresy publiczne. |
-| Model | u dostawcy | Zwraca tekst i propozycje. To niezaufane dane. |
-| Polecenia z `allow` | Twój użytkownik, w osobnej piaskownicy | System plików tylko do odczytu, ukryte `/home`, `/root`, `/run/user`, bez sieci. Gniazda Unix hosta nie są izolowane. |
-| Polecenia z `change` | Twój użytkownik, **bez piaskownicy** | Działają na żywym systemie po wpisaniu `tak`. |
-| Testy na kopii | Twój użytkownik, w piaskownicy | Kopia w pamięci, bez sieci, katalogu domowego i dostępu do projektu. |
+| The `ai-desktop` program (controller) | your regular user, refuses to work as root | Reads the policy and files within its limits, asks for consent, performs approved writes. |
+| Session helper | root, through `sudo`, a fixed file from the package | Only starts and stops the units of your session. It gets no questions, data or credentials. |
+| Analysis service | system account `ai-desktop`, with no login and no privileges | A restricted systemd unit, holds the proxy and starts the client. |
+| Claude Code 2.1.312 client | the same account, in Bubblewrap | Its own login directory `/var/lib/ai-desktop/claude`, empty HOME and working directory, no tools (except `WebSearch` in web mode), no direct network. |
+| Proxy | service, outside the client sandbox | Passes only TLS on port 443 to `api.anthropic.com`, `claude.ai`, `platform.claude.com`, to public addresses. |
+| Model | at the provider | Returns text and proposals. This is untrusted data. |
+| Commands from `allow` | your user, in a separate sandbox | Read-only file system, hidden `/home`, `/root`, `/run/user`, no network. Host Unix sockets are not isolated. |
+| Commands from `change` | your user, **without a sandbox** | Run on the live system after you type `yes`. |
+| Tests on a copy | your user, in a sandbox | A copy in memory, without network, home directory or access to the project. |
 
-Klient nie ma zamontowanego Twojego katalogu domowego. Dane dostaje jako tekst, przekazany przez kontroler po sprawdzeniu polityki.
+The client does not have your home directory mounted. It gets data as text, passed by the controller after the policy check.
 
-Polityka `~/.config/ai-desktop/permissions.toml` jest źródłem uprawnień dla `ask`, `material` i `project`. Musi należeć do Ciebie i mieć prawa `0600`.
-Jest wiązana z pytaniem: zmiana pliku w trakcie przerywa bieżącą operację, a kolejne pytanie wymaga nowej zgody. `task run` nie korzysta z polityki:
-pliki wskazujesz ręcznie w poleceniu.
+The policy `~/.config/ai-desktop/permissions.toml` is the source of permissions for `ask`, `material` and `project`. It must belong to you and have mode `0600`.
+It is bound to the question: changing the file midway stops the current operation, and the next question requires new consent. `task run` does not use the policy:
+you name the files by hand in the command.
 
-Wyczerpanie budżetu, błędna odpowiedź modelu, zmiana pliku lub brak piaskownicy kończą się odmową. Program nie ponawia żądania sam i nie
-przechodzi na inną usługę, klienta na hoście ani klucz API.
+An exhausted budget, a wrong model response, a file change or a missing sandbox end in refusal. The program does not retry a request by itself and does not
+switch to another service, a client on the host or an API key.
 
-## Co może, a czego nie może wynik modelu
+## What model output can and cannot do
 
-Odpowiedź modelu jest sprawdzana według zamkniętej listy akcji. Tekst odpowiedzi jest tylko wyświetlany.
+The model's response is checked against a closed list of actions. The response text is only displayed.
 
-**Może zaproponować:**
+**It can propose:**
 
-- listowanie i wyszukiwanie **nazw** w katalogach z `read`, w ramach budżetów;
-- odczyt plików z `read`, ale tylko takich, które pokazało rozpoznanie albo które wpisałeś;
-- uruchomienie polecenia pasującego do Twojego szablonu z `allow`;
-- zapis lub utworzenie pliku w `write`, usunięcie do kosza, zmianę z listy `change` z testem i wycofaniem;
-- wyszukiwanie w Internecie, gdy `web = true`, oraz pobranie pogody, gdy `weather = true`.
+- listing and searching **names** in directories from `read`, within budgets;
+- reading files from `read`, but only those shown by discovery or typed by you;
+- running a command matching your template from `allow`;
+- writing or creating a file in `write`, deleting to the trash, a change from the `change` list with a test and an undo;
+- a web search when `web = true`, and getting the weather when `weather = true`.
 
-**Nie może:**
+**It cannot:**
 
-- nadać sobie uprawnień, zmienić polityki ani wyłączyć zgody;
-- uruchomić powłoki, dowolnego programu, polecenia spoza szablonu ani wybrać podkomendy w miejscu ustalonym przez szablon;
-- odczytać ani zapisać niczego objętego `deny` lub leżącego poza zakresem;
-- zapisać pliku bez Twojego `t` po pełnym diffie;
-- wykonać zmiany z `change` bez Twojego `tak`;
-- wskazać dowolnego adresu URL ani hosta.
+- grant itself permissions, change the policy or turn off consent;
+- run a shell, an arbitrary program, a command outside the template, or choose a subcommand in a place fixed by the template;
+- read or write anything covered by `deny` or lying out of scope;
+- save a file without your `y` after the full diff;
+- perform a change from `change` without your `yes`;
+- point to an arbitrary URL or host.
 
-Ważne: **treść pliku lub wynik polecenia może skłonić model do kolejnych dozwolonych odczytów**, a ich wyniki trafiają do dostawcy. Granicą są
-`permissions.toml` i budżety na pytanie, nie zdrowy rozsądek modelu. Odmów dostępu do tego, czego nie chcesz wysłać.
+Important: **the content of a file or the output of a command can lead the model to further allowed reads**, and their results go to the provider. The limit is
+`permissions.toml` and the per-question budgets, not the model's common sense. Refuse access to what you do not want to send.
 
-## Zgody
+## Consents
 
-| Działanie | Zgoda |
+| Action | Consent |
 |---|---|
-| Rozmowa `ask`: pytania, odczyty, rozpoznanie, polecenia z `allow` | Jedno `Przekazać żądanie do Claude [t/n]:` na rozmowę. Ponownie po zmianie uprawnień, usługi lub agenta. Zgoda żyje w pamięci procesu. |
-| Zapis lub utworzenie pliku | Pełny diff i `[t/n]` za każdym razem. |
-| Usunięcie plików | Lista plików i `[t/n]`. Pliki trafiają do kosza zadania. |
-| Zmiana z `change` | Pokazana zmiana, test i wycofanie, wpisanie całego słowa `tak`. Wycofanie po błędzie też wymaga `tak`. |
-| Cofnięcie i przywrócenie | Osobne `[t/n]`. |
-| `material`, `project` | Zgoda na pytanie. Analiza całego pliku: jedna zgoda na zadanie, ważna 30 minut. Kolejny etap projektu: osobne `[t/n]`. |
-| `task run` | Osobno wysłanie i zapis. |
+| `ask` conversation: questions, reads, discovery, commands from `allow` | One `Send this request to Claude? [y/n]:` per conversation. Again after a change of permissions, service or agent. The consent lives in process memory. |
+| Writing or creating a file | Full diff and `[y/n]` every time. |
+| Deleting files | A list of files and `[y/n]`. Files go to the task trash. |
+| Change from `change` | The change, test and undo shown, typing the whole word `yes`. An undo after a failure also requires `yes`. |
+| Undo and restore | A separate `[y/n]`. |
+| `material`, `project` | Consent per question. Whole-file analysis: one consent per task, valid for 30 minutes. Next project stage: a separate `[y/n]`. |
+| `task run` | Sending and writing separately. |
 
-Pytanie o zgodę czyści wcześniej wpisane znaki z terminala, więc wklejony tekst nie zatwierdza działania, którego jeszcze nie widziałeś.
-Bez terminala zgody nie ma: program odmawia. Nie ma trybu bez nadzoru. Zgoda nie chroni przed innym procesem sterującym tym samym terminalem.
+The consent prompt clears previously typed characters from the terminal, so pasted text does not approve an action you have not yet seen.
+Without a terminal there is no consent: the program refuses. There is no unattended mode. Consent does not protect against another process controlling the same terminal.
 
-Po zastosowanej zmianie model może podjąć następny krok bez nowego pytania od Ciebie (najwyżej 5 kroków), ale każdy kolejny zapis znów wymaga
-zgody.
+After an applied change the model can take the next step without a new question from you (at most 5 steps), but each further write again requires
+consent.
 
-## Co trafia do dostawcy
+## What goes to the provider
 
-Wybrany dostawca (Anthropic, a przy Codexie OpenAI) dostaje:
+The chosen provider (Anthropic, and with Codex OpenAI) receives:
 
-- Twoje pytanie i wklejki;
-- stałe instrukcje programu oraz instrukcje agenta z treścią przypisanych Skilli, także własnych;
-- wzorce reguł `read` i `write`, szablony `allow` i `change`, dostępność systemd, pogody i Internetu. Reguły `deny` nie są wysyłane;
-- nazwy, typy i rozmiary z kroków rozpoznania;
-- treść czytanych plików z **bezwzględnymi ścieżkami**, które mogą zawierać nazwę użytkownika;
-- wyniki poleceń, także tych z `allow` uruchamianych bez pytania (filtr `deny` ich nie obejmuje);
-- nazwy i stany jednostek systemd oraz wynik pogody;
-- ostatnie wymiany rozmowy i pamięć zadania.
+- your question and pastes;
+- the fixed instructions of the program and the agent's instructions with the content of assigned Skills, including your own;
+- the patterns of `read` and `write` rules, the `allow` and `change` templates, the availability of systemd, weather and the Internet. `deny` rules are not sent;
+- names, types and sizes from discovery steps;
+- the content of files read with **absolute paths**, which may contain the user name;
+- command output, including from `allow` commands run without asking (the `deny` filter does not cover them);
+- names and states of systemd units and the weather result;
+- the latest conversation exchanges and the task memory.
 
-Do tego dochodzi kontekst techniczny oficjalnego klienta i dane logowania, których program nie czyta i nie pokazuje. `--v` pokazuje dane programu, nie
-zapis całego szyfrowanego ruchu.
+On top of this comes the technical context of the official client and login data, which the program neither reads nor shows. `--v` shows the program's data, not
+a record of all encrypted traffic.
 
-Inne cele sieciowe: `weather = true` ujawnia nazwę miejscowości i adres IP serwisowi Open-Meteo. `web = true` wysyła samo pytanie do wyszukiwania po
-stronie dostawcy; treść pytania może trafić do zapytań wyszukiwarki, a pliki i dane lokalne nie są dołączane.
+Other network targets: `weather = true` reveals the place name and IP address to the Open-Meteo service. `web = true` sends the question itself for a search on the
+provider's side; the question's content may go into search engine queries, and files and local data are not attached.
 
-Wysłanych danych nie można wycofać.
+Data that was sent cannot be withdrawn.
 
-## Czego nie gwarantujemy
+## What we do not guarantee
 
-- **Ochrony przed innym procesem tego samego użytkownika**, rootem, przejętym jądrem ani złośliwym systemem.
-- **Ochrony tokenu klienta przed samym klientem.** Oficjalny klient ma dostęp do własnego profilu logowania. Przejęty klient mógłby wysłać go do dozwolonego
-  hosta. Proxy nie widzi treści TLS i nie filtruje ścieżek ani danych. Nie ma ogólnego filtra wywołań systemowych dla klienta.
-- **Bezpieczeństwa listy `allow`.** Piaskownica nie izoluje gniazd Unix hosta, więc polecenie mogące zmieniać stan przez D-Bus lub Dockera nie jest zatrzymane,
-  a działa bez pytania. Wpisuj tu tylko polecenia tylko do odczytu.
-- **Rozpoznawania sekretów.** W `version = 2` nie ma ukrytego filtra nazw ani skanera kluczy prywatnych. Sekret w dozwolonym drzewie bez `deny` może trafić do dostawcy.
-- **Niezmienności klienta.** Sprawdzana jest zgłaszana wersja, a nie suma kontrolna pliku w pakiecie. Sumę sprawdzasz przy pobieraniu.
-- **Poprawności zmian.** Test na kopii dotyczy tylko wybranego sprawdzenia, `text` nie bada składni ani działania.
-- **Atomowości.** Zadanie wieloplikowe i aktualizacja pakietu nie są jedną transakcją. Nie ma gwarancji przy utracie zasilania.
-- **Prawdziwości odpowiedzi modelu, wyników wyszukiwania ani źródeł.**
-- **Sprawdzenia na prawdziwych awariach:** wygaśnięcie i odświeżenie logowania oraz rzeczywiste awarie sieci nie zostały sprawdzone z oficjalnym klientem.
+- **Protection against another process of the same user**, root, a compromised kernel or a malicious system.
+- **Protection of the client token against the client itself.** The official client has access to its own login profile. A compromised client could send it to an allowed
+  host. The proxy does not see TLS content and does not filter paths or data. There is no general system call filter for the client.
+- **Safety of the `allow` list.** The sandbox does not isolate host Unix sockets, so a command able to change state through D-Bus or Docker is not stopped,
+  and it runs without asking. List only read-only commands here.
+- **Recognition of secrets.** In `version = 2` there is no hidden name filter or private key scanner. A secret in an allowed tree without `deny` can go to the provider.
+- **Immutability of the client.** The reported version is checked, not the checksum of the file in the package. You check the checksum when downloading.
+- **Correctness of changes.** A test on a copy concerns only the chosen check, `text` does not examine syntax or behaviour.
+- **Atomicity.** A multi-file task and a package update are not one transaction. There is no guarantee in case of power loss.
+- **Truthfulness of the model's answers, search results or sources.**
+- **Checks on real failures:** login expiry and refresh and real network failures have not been checked with the official client.
 
-## Zasady dla osób rozwijających projekt
+## Rules for people developing the project
 
-Nie dodawaj do repozytorium sekretów, plików logowania, binarek klienta ani danych konkretnego komputera. Zmiany izolacji, uprawnień, systemu plików, sieci lub
-logowania wymagają testu na prawdziwym CachyOS lub Arch oraz opisu kompromisu w [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md). Bramą testów jest `scripts/verify.py`.
+Do not add secrets, login files, client binaries or data about a specific computer to the repository. Changes to isolation, permissions, the file system, the network or
+login require a test on real CachyOS or Arch and a description of the trade-off in [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md). The test gate is `scripts/verify.py`.

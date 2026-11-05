@@ -60,7 +60,7 @@ class DeletePlan:
         return self.data()
 
 
-FULL_MESSAGE = "Kosz zadania jest pełny (limit 128 usunięć w tym katalogu). Nic nie usunięto; przywrócone lub zbędne wpisy trzeba uporządkować ręcznie."
+FULL_MESSAGE = "The task trash is full (limit of 128 deletions in this directory). Nothing was deleted; restored or unneeded entries must be cleaned up by hand."
 
 
 class TrashFull(ExecutionDenied):

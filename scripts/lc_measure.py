@@ -23,7 +23,7 @@ def fixtures(size=m.MAX_MATERIAL_BYTES):
     yield "A1 log (many short lines, marker at the end)", log
     yield "A2 one single line", (b"x" * (size - 60) + MARK.encode() + b"\n")
     yield "A2 CRLF without final newline", (b"row of crlf text\r\n" * (size // 18))[:size - 12] + b"no newline"
-    yield "multibyte (2/3/4-byte characters)", ("zażółć 日本語 🙂 " * (size // 20)).encode()[:size - 6].decode("utf-8", "ignore").encode()
+    yield "multibyte (2/3/4-byte characters)", ("za\u017c\u00f3\u0142\u0107 日本語 🙂 " * (size // 20)).encode()[:size - 6].decode("utf-8", "ignore").encode()
 
 
 def timed(function):

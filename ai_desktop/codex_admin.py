@@ -16,7 +16,7 @@ def auth_worker(action, *, details=False):
     from .siwc_auth import AuthClient, AuthError, AuthStore
     if (type(details) is not bool or not _worker_identity() or not os.isatty(0) or not os.isatty(1)
             or action not in ("login", "logout")):
-        print("Codex: odmowa uruchomienia logowania.")
+        print("Codex: refused to start the login.")
         return 2
     try:
         directory = HOME / "codex"
@@ -28,7 +28,7 @@ def auth_worker(action, *, details=False):
         client = AuthClient(AuthStore(directory))
         if action == "logout":
             confirmed = client.logout()
-            print("Codex: odłączono profil." if confirmed else "Codex: odłączono lokalnie; nie potwierdzono odwołania u dostawcy.")
+            print("Codex: profile disconnected." if confirmed else "Codex: disconnected locally; the provider did not confirm the revocation.")
             return 0 if confirmed else 2
         state = {"done": False, "success": False, "requests": 0}
 
@@ -51,7 +51,7 @@ def auth_worker(action, *, details=False):
                     # A stray/wrong-state callback cannot consume a valid login.
                     self.send_error(400)
                     return
-                body = b"AI Desktop: polaczono konto. Mozesz zamknac te karte."
+                body = b"AI Desktop: account connected. You can close this tab."
                 self.send_response(200)
                 self.send_header("Content-Type", "text/plain; charset=utf-8")
                 self.send_header("Cache-Control", "no-store")
@@ -71,26 +71,26 @@ def auth_worker(action, *, details=False):
         with Server(("127.0.0.1", 0), Callback) as server:
             server.timeout = 1
             pending = client.begin_login("http://127.0.0.1:%d/auth/callback" % server.server_port)
-            print("Połącz subskrypcję ChatGPT z lokalnym AI Desktop. Otwórz adres w przeglądarce:")
+            print("Connect your ChatGPT subscription to local AI Desktop. Open this address in a browser:")
             print(pending.authorization_url, flush=True)
             deadline = time.monotonic() + 300
             while not state["done"] and state["requests"] < 16 and time.monotonic() < deadline:
                 server.handle_request()
             if not state["success"]:
-                print("Codex: logowanie przerwane lub wygasło; nie ponawiam automatycznie.")
+                print("Codex: the login was interrupted or expired; it is not retried automatically.")
                 return 2
         if details:
-            print("Codex: połączono subskrypcję. Dostępność modelu sprawdzimy przy zatwierdzonym zadaniu.")
+            print("Codex: subscription connected. Model availability is checked when you approve a task.")
         return 0
     except (AuthError, AnalysisDenied, OSError, ValueError, KeyboardInterrupt):
-        print("Codex: nie ukończono obsługi konta. Poświadczenia nie są wyświetlane.")
+        print("Codex: the account operation did not finish. Credentials are not shown.")
         return 2
 
 
 def main(action, *, allow=False, details=False):
     if (allow is not True or type(details) is not bool or action not in ("login", "logout") or os.getuid() != 0 or os.geteuid() != 0
             or not os.isatty(0) or not os.isatty(1)):
-        print("Codex: wymagana jawna zgoda, administrator i terminal.")
+        print("Codex: this needs explicit consent, an administrator and a terminal.")
         return 2
     from .analysis_admin import login_command
     from .codex_runtime import runtime_ready
@@ -107,7 +107,7 @@ def main(action, *, allow=False, details=False):
         code = subprocess.run(command, env={"PATH": "/usr/bin", "LANG": "C.UTF-8", "TERM": "dumb"},
                               close_fds=True, timeout=610, check=False).returncode
     except (AnalysisDenied, OSError, ValueError, subprocess.SubprocessError, KeyboardInterrupt):
-        print("Codex: logowanie zatrzymano; sprawdź instalację.")
+        print("Codex: the login was stopped; check the installation.")
         code = 2
     finally:
         if unit is not None:
@@ -123,8 +123,8 @@ def main(action, *, allow=False, details=False):
                 if state.returncode != 0 or (values.get("LoadState") != "not-found" and
                         (values.get("ActiveState") not in ("inactive", "failed") or values.get("MainPID") != "0")):
                     code = 2
-                    print("Nie potwierdzono zatrzymania procesu logowania Codex.")
+                    print("Could not confirm that the Codex login process stopped.")
             except (OSError, subprocess.SubprocessError):
                 code = 2
-                print("Nie potwierdzono zatrzymania procesu logowania Codex.")
+                print("Could not confirm that the Codex login process stopped.")
     return code

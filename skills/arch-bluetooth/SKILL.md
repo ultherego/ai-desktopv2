@@ -1,34 +1,34 @@
 ---
 name: arch-bluetooth
-description: Diagnozuje brak kontrolera Bluetooth, problemy parowania i regresje po uśpieniu w BlueZ. Użyj do odróżnienia braku sprzętu, blokady radia, stanu usługi i problemu jednego urządzenia.
+description: Diagnoses a missing Bluetooth controller, pairing problems and regressions after sleep in BlueZ. Use to distinguish missing hardware, a radio block, service state and a problem with one device.
 ---
 
-# Diagnostyka Bluetooth
+# Bluetooth diagnostics
 
-## Zakres i dostęp
+## Scope and access
 
-Ustal, czy wcześniej działało, czy awaria dotyczy wszystkich urządzeń i czy zaczęła się po uśpieniu lub aktualizacji. Nazwy i adresy urządzeń ogranicz do niezbędnych danych; nie żądaj kluczy parowania.
+Establish whether it worked before, whether the failure affects all devices, and whether it began after sleep or an update. Limit device names and addresses to what is necessary; do not ask for pairing keys.
 
-`bluetoothctl` korzysta z D-Bus. Dostęp do gniazda hosta nie jest gwarancją operacji tylko do odczytu. Wykonuj jedynie dokładne odczyty z `allow`; nie uruchamiaj interaktywnego menu, skanowania ani parowania jako rozpoznania. Odmowa dostępu lub brak magistrali oznaczają lukę w obserwacjach.
+`bluetoothctl` uses D-Bus. Access to the host socket is no guarantee of read-only operation. Run only exact reads from `allow`; do not start the interactive menu, scanning or pairing as an investigation. A denied access or a missing bus means a gap in the observations.
 
-## Rozpoznanie i decyzje
+## Investigation and decisions
 
-1. Jeśli dozwolone, sprawdź `systemctl status bluetooth.service --no-pager`. Przy stanie `failed` odczytaj krótki fragment `journalctl -u bluetooth.service -b --no-pager -n 50` z czasu awarii. Brak dostępu do logu nie oznacza, że log jest pusty.
-2. Ustal, czy kontroler jest wykryty: `lsusb` lub `lspci -k` zależnie od sprzętu. `rfkill list` może wskazać blokadę sprzętową lub programową. Brak kontrolera kieruje do sprzętu, sterownika i firmware, nie do ponownego parowania.
-3. Dostępny odczyt `bluetoothctl show` rozdziela brak kontrolera, `Powered: no` i działające radio. Błąd `NotReady` wymaga ustalenia tego stanu, nie dowodzi jednej konkretnej przyczyny.
-4. Radio działa, lecz problem dotyczy jednego znanego urządzenia: odczytaj tylko jego stan przez `bluetoothctl info ADRES`, używając adresu ustalonego wcześniej. Rozróżnij sparowane, zaufane i połączone; to różne właściwości.
-5. Po wybudzeniu porównaj stan kontrolera i dziennik z czasem uśpienia. Gdy parowanie i połączenie działają, a zawodzi tylko audio, przejdź do dostępnego `arch-audio`.
+1. If allowed, check `systemctl status bluetooth.service --no-pager`. For the `failed` state, read a short excerpt of `journalctl -u bluetooth.service -b --no-pager -n 50` from the time of the failure. Having no access to the log does not mean the log is empty.
+2. Establish whether the controller is detected: `lsusb` or `lspci -k`, depending on the hardware. `rfkill list` can show a hardware or software block. A missing controller points to hardware, driver and firmware, not to pairing again.
+3. An available read of `bluetoothctl show` separates a missing controller, `Powered: no` and a working radio. The error `NotReady` requires establishing this state; it does not prove one specific cause.
+4. The radio works but the problem concerns one known device: read only its state through `bluetoothctl info ADDRESS`, using the address established earlier. Distinguish paired, trusted and connected; these are different properties.
+5. After wake-up, compare the controller state and the journal with the time of sleep. When pairing and connection work and only audio fails, move on to `arch-audio`, if available.
 
-## Zmiana i sprawdzenie
+## Change and verification
 
-Włączenie radia, usunięcie parowania, `trust`, `pair`, `connect` i restart usługi zmieniają stan. Wymagają osobnego planu i zgody; ostrzeż o rozłączeniu używanej klawiatury lub myszy. Nie czyść bazy BlueZ i nie przenoś kluczy między systemami w ramach domyślnej diagnozy.
+Turning on the radio, removing a pairing, `trust`, `pair`, `connect` and a service restart change state. They need a separate plan and consent; warn about disconnecting a keyboard or mouse in use. Do not clear the BlueZ database or move keys between systems as part of a default diagnosis.
 
-Przed zmianą zapisz właściwy stan urządzenia. Testuj połączenie oraz funkcję urządzenia, a przy regresji także cykl uśpienia. Jeśli kroku nie da się cofnąć bez ponownego parowania, powiedz to przed zgodą. Przechwytywanie `btmon` wymaga odrębnego zakresu i przeglądu danych.
+Before a change, record the relevant device state. Test the connection and the device's function, and for a regression also a sleep cycle. If a step cannot be undone without pairing again, say so before consent. Capturing with `btmon` needs its own scope and a review of the data.
 
-## Wynik
+## Result
 
-Podaj, czy problem dotyczy wykrywania, blokady, usługi, połączenia czy funkcji urządzenia. Dołącz potrzebny fragment dowodu i jeden dalszy krok. Zakończ bez naprawy, gdy brak wiarygodnego stanu hosta.
+State whether the problem concerns detection, a block, the service, the connection or the device's function. Include the needed excerpt of evidence and one further step. End without a fix when there is no reliable host state.
 
-## Źródła
+## Sources
 
-- [BlueZ: `bluetoothctl`, odczyty i polecenia sterujące](https://github.com/bluez/bluez/blob/master/doc/bluetoothctl.rst).
+- [BlueZ: `bluetoothctl`, reads and control commands](https://github.com/bluez/bluez/blob/master/doc/bluetoothctl.rst).

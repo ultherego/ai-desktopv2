@@ -1,40 +1,40 @@
 ---
 name: cachyos-gaming
-description: Diagnozuje uruchamianie, awarie i wydajność gier na CachyOS. Użyj przy Steam, Protonie, Lutris lub Heroic; prowadzi porównanie jednej zmiany z wynikiem bazowym.
+description: Diagnoses game launching, crashes and performance on CachyOS. Use for Steam, Proton, Lutris or Heroic; guides a comparison of one change against a baseline.
 ---
 
-# Diagnostyka gry i pomiar zmiany
+# Game diagnostics and measuring a change
 
-## Zbierz minimalny kontekst
+## Gather minimal context
 
-Ustal grę, sposób instalacji i uruchamiania, wersję gry i warstwy zgodności, kartę oraz sterownik. Zapytaj o dokładny objaw i ostatnią zmianę, jeśli nie wynika to z rozmowy. Rozróżnij brak uruchomienia, awarię po czasie i gorszą wydajność. Nie zaczynaj od strojenia systemu.
+Establish the game, how it is installed and launched, the version of the game and of the compatibility layer, the card and the driver. Ask about the exact symptom and the latest change if the conversation does not show them. Distinguish failure to launch, a crash after some time and worse performance. Do not start with system tuning.
 
-## Wybierz ścieżkę
+## Choose a path
 
-| Obserwacja | Następny krok |
+| Observation | Next step |
 |---|---|
-| Gra nie uruchamia się | Sprawdź komunikat, wymagania gry i obsługę zabezpieczeń w źródłach gry; porównaj wersję warstwy zgodności. |
-| Kończy się jeden konkretny tytuł | Odczytaj log z tej próby i dopasuj czas błędu; odróżnij istotny błąd od powtarzalnych ostrzeżeń. |
-| Problemy dotyczą wielu gier | Sprawdź wspólny sterownik, zasoby, bibliotekę gier i ostatnią aktualizację; skorzystaj z właściwego wybranego Skilla. |
-| Spada płynność po czasie | Porównaj obciążenie, temperatury i pamięć z momentem wystąpienia objawu. Samo użycie swap nie dowodzi przyczyny. |
-| Objaw występuje tylko z nakładką lub nagrywaniem | Zaplanuj próbę bez jednego dodatku, zachowując pozostałe ustawienia. |
+| Game does not launch | Check the message, the game's requirements and support for its protection mechanisms in the game's sources; compare the compatibility layer version. |
+| One specific title exits | Read the log from this attempt and match the time of the error; distinguish a relevant error from repeated warnings. |
+| Problems affect many games | Check the common driver, resources, game library and the latest update; use the right selected Skill. |
+| Smoothness drops over time | Compare load, temperatures and memory with the moment the symptom occurs. Swap use alone does not prove the cause. |
+| Symptom occurs only with an overlay or recording | Plan a trial without one add-on, keeping the other settings. |
 
-Odczyt plików i logów wymaga dostępu w polityce. Piaskownica poleceń nie widzi zwykle sesji gry; brak urządzenia lub procesu w jej widoku nie dowodzi braku na hoście. Nie czytaj danych konta i nie proś o cały katalog gry lub pełny raport bez potrzeby.
+Reading files and logs needs access in the policy. The command sandbox usually does not see the game session; a device or process missing from its view does not prove it is missing on the host. Do not read account data and do not ask for the whole game directory or a full report without need.
 
-## Próba i porównanie
+## Trial and comparison
 
-1. Zapisz stan bazowy: ustawienia grafiki, rozdzielczość, limit FPS, wersję warstwy zgodności, opcje startu oraz odtwarzalną scenę. Wybierz miarę odpowiadającą celowi: awaria, czas uruchomienia, czas klatki, FPS lub pobór mocy.
-2. Dobierz jedną zmianę wynikającą z dowodów. Zachowaj poprzednią wartość i sposób jej przywrócenia. Nie zmieniaj globalnie kilku parametrów ani nie usuwaj prefiksu lub cache jako zwykłego testu.
-3. Po osobnej zgodzie na zmianę wykonaj tę samą próbę w porównywalnych warunkach. Oddziel pierwszy przebieg z kompilacją shaderów od kolejnych; porównaj kilka powtórzeń. Jedna korzystna liczba bez warunków pomiaru nie dowodzi poprawy.
-4. Przy awarii lub pogorszeniu zaproponuj przywrócenie dokładnego stanu bazowego. Nie utrwalaj zmiany na podstawie niepełnego pomiaru.
+1. Record the baseline: graphics settings, resolution, FPS limit, compatibility layer version, launch options and a reproducible scene. Choose a metric matching the goal: crash, launch time, frame time, FPS or power draw.
+2. Choose one change that follows from the evidence. Keep the previous value and the way to restore it. Do not change several parameters globally, and do not delete the prefix or cache as a routine test.
+3. After separate consent to the change, run the same trial in comparable conditions. Separate the first run with shader compilation from later ones; compare several repetitions. One favorable number without measurement conditions does not prove an improvement.
+4. On a crash or degradation, propose restoring the exact baseline. Do not make a change permanent on the basis of an incomplete measurement.
 
-Do uzasadnionej próby diagnostycznej Proton udostępnia opcję startu Steam `PROTON_LOG=1 %command%`. Jej ustawienie i utworzenie logu są zmianą; nie udawaj ich wykonania przez aplikację. Przed odczytem wybierz potrzebny fragment, a po próbie przywróć wcześniejsze opcje. Dostępność parametrów sprawdzaj w dokumentacji używanej wersji.
+For a justified diagnostic trial, Proton offers the Steam launch option `PROTON_LOG=1 %command%`. Setting it and creating the log are a change; do not pretend the application did them. Before reading, select the needed excerpt, and after the trial restore the earlier options. Check parameter availability in the documentation for the version in use.
 
-## Wynik
+## Result
 
-Podaj zakres problemu, dowody, tabelę baza/próba z warunkami pomiaru, stan zastosowania i wynik. Jeśli próba nie odbyła się na żywej grze, nazwij ją niewykonaną. Nie obiecuj wzrostu wydajności na podstawie nazwy pakietu lub planisty.
+Give the scope of the problem, the evidence, a baseline/trial table with measurement conditions, the state of application and the result. If the trial did not take place on the live game, call it not performed. Do not promise a performance gain on the basis of a package or scheduler name.
 
-## Źródła
+## Sources
 
-- CachyOS, logi i opcje uruchamiania: <https://wiki.cachyos.org/configuration/gaming/>.
-- Proton, parametry runtime: <https://github.com/ValveSoftware/Proton#runtime-config-options>.
+- CachyOS, logs and launch options: <https://wiki.cachyos.org/configuration/gaming/>.
+- Proton, runtime parameters: <https://github.com/ValveSoftware/Proton#runtime-config-options>.

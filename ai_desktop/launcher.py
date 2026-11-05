@@ -14,21 +14,21 @@ def claude_binary(home=None):
     base = (home / ".local/share/claude/versions").resolve(strict=True)
     target = (home / ".local/bin/claude").resolve(strict=True)
     if not target.is_file() or not os.access(target, os.X_OK):
-        raise ValueError("Claude nie jest plikiem wykonywalnym")
+        raise ValueError("Claude is not an executable file")
     if not target.is_relative_to(base):
-        raise ValueError("Claude wskazuje poza katalog wersji")
+        raise ValueError("Claude points outside the versions directory")
     return target
 
 
 def build_command(workspace, binary, operation):
     if operation not in ALLOWED:
-        raise ValueError("Dozwolone tylko version i help")
+        raise ValueError("Only version and help are allowed")
     workspace = Path(workspace)
     if (not workspace.is_absolute() or workspace.is_symlink()
             or not workspace.is_dir()
             or workspace.parent != Path("/tmp")
             or not workspace.name.startswith("ai-desktop-launch-")):
-        raise ValueError("Niedozwolony katalog roboczy")
+        raise ValueError("Working directory not allowed")
     return [
         "bwrap",
         "--unshare-user", "--unshare-pid", "--unshare-net",
@@ -55,10 +55,10 @@ def build_command(workspace, binary, operation):
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if len(argv) != 1 or argv[0] not in ALLOWED:
-        print("Uzycie: python3 -B -m ai_desktop.launcher version|help")
+        print("Usage: python3 -B -m ai_desktop.launcher version|help")
         return 2
     if shutil.which("bwrap") is None:
-        print("Brak bwrap")
+        print("bwrap is missing")
         return 2
     try:
         binary = claude_binary()
@@ -67,14 +67,14 @@ def main(argv=None):
         return 2
     workspace = Path(tempfile.mkdtemp(prefix="ai-desktop-launch-", dir="/tmp"))
     workspace.chmod(0o700)
-    print(f"Testowy workspace: {workspace}", flush=True)
+    print(f"Test workspace: {workspace}", flush=True)
     try:
         completed = subprocess.run(
             build_command(workspace, binary, argv[0]),
             check=False, timeout=30,
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
-        print(f"Błąd uruchomienia: {type(exc).__name__}")
+        print(f"Could not start: {type(exc).__name__}")
         return 1
     print("LAUNCHER: PASS" if completed.returncode == 0 else "LAUNCHER: FAIL")
     return 0 if completed.returncode == 0 else 1

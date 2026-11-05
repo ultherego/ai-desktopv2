@@ -1,139 +1,139 @@
-# Architektura i model zagrożeń
+# Architecture and threat model
 
-Opis bieżącego kodu, a nie certyfikat izolacji. Tabela w sekcji 5 opisuje wymagane zachowanie, nie wynik zaliczony w każdym środowisku. Zgłaszanie problemów
-i zgody: [SECURITY.md](../SECURITY.md). Ograniczenia: [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
+A description of the current code, not an isolation certificate. The table in section 5 describes the required behavior, not a result passed in every environment. Reporting problems
+and consents: [SECURITY.md](../SECURITY.md). Limitations: [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md).
 
-## 1. Co chronimy i przed kim
+## 1. What we protect and from whom
 
-**Zasoby:** katalog domowy i pliki konfiguracyjne użytkownika, profil logowania (OAuth) klienta w `/var/lib/ai-desktop`, klucze SSH i GPG, gniazda i usługi lokalne,
-sieć, pliki projektów oraz decyzja użytkownika o wysłaniu lub zapisie danych.
+**Assets:** the user's home directory and configuration files, the client's login profile (OAuth) in `/var/lib/ai-desktop`, SSH and GPG keys, local sockets and services,
+the network, project files, and the user's decision to send or write data.
 
-**Przeciwnik:** prompt injection w pliku, wyniku polecenia, Skillu lub wyniku modelu; błędna lub wroga odpowiedź dostawcy; nieintencjonalne działanie modelu; błędny
-JSON; podmiana pliku lub dowiązania w trakcie operacji (symlink, TOCTOU); awaria lub timeout usługi; niepożądany ruch sieciowy.
+**Adversary:** prompt injection in a file, command output, Skill or model output; a wrong or hostile response from the provider; unintended action by the model; invalid
+JSON; replacement of a file or symlink during an operation (symlink, TOCTOU); service failure or timeout; unwanted network traffic.
 
-**Poza zakresem:** root, przejęte jądro, złośliwe `/usr`, wrogi proces tego samego użytkownika, utrata zasilania, fizyczny dostęp. Klient ma dostęp do własnego OAuth.
+**Out of scope:** root, a compromised kernel, a malicious `/usr`, a hostile process of the same user, power loss, physical access. The client has access to its own OAuth.
 
-**Zasada podstawowa:** model i jego odpowiedź nie są źródłem uprawnień. Decyduje polityka użytkownika i kontroler, a przy zapisie także człowiek.
+**Basic rule:** the model and its response are not a source of permissions. The user's policy and the controller decide, and for writes also a human.
 
-## 2. Architektura
+## 2. Architecture
 
 ```text
-Użytkownik (terminal, TTY)
-   │  pytanie, zgody
+User (terminal, TTY)
+   │  question, consents
    ▼
-Kontroler ai-desktop (UID użytkownika) ── czyta politykę i pliki, zbiera dane, zapisuje po zgodzie
+ai-desktop controller (user's UID) ── reads the policy and files, collects data, writes after consent
    │        │            │
-   │        │            └─ polecenia allow: bwrap, tylko odczyt, bez sieci
-   │        │               polecenia change, test, wycofanie: bez piaskownicy, po "tak"
-   │        └─ testy propozycji: bwrap, kopia w tmpfs, seccomp, bez sieci
-   │  sudo: stały pomocnik root, tylko start/stop jednostek sesji
-   │  gniazdo Unix (0600, właściciel UID użytkownika)
+   │        │            └─ allow commands: bwrap, read-only, no network
+   │        │               change commands, test, undo: no sandbox, after "yes"
+   │        └─ tests of proposals: bwrap, copy in tmpfs, seccomp, no network
+   │  sudo: fixed root helper, only start/stop of session units
+   │  Unix socket (0600, owner is the user's UID)
    ▼
-Usługa analizy (UID ai-desktop, jednostka systemd z ograniczeniami)
-   │  proxy CONNECT poza piaskownicą ──► tylko dozwolone hosty, port 443, adresy publiczne
-   ▼        ▲ gniazdo Unix
-Oficjalny klient w bwrap (osobne przestrzenie user/mnt/pid/net/ipc/uts)
+Analysis service (UID ai-desktop, systemd unit with restrictions)
+   │  CONNECT proxy outside the sandbox ──► only allowed hosts, port 443, public addresses
+   ▼        ▲ Unix socket
+Official client in bwrap (separate user/mnt/pid/net/ipc/uts namespaces)
 ```
 
-**Kontroler** działa jako zwykły użytkownik i odmawia pracy jako root. Pakiet uruchamia Python z `-I -B` z katalogu należącego do roota.
+**The controller** runs as a regular user and refuses to work as root. The package runs Python with `-I -B` from a root-owned directory.
 
-**Pomocnik sesji** to stały plik uruchamiany przez `sudo`. Tworzy jednostkę przejściową z ograniczeniami i limitem czasu, startuje socket tylko dla wywołującego UID i sprząta
-także po śmierci interfejsu. Kanał do niego nie przenosi danych ani poświadczeń. Pakiet nie instaluje reguł sudoers ani polkit, a jednostki są nieaktywne, dopóki sesja ich nie uruchomi.
+**The session helper** is a fixed file run through `sudo`. It creates a transient unit with restrictions and a time limit, starts a socket only for the calling UID and cleans up
+even after the interface dies. The channel to it carries no data or credentials. The package installs no sudoers or polkit rules, and the units stay inactive until a session starts them.
 
-**Usługa analizy** działa jako `ai-desktop`, bez powłoki logowania i grup dodatkowych. Ma `NoNewPrivileges`, pusty zbiór capabilities, `ProtectSystem=strict`, `ProtectHome`, limity pamięci,
-zadań i czasu oraz ograniczoną aktywację gniazda. Przed użyciem sprawdza własną tożsamość, prawa katalogu logowania i właściciela plików programu.
+**The analysis service** runs as `ai-desktop`, with no login shell and no supplementary groups. It has `NoNewPrivileges`, an empty capability set, `ProtectSystem=strict`, `ProtectHome`, limits on memory,
+tasks and time, and restricted socket activation. Before use it checks its own identity, the permissions of the login directory and the owner of the program's files.
 
-**Klient** to oficjalny plik wykonywalny z katalogu należącego do roota, w dokładnej zgłaszanej wersji 2.1.312. Dostaje czyste środowisko, własny katalog logowania z zapisem, puste HOME i katalog roboczy. Nie ma dostępu do katalogu
-domowego użytkownika ani gniazd pulpitu. Tryb zwykły: `--tools ""`, pusta konfiguracja MCP, jedna tura, bez zapisu sesji. Tryb web: wyłącznie `WebSearch`, najwyżej 4 tury i 2 wywołania. Filtr seccomp zakazuje ustawiania bitów SUID/SGID. Nie ma ogólnego filtra wywołań systemowych.
+**The client** is the official executable from a root-owned directory, in the exact reported version 2.1.312. It gets a clean environment, its own writable login directory, and an empty HOME and working directory. It has no access to the user's
+home directory or desktop sockets. Normal mode: `--tools ""`, an empty MCP configuration, one turn, no session saving. Web mode: `WebSearch` only, at most 4 turns and 2 calls. A seccomp filter forbids setting SUID/SGID bits. There is no general system call filter.
 
-**Proxy** obsługuje tylko CONNECT do `api.anthropic.com`, `claude.ai`, `platform.claude.com` (przy Codexie osobno `api.openai.com`). Rozwiązuje nazwę raz, sprawdza wszystkie adresy, odrzuca niepubliczne (w tym localhost i adresy metadanych) i łączy na sprawdzony adres. Przed połączeniem wymaga
-ClientHello z SNI równym nazwie hosta, odrzuca ECH. Nie używa MITM. Nie widzi treści TLS: nie filtruje ścieżek ani danych.
+**The proxy** handles only CONNECT to `api.anthropic.com`, `claude.ai`, `platform.claude.com` (with Codex, separately `api.openai.com`). It resolves the name once, checks all addresses, rejects non-public ones (including localhost and metadata addresses) and connects to the checked address. Before connecting it requires
+a ClientHello with SNI equal to the host name, and rejects ECH. It does not use MITM. It does not see TLS content: it does not filter paths or data.
 
-**Logowanie** odbywa się oficjalnym przepływem klienta w tym samym trybie izolacji, bezpośrednio w terminalu, bez przechwytywania. Program nie czyta tokenów, a przed żądaniem wymaga statusu `authMethod=claude.ai`. Nie ma klucza API ani obejścia. Codex: logowanie przez zaufany komponent poza przestrzenią modelu, krótkotrwały token idzie prywatnym kanałem do procesu klienta; osobny magazyn tokenów `/var/lib/ai-desktop/codex`.
+**Login** happens through the client's official flow in the same isolation mode, directly in the terminal, without capture. The program does not read tokens, and before a request it requires the status `authMethod=claude.ai`. There is no API key and no workaround. Codex: login through a trusted component outside the model's space, a short-lived token goes through a private channel to the client process; a separate token store `/var/lib/ai-desktop/codex`.
 
-**Pogoda** to kolektor kontrolera do dwóch stałych hostów Open-Meteo. **systemd:** tylko nazwy i stany jednostek.
+**Weather** is a controller collector to two fixed Open-Meteo hosts. **systemd:** only unit names and states.
 
-Odrzucony wariant: broker tokenów ukrywający OAuth przed klientem, kiedyś oznaczony „PREFEROWANY, DO WERYFIKACJI E2”. Nie jest obecną architekturą ani planem awaryjnym. Stare wejścia `diagnose ask` i `controller ask` odmawiają i nie uruchamiają modelu.
+Rejected option: a token broker hiding OAuth from the client, once marked "PREFERRED, TO BE VERIFIED IN E2". It is not the current architecture or a fallback plan. The old entry points `diagnose ask` and `controller ask` refuse and do not start the model.
 
-## 3. Przepływ danych i zgoda
+## 3. Data flow and consent
 
-1. **Polityka.** Kontroler czyta `permissions.toml` tylko z konta systemowego (bez HOME i XDG): właściciel, `0600`, bez dowiązań i zapisu dla innych. Wynik jest związany z dokładnymi bajtami i tożsamością pliku, a zmiana unieważnia operację.
-2. **Metadane.** Do modelu idzie pytanie i opis dostępu (wzorce, szablony, źródła), bez `deny`.
-3. **Plan.** Odpowiedź modelu jest parsowana jako ścisły JSON (bez powtórzonych kluczy i `NaN`), z zamkniętą listą akcji i limitami. Prosty tekst w rozmowie staje się odpowiedzią bez uprawnień.
-4. **Rozpoznanie i odczyt.** Nazwy i treści zbiera kontroler przez deskryptory z `O_NOFOLLOW`, z kontrolą `deny`, właściciela, typu, twardych linków i zmian w trakcie. Odczyt musi mieć oparcie w rozpoznaniu lub tekście użytkownika.
-5. **Wysłanie.** Każde żądanie ma własną zgodę wewnętrzną: niezmienny ładunek, SHA-256, nonce i termin ważności, jednorazowe użycie. Okno to 180 s (330 s dla `xhigh`, `max`) na krok i 30 minut na pytanie, bez czasu oczekiwania na użytkownika.
-6. **Wynik.** Tekst modelu jest ograniczony i oczyszczony z sekwencji terminala. Wyniki poleceń także.
-7. **Zapis.** Propozycja dotyczy tylko plików oznaczonych jako zapisywalne. Test na kopii, pełny diff, zgoda, ponowne sprawdzenie polityki i stanu plików, potem dziennik i publikacja.
+1. **Policy.** The controller reads `permissions.toml` only through the system account (no HOME or XDG): owner, `0600`, no symlinks and no write access for others. The result is bound to the exact bytes and identity of the file, and a change invalidates the operation.
+2. **Metadata.** The model receives the question and a description of access (patterns, templates, sources), without `deny`.
+3. **Plan.** The model's response is parsed as strict JSON (no repeated keys and no `NaN`), with a closed list of actions and limits. Plain text in a conversation becomes an answer with no permissions.
+4. **Discovery and read.** Names and contents are collected by the controller through descriptors with `O_NOFOLLOW`, with checks of `deny`, owner, type, hard links and changes along the way. A read must be backed by discovery or the user's text.
+5. **Sending.** Each request has its own internal approval: an immutable payload, SHA-256, a nonce and an expiry time, single use. The window is 180 s (330 s for `xhigh`, `max`) per step and 30 minutes per question, not counting time spent waiting for the user.
+6. **Result.** The model's text is limited and cleaned of terminal sequences. Command results too.
+7. **Write.** A proposal applies only to files marked as writable. Test on a copy, full diff, consent, re-check of the policy and file state, then journal and publication.
 
-**Zasada fail-closed:** brak piaskownicy, zła wersja, wyczerpany budżet, zmiana stanu lub niepotwierdzone zatrzymanie sesji kończą operację odmową. Brak ponowień i fallbacku.
+**Fail-closed rule:** a missing sandbox, a wrong version, an exhausted budget, a state change or an unconfirmed session stop end the operation with a refusal. No retries and no fallback.
 
-Wynik `--v`, `doctor` i `status` niczego nie autoryzuje. `status` jest offline: nie uruchamia klienta i nie dowodzi logowania.
+The output of `--v`, `doctor` and `status` authorizes nothing. `status` is offline: it does not start the client and does not prove login.
 
-## 4. Granica poleceń
+## 4. Command boundary
 
 ### `[commands] allow`
 
-**Parsowanie szablonów** (przy wczytaniu polityki): najwyżej 10 tokenów i 120 bajtów, bez znaków powłoki, literały z ograniczonego zestawu. Pierwsze słowo nie może być powłoką, interpreterem, narzędziem eskalacji, klientem sieciowym, programem zapisującym ani uruchamiającym inne programy (`env`, `find`, `git`, `less`, `tar` i inne). Znacznik nie może stać jako pierwszy argument ani przed podkomendą narzędzi typu `systemctl` i `docker`. Literalna ścieżka objęta `deny` jest odrzucana.
+**Template parsing** (when the policy is loaded): at most 10 tokens and 120 bytes, no shell characters, literals from a limited set. The first word cannot be a shell, an interpreter, an escalation tool, a network client, or a program that writes or runs other programs (`env`, `find`, `git`, `less`, `tar` and others). A placeholder cannot stand as the first argument or before a subcommand of tools like `systemctl` and `docker`. A literal path covered by `deny` is rejected.
 
-**Dopasowanie:** propozycja modelu to lista słów, nigdy tekst dla powłoki. Porównanie token po tokenie, znaczniki z własnym wzorcem. Program rozwiązywany jest w stałych katalogach systemowych: plik i wszystkie katalogi muszą należeć do roota i nie mogą być zapisywalne dla innych.
+**Matching:** the model's proposal is a list of words, never text for a shell. Comparison is token by token, placeholders have their own pattern. The program is resolved in fixed system directories: the file and all directories must be owned by root and must not be writable by others.
 
-**Wykonanie:** bez pytania, bez powłoki i wejścia, z czystym środowiskiem, limitem czasu i wyjścia. Piaskownica: `/` tylko do odczytu, tmpfs na `/home`, `/root`, `/run/user`, `/tmp`, bez sieci, IPC i capabilities, osobne PID (chyba że `share_processes = true`, wtedy widać procesy hosta i ich linie poleceń). Wynik jest oczyszczany i idzie do modelu jako niezaufane dane.
+**Execution:** without asking, without a shell or input, with a clean environment and limits on time and output. Sandbox: `/` read-only, tmpfs on `/home`, `/root`, `/run/user`, `/tmp`, no network, IPC or capabilities, separate PIDs (unless `share_processes = true`, in which case host processes and their command lines are visible). The output is cleaned and goes to the model as untrusted data.
 
-**Budżety:** 16 poleceń w planie, `command_rounds` na pytanie, wspólny limit `discovery_bytes`. Brak `bwrap` oznacza brak wykonania.
+**Budgets:** 16 commands in a plan, `command_rounds` per question, a shared `discovery_bytes` limit. No `bwrap` means no execution.
 
-**Czego ta granica nie daje:** piaskownica nie izoluje gniazd Unix hosta (D-Bus, Docker), więc polecenie z listy może zmienić stan bez pytania. Piaskownica nie ukrywa reszty systemu plików (np. `/etc`). `deny` nie filtruje wyników: dzienniki i listy procesów mogą zawierać dane wrażliwe. Odpowiedzialność za listę spoczywa na użytkowniku.
+**What this boundary does not give:** the sandbox does not isolate the host's Unix sockets (D-Bus, Docker), so a command from the list can change state without asking. The sandbox does not hide the rest of the file system (for example `/etc`). `deny` does not filter output: journals and process lists can contain sensitive data. Responsibility for the list rests with the user.
 
 ### `[commands] change`
 
-Szablon jest w `allow` albo w `change`, nigdy w obu, a znacznik nie może stać przed podkomendą. Lista `change` działa tylko przy niepustej liście `allow`. Plan musi podać test (pasujący do `allow`, nie do `change`) i wycofanie (z `change` lub `allow`). Musi być budżet na trzy polecenia, inaczej nic się nie dzieje. Polecenie z listy `change` nie może przejść w grupowym planie odczytu. Agent `read-only` w ogóle nie dostaje tej listy.
+A template is in `allow` or in `change`, never in both, and a placeholder cannot stand before a subcommand. The `change` list works only with a non-empty `allow` list. The plan must give a test (matching `allow`, not `change`) and an undo (from `change` or `allow`). There must be budget for three commands, otherwise nothing happens. A command from the `change` list cannot pass in a grouped read plan. A `read-only` agent does not get this list at all.
 
-Wymagane jest wpisanie całego słowa `tak` po zobaczeniu wszystkich trzech poleceń. Zmiana, test i wycofanie działają **na żywym systemie, bez piaskownicy**, z oczyszczonym środowiskiem (dostępna magistrala użytkownika, bez HOME i sekretów), bez wejścia, z limitami. Niezaliczony test pokazuje wycofanie i wymaga drugiego `tak`. Program nigdy nie cofa sam. Zatwierdzone wycofanie może się nie wykonać, gdy skończy się budżet pytania.
+Typing the whole word `yes` is required after seeing all three commands. The change, test and undo run **on the live system, without a sandbox**, with a cleaned environment (user bus available, no HOME and no secrets), without input, with limits. A failed test shows the undo and requires a second `yes`. The program never undoes on its own. An approved undo may not run if the question's budget runs out.
 
-Co to oznacza: po `tak` polecenie ma pełne uprawnienia użytkownika. Znaczniki w szablonie (np. `<unit>`) wybiera model. Test i wycofanie mogą nie przywrócić stanu. Zgoda dotyczy pokazanej treści, a nie jej skutków.
+What this means: after `yes` the command has the user's full permissions. Placeholders in the template (for example `<unit>`) are chosen by the model. The test and undo may not restore the state. Consent applies to the content shown, not to its effects.
 
-## 5. Zagrożenia
+## 5. Threats
 
-| ID | Atak lub awaria | Wymagane zachowanie |
+| ID | Attack or failure | Required behavior |
 |---|---|---|
-| T01 | Nieoczekiwane pole, powtórzony klucz, złośliwy ładunek | Odrzucenie przed wysłaniem, bez surowych logów |
-| T02 | Podmiana ładunku po zgodzie | Niezgodny SHA-256 i nonce, odmowa |
-| T03 | Dostęp klienta do katalogu domowego, `.ssh`, cudzych poświadczeń | Brak montowania. Wyjątek: własny profil OAuth klienta. Zatwierdzony tekst to nie montowanie |
-| T04 | Zapis na hoście, w `/tmp` hosta, uruchomienie powłoki przez klienta | Brak narzędzi, brak zapisywalnych montowań poza profilem |
-| T05 | Gniazdo hosta, D-Bus, agent SSH w kliencie | Brak dostępu i przekierowania |
-| T06 | Dowolny ruch, localhost, adres metadanych, przekierowanie, DNS rebinding | Blokada poza listą hostów. Przekierowanie w obrębie listy pozostaje możliwe |
-| T07 | Ujawnienie tokenów w pytaniu, błędzie, odpowiedzi | Kontroler nie czyta tokenów i nie przekazuje surowych błędów. Bez ochrony tokenu przed przejętym klientem |
-| T08 | Błąd sieci, wygasłe OAuth, brak `bwrap` | Fail-closed, stały komunikat, bez fallbacku na hosta |
-| T09 | Złośliwa instrukcja w wyniku modelu | Tekst nie staje się poleceniem ani zapisem |
-| T10 | Dowiązanie, wyjście ze ścieżki, TOCTOU w katalogu zadania | Brak wyjścia poza zakres; zmiana stanu to odmowa. Wyjątek przy odczycie: dowiązanie katalogu w `version = 2` na warunkach z [AGENT_MANAGEMENT.md](AGENT_MANAGEMENT.md) |
-| T11 | Zmiana planu lub pliku po zatwierdzeniu | Niezgodny stan, odmowa |
-| T12 | Przerwanie lub timeout w trakcie zapisu | Dziennik przed zapisem, stan widoczny w `task status`, cofanie po zgodzie, bez gwarancji przy utracie zasilania |
-| T13 | Niepoprawna odpowiedź lub błąd wykonawcy offline | Odmowa, program nie uruchamia modelu z tej ścieżki |
-| T14 | Prompt injection przez `SKILL.md` | Skill tylko z pakietu lub katalogu użytkownika, bez obcego właściciela i zapisu dla innych, limit rozmiaru. Nie daje uprawnień. Treść nie jest filtrowana |
-| T15 | WebSearch bez `web = true` lub po zmianie polityki | Odmowa przed klientem, brak narzędzi w innych trybach |
-| T16 | Pliki lub dane systemd w wyszukiwaniu | Tryb web dostaje tylko pytanie i stałe instrukcje |
-| T17 | Inne narzędzie, nadmiar tur, podszyty wynik lub URL źródła | Ograniczona konfiguracja klienta i ścisła kontrola strumienia i źródeł |
-| T18 | Model proponuje polecenie spoza listy lub z innym argumentem | Dokładne dopasowanie, inaczej nie uruchamia |
-| T19 | Model wybiera groźną podkomendę przez znacznik | Znacznik nie może stać przed podkomendą |
-| T20 | Podmieniony program w katalogu użytkownika | Tylko pliki roota w katalogach roota |
-| T21 | Polecenie z `allow` zmienia stan przez gniazdo Unix | **Nie jest zablokowane.** Odpowiedzialność za listę |
-| T22 | Wynik polecenia wynosi dane do dostawcy | **Zamierzone.** Granicą jest lista i limit wyjścia, `deny` nie filtruje wyniku |
-| T23 | Injection nakłania do zmiany na żywo | Zmiana tylko z listy `change`, po `tak`. Nie ma domyślnej listy |
-| T24 | Zmiana bez testu lub wycofania, test zmieniający stan | Odmowa przed wykonaniem |
-| T25 | Obejście `deny` inną pisownią lub wpisem niżej | `deny` obejmuje wszystko pod ścieżką; nazwy odfiltrowane przed wysłaniem |
-| T26 | Cofnięcie nadpisuje późniejszą edycję | Porównanie bajtów i trybu, konflikt zachowuje wersję użytkownika |
-| T27 | Przywrócenie z kosza na zajętą nazwę | Publikacja bez nadpisywania, inaczej konflikt |
-| T28 | Zgoda z rozmowy obowiązuje po zmianie uprawnień | Zgoda związana z dostępem, źródłami i usługą, inaczej nowe pytanie |
-| T29 | Wklejony tekst zatwierdza kolejne działanie | Bufor terminala czyszczony przed pytaniem, bez ochrony przed innym procesem na tym TTY |
-| T30 | Nawrót danych po cofnięciu dostępu | Zależne odpowiedzi i pamięć są usuwane przed kolejną turą |
+| T01 | Unexpected field, repeated key, malicious payload | Rejection before sending, no raw logs |
+| T02 | Payload replaced after consent | SHA-256 and nonce mismatch, refusal |
+| T03 | Client access to the home directory, `.ssh`, other people's credentials | No mounting. Exception: the client's own OAuth profile. Approved text is not a mount |
+| T04 | Write on the host, in the host's `/tmp`, starting a shell through the client | No tools, no writable mounts outside the profile |
+| T05 | Host socket, D-Bus, SSH agent in the client | No access and no forwarding |
+| T06 | Arbitrary traffic, localhost, metadata address, redirect, DNS rebinding | Blocked outside the host list. A redirect within the list remains possible |
+| T07 | Tokens exposed in a question, error, response | The controller does not read tokens and does not pass on raw errors. No token protection against a compromised client |
+| T08 | Network error, expired OAuth, no `bwrap` | Fail-closed, fixed message, no fallback to the host |
+| T09 | Malicious instruction in model output | Text does not become a command or a write |
+| T10 | Symlink, path escape, TOCTOU in the task directory | No escape outside the scope; a state change is a refusal. Exception on read: a directory symlink in `version = 2` under the conditions in [AGENT_MANAGEMENT.md](AGENT_MANAGEMENT.md) |
+| T11 | Plan or file changed after approval | State mismatch, refusal |
+| T12 | Interruption or timeout during a write | Journal before the write, state visible in `task status`, undo after consent, no guarantee on power loss |
+| T13 | Invalid response or error from the offline executor | Refusal, the program does not start the model from this path |
+| T14 | Prompt injection through `SKILL.md` | Skill only from the package or the user's directory, no foreign owner and no write access for others, size limit. Gives no permissions. Content is not filtered |
+| T15 | WebSearch without `web = true` or after a policy change | Refusal before the client, no tools in other modes |
+| T16 | Files or systemd data in a search | Web mode gets only the question and fixed instructions |
+| T17 | Another tool, excess turns, forged result or source URL | Restricted client configuration and strict control of the stream and sources |
+| T18 | Model proposes a command outside the list or with a different argument | Exact match, otherwise it does not run |
+| T19 | Model picks a dangerous subcommand through a placeholder | A placeholder cannot stand before a subcommand |
+| T20 | Replaced program in a user directory | Only root's files in root's directories |
+| T21 | A command from `allow` changes state through a Unix socket | **Not blocked.** The user is responsible for the list |
+| T22 | Command output carries data out to the provider | **Intended.** The boundary is the list and the output limit, `deny` does not filter output |
+| T23 | Injection urges a live change | A change only from the `change` list, after `yes`. There is no default list |
+| T24 | Change without a test or undo, a test that changes state | Refusal before execution |
+| T25 | Bypassing `deny` with another spelling or an entry lower down | `deny` covers everything under the path; names filtered out before sending |
+| T26 | Undo overwrites a later edit | Comparison of bytes and mode, a conflict keeps the user's version |
+| T27 | Restoring from the trash to a taken name | Publication without overwriting, otherwise a conflict |
+| T28 | Consent from a conversation stays valid after permissions change | Consent bound to access, sources and service, otherwise a new question |
+| T29 | Pasted text approves a further action | Terminal buffer cleared before the question, no protection against another process on this TTY |
+| T30 | Data returns after access is revoked | Dependent answers and memory are removed before the next turn |
 
-## 6. Zapis, cofanie i usuwanie
+## 6. Writing, undo and deletion
 
-Zapis idzie przez jeden wykonawcę: blokada katalogu, kontrola tożsamości, dziennik `.ai-desktop-tasks` (`0700`, pliki `0600`) ze starą i nową treścią przed publikacją, zapis pliku tymczasowego, kontrola, publikacja. Nowe pliki publikowane są bez nadpisywania; zajęta nazwa to odmowa. Ścieżki `.ai-desktop-tasks` i `.ai-task-*` są zarezerwowane dla programu, także w `version = 2`.
+Writing goes through a single executor: directory lock, identity check, `.ai-desktop-tasks` journal (`0700`, files `0600`) with the old and new content before publication, writing a temporary file, check, publication. New files are published without overwriting; a taken name is a refusal. The paths `.ai-desktop-tasks` and `.ai-task-*` are reserved for the program, also in `version = 2`.
 
-Cofanie porównuje bajty i tryb. Konflikt jest zachowany w dzienniku i widoczny, ale nie blokuje nowych zapisów, o ile w katalogu nie ma pozostałości. Blokują je nierozstrzygnięte pliki tymczasowe i niedokończone zadania. Limit 128 dzienników. Dziennik jest związany z katalogiem; historia z innego urządzenia lub podmienionego katalogu jest niepowiązana i nie służy do cofania.
+Undo compares bytes and mode. A conflict is kept in the journal and visible, but does not block new writes as long as no leftovers remain in the directory. Unresolved temporary files and unfinished tasks do block them. Limit of 128 journals. The journal is bound to the directory; history from another device or a replaced directory is unlinked and is not used for undo.
 
-Usuwanie przenosi do `.ai-desktop-tasks/trash-*` po zgodzie związanej z dokładnym planem (tożsamości, rozmiary, tryby, SHA-256) ważnej 180 s. Najwyżej 8 plików po 16 MiB. Przywracanie tylko na wolne nazwy.
+Deletion moves to `.ai-desktop-tasks/trash-*` after consent bound to the exact plan (identities, sizes, modes, SHA-256), valid for 180 s. At most 8 files of 16 MiB each. Restoring only to free names.
 
-## 7. Czego dowody nie obejmują
+## 7. What the evidence does not cover
 
-Testy syntetyczne używają atrapy klienta i nie dowodzą zachowania prawdziwego klienta ani odświeżania OAuth. Nie ma testu na wrogi proces tego samego UID ani utratę zasilania. Nie ma niezależnego przeglądu. Wynik jednego commita lub komputera nie poświadcza innego. Zmiana tych granic wymaga opisu kompromisu tutaj i testu na prawdziwym systemie.
+Synthetic tests use a mock client and do not prove the behavior of the real client or OAuth refresh. There is no test for a hostile process of the same UID or for power loss. There is no independent review. The result of one commit or computer does not attest another. Changing these boundaries requires describing the trade-off here and a test on a real system.

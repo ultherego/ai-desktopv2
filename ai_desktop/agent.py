@@ -31,11 +31,11 @@ PROBE = chr(10).join([
 
 def build_agent_command(workspace, binary, skills_root, action, digest, home, netns):
     if action not in ALLOWED:
-        raise ValueError("Niedozwolona operacja")
+        raise ValueError("Operation not allowed")
 
     base = build_command(workspace, binary, action)
     if base[-2:] != ["/opt/claude", ALLOWED[action]]:
-        raise ValueError("Nieoczekiwany format launchera")
+        raise ValueError("Unexpected launcher format")
 
     extra = [
         "--setenv", "CLAUDE_CONFIG_DIR", "/home/sandbox/.claude",
@@ -55,11 +55,11 @@ def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
 
     if len(argv) != 1 or argv[0] not in ALLOWED:
-        print("Uzycie: python3 -B -m ai_desktop.agent version|help")
+        print("Usage: python3 -B -m ai_desktop.agent version|help")
         return 2
 
     if shutil.which("bwrap") is None:
-        print("Brak bwrap")
+        print("bwrap not found")
         return 2
 
     try:

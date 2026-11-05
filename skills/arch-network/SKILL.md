@@ -1,36 +1,36 @@
 ---
 name: arch-network
-description: Diagnozuje połączenie i DNS zarządzane przez NetworkManager w Arch Linux. Użyj przy braku sieci, błędach nazw lub regresji VPN, rozdzielając stan łącza, adresację, trasę i rozwiązywanie nazw.
+description: Diagnoses connections and DNS managed by NetworkManager on Arch Linux. Use for no network, name errors or a VPN regression; separates link state, addressing, routing and name resolution.
 ---
 
-# Diagnostyka sieci
+# Network diagnostics
 
-## Zakres i źródło obserwacji
+## Scope and source of observation
 
-Ustal, czy problem dotyczy jednego programu czy całego hosta, jednego łącza czy wszystkich, oraz czy użytkownik pracuje zdalnie. Potwierdź użycie NetworkManagera; jeśli siecią zarządza inne narzędzie, nie zmieniaj konfiguracji NetworkManagera.
+Establish whether the problem concerns one program or the whole host, one link or all of them, and whether the user is working remotely. Confirm that NetworkManager is in use; if another tool manages the network, do not change NetworkManager configuration.
 
-Piaskownica poleceń AI Desktop nie ma sieci hosta. Wynik `ip` lub `ss` może opisywać wyłącznie piaskownicę, a brak połączenia w niej jest oczekiwany. `nmcli` korzysta z D-Bus, którego dostęp także podlega polityce. Nie używaj `change` do uzyskania odczytu hosta. Gdy brak właściwego źródła, poproś o jeden potrzebny wynik z terminala użytkownika.
+The AI Desktop command sandbox does not have the host network. An `ip` or `ss` result may describe only the sandbox, and no connection inside it is expected. `nmcli` uses D-Bus, whose access is also subject to the policy. Do not use `change` to obtain a host read. When the right source is missing, ask for the one result you need from the user's terminal.
 
-## Rozpoznanie i decyzje
+## Investigation and decisions
 
-Wykonuj tylko odczyty pasujące dokładnie do `allow`, bez potoków i powłoki.
+Run only reads that exactly match `allow`, without pipes or a shell.
 
-1. `nmcli general status` oraz `nmcli device status` wskazują stan zarządzania i urządzeń. `unmanaged` kieruje do ustalenia zarządcy; `unavailable` wymaga sprawdzenia przyczyny, np. blokady radia, sterownika lub kabla.
-2. Dla urządzenia ustalonego w wyniku odczytaj `nmcli device show INTERFEJS`. Sprawdź łącze, adresy, bramy i DNS. Brak adresu po zestawieniu łącza kieruje do aktywacji profilu lub DHCP, a nie od razu do serwera DNS.
-3. `nmcli connection show --active` wiąże urządzenie z aktywnym profilem. Nie proś o wszystkie pliki profili ani opcję pokazującą sekrety. Nazwy sieci, adresy i domeny ogranicz do zakresu zadania.
-4. Przy poprawnej adresacji potrzebny jest wiarygodny odczyt trasy hosta i wynik połączenia z konkretnym celem. Sukces do jednego IP nie potwierdza całej sieci; brak odpowiedzi ICMP sam nie dowodzi niedostępności usługi.
-5. Gdy połączenie z tym samym celem po IP działa, a po nazwie nie, sprawdź resolver oraz domeny i trasy DNS aktywnego VPN. Dozwolony dziennik `NetworkManager` z czasu zdarzenia służy potwierdzeniu, nie zastępuje stanu łącza.
+1. `nmcli general status` and `nmcli device status` show the management state and the devices. `unmanaged` points to finding out who manages it; `unavailable` needs its cause checked, e.g. a radio block, the driver or the cable.
+2. For a device established from the result, read `nmcli device show INTERFACE`. Check the link, addresses, gateways and DNS. No address after the link comes up points to profile activation or DHCP, not straight to the DNS server.
+3. `nmcli connection show --active` ties the device to the active profile. Do not ask for all profile files or for the option that shows secrets. Limit network names, addresses and domains to the scope of the task.
+4. With correct addressing, you need a reliable read of the host route and the result of a connection to a specific target. Success to one IP does not confirm the whole network; no ICMP reply does not by itself prove the service is unreachable.
+5. When a connection to the same target works by IP but not by name, check the resolver and the DNS domains and routes of the active VPN. An allowed `NetworkManager` log from the time of the event serves as confirmation; it does not replace link state.
 
-## Zmiana i sprawdzenie
+## Change and verification
 
-Nie zmieniaj DNS, tras, profilu ani radia na podstawie samego objawu. Nie czytaj `/etc/NetworkManager/system-connections/` w poszukiwaniu haseł i nie żądaj ich wklejenia.
+Do not change DNS, routes, a profile or the radio on the basis of a symptom alone. Do not read `/etc/NetworkManager/system-connections/` looking for passwords, and do not ask for them to be pasted.
 
-Przed zmianą pokaż właściwy profil, bieżące wartości, propozycję i dokładne przywrócenie. Restart, przełączenie profilu lub VPN mogą odciąć dostęp zdalny; bez sposobu odzyskania dostępu zakończ na planie. Testuj osobno łącze, adresację, trasę, DNS i pierwotną aplikację. Sprawdź też wymagane działanie VPN, nie tylko publiczną nazwę.
+Before a change, show the relevant profile, the current values, the proposal and the exact restoration. A restart or switching a profile or VPN can cut off remote access; without a way to regain access, end at the plan. Test the link, addressing, route, DNS and the original application separately. Also check the required VPN behavior, not only a public name.
 
-## Wynik
+## Result
 
-Wskaż pierwszą warstwę z potwierdzonym problemem, dowód i ograniczenia obserwacji. Jeśli dowody są niepełne, podaj hipotezę i jeden odczyt rozstrzygający zamiast resetu sieci.
+Name the first layer with a confirmed problem, the evidence and the limits of the observation. If the evidence is incomplete, give a hypothesis and one deciding read instead of a network reset.
 
-## Źródła
+## Sources
 
-- [NetworkManager: odczyt urządzeń, profili i statusów](https://networkmanager.dev/docs/api/latest/nmcli.html).
+- [NetworkManager: reading devices, profiles and statuses](https://networkmanager.dev/docs/api/latest/nmcli.html).

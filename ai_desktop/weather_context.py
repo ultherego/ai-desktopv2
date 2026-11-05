@@ -183,6 +183,8 @@ class _PinnedHTTPS(http.client.HTTPSConnection):
 def _endpoint(kind, parameters):
     if kind == "geocode" and type(parameters) is dict and set(parameters) == {"city"}:
         city = validate_city(parameters["city"])
+        # "pl" stays on purpose: with "en" the geocoder no longer finds the main city for Polish names (e.g. "Warszawa"),
+        # while with "pl" English names ("Warsaw") still match.
         return "geocoding-api.open-meteo.com", "/v1/search?" + urlencode({
             "name": city, "count": MAX_CANDIDATES, "language": "pl", "format": "json"})
     if kind == "current" and type(parameters) is dict and set(parameters) == {"latitude", "longitude"}:

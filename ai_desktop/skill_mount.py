@@ -13,12 +13,12 @@ PROBE = chr(10).join([
     "from pathlib import Path",
     "skill = Path(\"/home/sandbox/.claude/skills/cachyos-diagnostics/SKILL.md\")",
     "checks = {",
-    "  \"skill widoczny\": skill.is_file(),",
-    "  \"skills tylko do odczytu\": bool(os.statvfs(\"/home/sandbox/.claude/skills\").f_flag & os.ST_RDONLY),",
-    "  \"katalog hosta ukryty\": not Path(os.environ[\"HOST_HOME\"]).exists(),",
-    "  \"odrebna siec\": os.readlink(\"/proc/self/ns/net\") != os.environ[\"HOST_NETNS\"],",
+    "  \"skill visible\": skill.is_file(),",
+    "  \"skills read-only\": bool(os.statvfs(\"/home/sandbox/.claude/skills\").f_flag & os.ST_RDONLY),",
+    "  \"host directory hidden\": not Path(os.environ[\"HOST_HOME\"]).exists(),",
+    "  \"separate network\": os.readlink(\"/proc/self/ns/net\") != os.environ[\"HOST_NETNS\"],",
     "}",
-    "checks[\"zawartosc identyczna\"] = skill.is_file() and hashlib.sha256(skill.read_bytes()).hexdigest() == os.environ[\"EXPECTED_HASH\"]",
+    "checks[\"contents identical\"] = skill.is_file() and hashlib.sha256(skill.read_bytes()).hexdigest() == os.environ[\"EXPECTED_HASH\"]",
     "for name, ok in checks.items():",
     "    result = \"PASS\" if ok else \"FAIL\"",
     "    print(f\"{name}: {result}\")",
@@ -28,16 +28,16 @@ PROBE = chr(10).join([
 
 def source_hash(root: Path):
     if root.is_symlink() or not root.is_dir():
-        raise ValueError("Brak prawidlowego katalogu skills")
+        raise ValueError("No valid skills directory")
     entries = list(root.iterdir())
     if not entries:
-        raise ValueError("Katalog skills jest pusty")
+        raise ValueError("The skills directory is empty")
     for entry in entries:
         if entry.is_symlink() or not entry.is_dir():
-            raise ValueError("Niedozwolony element katalogu skills")
+            raise ValueError("Item not allowed in the skills directory")
         inspect_skill(root, entry.name)
         if any(child.is_symlink() for child in entry.rglob("*")):
-            raise ValueError("Symlink wewnatrz skilla")
+            raise ValueError("Symlink inside a Skill")
     return hashlib.sha256(
         (root / "cachyos-diagnostics/SKILL.md").read_bytes()
     ).hexdigest()
@@ -71,10 +71,10 @@ def build_command(root, host_home, netns, digest):
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv != ["self-test"]:
-        print("Uzycie: python3 -B -m ai_desktop.skill_mount self-test")
+        print("Usage: python3 -B -m ai_desktop.skill_mount self-test")
         return 2
     if not shutil.which("bwrap"):
-        print("Brak bwrap")
+        print("bwrap not found")
         return 2
     try:
         digest = source_hash(ROOT)

@@ -14,25 +14,25 @@ from .terminal_style import paint
 
 
 PROMPTS = {
-    "ask-question": "Przekazać żądanie do Claude [t/n]: ",
-    "files-read": "Odczytać te pliki do pytania? [t/n]: ",
-    "save-thread": "Zapisać tę rozmowę lokalnie, żeby do niej wrócić? [t/n]: ",
-    "run-change": "Ta ZMIANA może zmienić stan systemu. Wpisz tak, aby ją wykonać (albo n): ",
-    "run-undo": "Test niezaliczony. Wykonać wycofanie pokazane wyżej? Wpisz tak (albo n): ",
-    "systemd-read": "Zezwolić na ten odczyt systemd? [t/n]: ",
-    "weather": "Pobrać pogodę z Open-Meteo? [t/n]: ",
-    "ask-transfer": "Wysłać do Claude? [t/n]: ",
-    "transfer": "Wysłać pokazane dane do Claude? [t/n]: ",
-    "material-transfer": "Przekazać do Claude? [t/n]: ",
-    "material-whole": "Przekazać cały plik do Claude w tych żądaniach? [t/n]: ",
-    "material-task": "Przekazać do Claude? [t/n]: ",
-    "project-task": "Przekazać do Claude? [t/n]: ",
-    "project-delete": "Usunąć te pliki (trafią do kosza zadania, można je przywrócić)? [t/n]: ",
-    "restore": "Przywrócić usunięte pliki? [t/n]: ",
-    "project-continue": "Kontynuować analizę z Claude (kolejny etap)? [t/n]: ",
-    "project-edit": "Przekazać te pliki do Claude i przygotować diff? [t/n]: ",
-    "write": "Zapisać pokazane zmiany? [t/n]: ",
-    "rollback": "Cofnąć pokazane zmiany? [t/n]: ",
+    "ask-question": "Send this request to Claude? [y/n]: ",
+    "files-read": "Read these files for the question? [y/n]: ",
+    "save-thread": "Save this conversation locally so you can come back to it? [y/n]: ",
+    "run-change": "This CHANGE can alter the system. Type yes to run it (or n): ",
+    "run-undo": "The test failed. Run the undo shown above? Type yes (or n): ",
+    "systemd-read": "Allow this systemd read? [y/n]: ",
+    "weather": "Get the weather from Open-Meteo? [y/n]: ",
+    "ask-transfer": "Send to Claude? [y/n]: ",
+    "transfer": "Send the data shown to Claude? [y/n]: ",
+    "material-transfer": "Send to Claude? [y/n]: ",
+    "material-whole": "Send the whole file to Claude in these requests? [y/n]: ",
+    "material-task": "Send to Claude? [y/n]: ",
+    "project-task": "Send to Claude? [y/n]: ",
+    "project-delete": "Delete these files (they go to the task trash and can be restored)? [y/n]: ",
+    "restore": "Restore the deleted files? [y/n]: ",
+    "project-continue": "Continue the analysis with Claude (next stage)? [y/n]: ",
+    "project-edit": "Send these files to Claude and prepare a diff? [y/n]: ",
+    "write": "Save the changes shown? [y/n]: ",
+    "rollback": "Undo the changes shown? [y/n]: ",
 }
 MAX_ANSWER_BYTES = 64
 
@@ -70,7 +70,7 @@ def fresh_input(prompt, *, max_bytes=MAX_ANSWER_BYTES):
     raise ValueError("terminal answer too long")
 
 
-STRICT = frozenset({"run-change", "run-undo"})        # only the whole word "tak" counts, never "t"
+STRICT = frozenset({"run-change", "run-undo"})        # only the whole word "yes" counts, never "y"
 
 
 def confirm(action, *, reader=input, config=UNSET):
@@ -90,9 +90,9 @@ def confirm(action, *, reader=input, config=UNSET):
         if type(answer) is not str:
             raise ValueError("terminal answer type")
         answer = answer.strip().casefold()
-        if answer == "tak" or (answer == "t" and action not in STRICT):
+        if answer == "yes" or (answer == "y" and action not in STRICT):
             return True
-        if answer in ("n", "nie"):
+        if answer in ("n", "no"):
             return False
         if answer:                       # a bare Enter just asks again; it never approves
-            print("Wpisz tak albo n." if action in STRICT else "Wpisz t albo n.", flush=True)
+            print("Type yes or n." if action in STRICT else "Type y or n.", flush=True)

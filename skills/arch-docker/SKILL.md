@@ -1,37 +1,37 @@
 ---
 name: arch-docker
-description: Diagnozuje niedostępny demon Docker, błędy kontenera, sieci i zajętości danych. Użyj do ustalenia właściwego demona i zakresu awarii przed zmianą konfiguracji lub usuwaniem zasobów.
+description: Diagnoses an unavailable Docker daemon and container, network and data usage errors. Use to establish the right daemon and the scope of the failure before changing configuration or removing resources.
 ---
 
-# Diagnostyka Dockera
+# Docker diagnostics
 
-## Zakres i granica dostępu
+## Scope and access boundary
 
-Ustal jeden objaw i zakres: demon, konkretny kontener, sieć lub miejsce. Ustal też, czy chodzi o demon systemowy, rootless czy zdalny. Oczyszczone środowisko AI Desktop może wskazywać inny endpoint niż terminal użytkownika; nie zakładaj, że oba klienty widzą ten sam Docker.
+Establish one symptom and scope: daemon, a specific container, network or space. Also establish whether this concerns a system, rootless or remote daemon. The cleaned AI Desktop environment can point to a different endpoint than the user's terminal; do not assume both clients see the same Docker.
 
-Gniazdo Dockera pozwala zmieniać hosta mimo montowania plików tylko do odczytu. Nie proponuj ogólnego szablonu `docker` w `allow`. Korzystaj wyłącznie z konkretnych odczytów już dozwolonych przez właściciela. Nie żądaj pliku poświadczeń `~/.docker/config.json`, pełnego środowiska kontenera ani sekretów aplikacji.
+The Docker socket allows changing the host despite read-only file mounts. Do not propose a general `docker` template in `allow`. Use only specific reads already allowed by the owner. Do not ask for the credentials file `~/.docker/config.json`, the full container environment or application secrets.
 
-## Rozpoznanie i decyzje
+## Investigation and decisions
 
-1. Dla potwierdzonego demona systemowego sprawdź dostępny `systemctl status docker.service --no-pager`; dla rootless potrzebna jest właściwa sesja użytkownika. Odmowa lub brak sesji nie dowodzą zatrzymania demona.
-2. Dozwolone `docker info` potwierdza odpowiedź wybranego endpointu i rzeczywisty sterownik danych. Nie zakładaj sterownika na podstawie dystrybucji. `Cannot connect` rozdziel na błędny endpoint, uprawnienia do gniazda i niedziałający demon.
-3. Demon działa: wybierz jeden kontener z dozwolonego `docker ps -a`. Stan `Exited` wymaga kodu zakończenia i logu; sam w sobie nie dowodzi awarii, np. przy zadaniu jednorazowym. Odczyt logu ogranicz, np. `docker logs --tail 100 NAZWA`, jeśli dokładne argumenty dopuszcza polityka.
-4. Demon nie startuje: porównaj jego dziennik z dozwoloną konfiguracją. Opcja ustawiona równocześnie w `daemon.json` i argumentach usługi może wywołać konflikt; wskaż konkretną opcję i błąd przed zmianą.
-5. Przy sieci oddziel łączność hosta, kontenera i DNS. Widok sieci piaskownicy AI Desktop nie jest widokiem kontenera ani hosta. Przy zajętości danych użyj dostępnego `docker system df`; bez ustalenia właściciela i znaczenia zasobów zakończ na raporcie.
+1. For a confirmed system daemon, check `systemctl status docker.service --no-pager` if available; rootless needs the right user session. A denial or a missing session does not prove the daemon is stopped.
+2. An allowed `docker info` confirms a response from the selected endpoint and the actual storage driver. Do not assume the driver from the distribution. Split `Cannot connect` into a wrong endpoint, socket permissions and a daemon that is not running.
+3. The daemon runs: pick one container from an allowed `docker ps -a`. The `Exited` state needs an exit code and a log; in itself it does not prove a failure, for example with a one-off job. Limit the log read, e.g. `docker logs --tail 100 NAME`, if the policy admits the exact arguments.
+4. The daemon does not start: compare its journal with the allowed configuration. An option set both in `daemon.json` and in the service arguments can cause a conflict; name the specific option and error before any change.
+5. For networking, separate host connectivity, container connectivity and DNS. The network view of the AI Desktop sandbox is not the view of the container or the host. For data usage, use an available `docker system df`; without establishing the owner and purpose of the resources, end at the report.
 
-## Zmiana i sprawdzenie
+## Change and verification
 
-Nie naprawiaj uprawnień przez otwarcie gniazda dla wszystkich. Dostęp do demona działającego jako root, także przez grupę `docker`, daje uprawnienia na poziomie roota.
+Do not fix permissions by opening the socket to everyone. Access to a daemon running as root, including through the `docker` group, gives root-level privileges.
 
-Restart demona może przerwać kontenery. Zmiana konfiguracji wymaga zachowania poprzednich bajtów, sprawdzenia składni i kontroli skutków dla usług. `prune`, usuwanie wolumenów, zmiana sterownika lub katalogu danych wymagają osobnego uzgodnienia; nie mają automatycznie bezstratnego cofnięcia.
+A daemon restart can interrupt containers. A configuration change needs the previous bytes preserved, a syntax check and a review of the effects on services. `prune`, removing volumes, changing the driver or the data directory need separate agreement; they have no automatic lossless undo.
 
-Testuj pierwotny scenariusz i stan konkretnej aplikacji, nie tylko `active` demona. Nie pobieraj obrazu ani nie twórz kontenera testowego bez osobnej decyzji.
+Test the original scenario and the state of the specific application, not only the `active` state of the daemon. Do not pull an image or create a test container without a separate decision.
 
-## Wynik
+## Result
 
-Podaj endpoint i rodzaj demona, warstwę problemu, dowód oraz najmniejszy następny krok. Oddziel plan od wykonanej zmiany. Przy braku uprawnień nie obiecuj diagnozy kontenerów.
+Give the endpoint and type of daemon, the layer of the problem, the evidence and the smallest next step. Separate the plan from a change already made. Without permissions, do not promise a diagnosis of containers.
 
-## Źródła
+## Sources
 
-- [Demon: endpoint, konfiguracja i sieć](https://docs.docker.com/engine/daemon/troubleshoot/).
-- [Uprawnienia grupy `docker`](https://docs.docker.com/engine/install/linux-postinstall/).
+- [Daemon: endpoint, configuration and network](https://docs.docker.com/engine/daemon/troubleshoot/).
+- [Permissions of the `docker` group](https://docs.docker.com/engine/install/linux-postinstall/).
