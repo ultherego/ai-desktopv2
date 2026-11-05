@@ -9,7 +9,7 @@ import time
 from .analysis_contract import (AnalysisDenied, SYSTEM_PROMPT, canonical, request_seconds,
                                 result_packet, read_result)
 from .e2_ipc import _unique_pairs
-from .execution import DEFAULT_LOCAL_PORT, LOCAL_MODEL, valid_local_port
+from .execution import DEFAULT_LOCAL_PORT, LOCAL_MODEL, UNSET, valid_local_port
 from .permissions import load_policy
 
 HOST = "127.0.0.1"
@@ -26,10 +26,17 @@ def endpoint(port=DEFAULT_LOCAL_PORT):
 ENDPOINT = endpoint()
 
 
-def authorized_policy(port=None):
+def capture_policy():
+    try:
+        return load_policy(optional=True)
+    except (ValueError, OSError):
+        raise AnalysisDenied("authorization") from None
+
+
+def authorized_policy(port=None, *, captured=UNSET):
     """Run on the desktop, whose own policy is authoritative for this recipient."""
     try:
-        policy = load_policy(optional=True)
+        policy = capture_policy() if captured is UNSET else captured
         if (policy is None or not policy.provider_allowed("local")
                 or (port is not None and policy.local_port != port)):
             raise AnalysisDenied("authorization")
@@ -88,14 +95,14 @@ def _http(body, port, policy, seconds):
                 raise AnalysisDenied("timeout")
 
 
-def complete(parsed, sha256):
+def complete(parsed, sha256, approved_policy):
     """Accept only data already decoded by the canonical approval-envelope validator."""
     selected = parsed["execution"]
     port = selected.get("local_port", DEFAULT_LOCAL_PORT)
     mode = parsed["mode"]
     if selected["provider"] != "local" or mode == "web":
         raise AnalysisDenied("authorization")
-    policy = authorized_policy(port)
+    policy = authorized_policy(port, captured=approved_policy)
     prompt = SYSTEM_PROMPT
     if selected["instructions"]:
         prompt += "\n\nUser profile instructions:\n" + selected["instructions"]

@@ -1061,7 +1061,7 @@ def read_selected(policy, paths):
     return validate_context({"kind": "files", "files": files})
 
 
-def read_bounded(policy, path, limit, *, recheck=True):
+def read_bounded(policy, path, limit, *, recheck=True, expected_identity=None):
     """Read ONE exact file allowed by the policy, up to `limit` bytes (caller supplies consent).
 
     Same ownership, link, type, mode and race checks as read_selected, but without
@@ -1073,7 +1073,9 @@ def read_bounded(policy, path, limit, *, recheck=True):
     (selected,) = policy.select([path])
     if recheck:
         policy.recheck()
-    raw, _ = _read(selected, policy.uid, limit, system=policy._version == 2)
+    raw, identity = _read(selected, policy.uid, limit, system=policy._version == 2)
+    if expected_identity is not None and expected_identity != identity:
+        raise ValueError("files-changed")
     if recheck:
         policy.recheck()
     return selected, raw

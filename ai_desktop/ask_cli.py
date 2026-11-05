@@ -396,6 +396,8 @@ def main(argv=None, *, reader=input):
                 if not interactive or denied.reason not in SERVICE_FAILURES:
                     raise
                 _explain_denied(denied, args, state)
+                if denied.reason == "rate-limit":
+                    print("Use /provider to choose another recipient and review the conversation transfer.")
                 print("The conversation continues; the question was not retried. You can ask it again.")
                 keep_actions()
                 answer, code = None, 2

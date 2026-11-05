@@ -93,7 +93,7 @@ def failure_hint(reason, fallback, *, config=execution.UNSET, diagnostic=None):
 def add_arguments(parser, *, session=False):
     parser.add_argument("--provider", choices=execution.PROVIDERS, help="Use this service for the current run")
     parser.add_argument("--agent", metavar="NAME", help="Agent profile saved in ai-desktop agents")
-    parser.add_argument("--model", type=execution.model_argument, metavar="MODEL",
+    parser.add_argument("--model", type=execution.service_model_argument, metavar="MODEL",
                         help="Model for this run: an alias (ai-desktop settings models) or a model ID; default = the client's choice")
     parser.add_argument("--effort", choices=execution.EFFORTS,
                         help="Reasoning level for this run")

@@ -29,11 +29,13 @@ def panel_rows(*, store=None, now=None):
     now = int(time.time()) if now is None else now
     values = {(p, n): (t, s) for p, n, _, t, s in state.rows}
     logins = {(p, n): t for p, n, t in state.logins}
+    plans = {(p, n): (plan, t) for p, n, plan, t in state.plans}
     rows = []
     for provider in CLOUD:
         for name in state.items(provider):
             observed, samples = values.get((provider, name), (0, None))
-            rows.append({"provider": provider, "account": name, "selected": name == state.active(provider),
+            plan, plan_time = plans.get((provider, name), (None, None))
+            rows.append({"plan": plan, "plan_observed_at": plan_time, "provider": provider, "account": name, "selected": name == state.active(provider),
                          "usage": _window_text(observed, samples, now), "observed_at": observed or None,
                          "windows": samples or {}, "last_login_at": logins.get((provider, name)),
                          "status": ("retired" if (provider, name) in state.retired else
@@ -52,19 +54,23 @@ def usage_main(argv=None):
             print(json.dumps(rows, ensure_ascii=False))
         else:
             for row in rows:
-                print("{provider}/{account}   {usage}".format(**row))
+                print("%s/%s   plan %s   %s" % (row["provider"], row["account"], row["plan"] or "unknown", row["usage"]))
         return 0
     except (OSError, ValueError):
         print("Could not read account settings.")
         return 2
 
 
-def remember(provider, name, samples, *, store=None, now=None):
-    if provider not in CLOUD or not samples:
+def remember(provider, name, samples, *, plan=None, store=None, now=None):
+    if provider not in CLOUD or not (samples or plan):
         return
     try:
         observed = int(time.time()) if now is None else now
-        (store or AccountStore()).mutate(lambda current: current.note(provider, name, observed, samples))
+        def apply(current):
+            if samples:
+                current = current.note(provider, name, observed, samples)
+            return current.with_plan(provider, name, plan, observed) if plan else current
+        (store or AccountStore()).mutate(apply)
     except (OSError, ValueError):
         # Quota telemetry is optional. A busy or unreadable cache must not lose a completed response.
         pass

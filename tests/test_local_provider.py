@@ -131,6 +131,9 @@ class LocalProviderTests(unittest.TestCase):
                 stack.enter_context(patch("ai_desktop.analysis_session.authenticate", side_effect=AssertionError("sudo")))
                 self.assertEqual(management_cli.main(["set", "--provider", "local", "--model", "Synthetic-Q4"],
                                                       store=store, provider_neutral=True), 0)
+                self.assertEqual(management_cli.main(["set", "--provider", "codex", "--model", "Synthetic-Q4"],
+                                                      store=store, provider_neutral=True), 2)
+                self.assertEqual(store.load().config.selected_provider, "local")
                 self.assertEqual(doctor.main(["--v"]), 0)
                 self.assertIn(f"127.0.0.1:{port}", output.getvalue())
                 self.assertEqual(seen, [])

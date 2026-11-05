@@ -8,7 +8,6 @@ compiled OpenAI egress policy is disjoint from the Claude CONNECT policy.
 import json
 import os
 from pathlib import Path
-import stat
 import tempfile
 import threading
 
@@ -16,12 +15,11 @@ from . import account_runtime
 from .analysis_contract import (request_effort, request_seconds, AnalysisDenied, MAX_PACKET_LARGE, ModelText,
                                 canonical, result_text_limit, terminal_text, validate_meta)
 from .analysis_sandbox import (CA, HOME, INSTALL, NAMESPACES, child_failure,
-                               failure_stage, profile_lock, trusted_file)
+                               cloud_transport_ready, failure_stage, profile_lock, service_identity, trusted_file)
 from .codex_protocol import CLIENT_VERSION, Protocol, TOKEN_ENV
 from .e2_connect_proxy import ConnectProxy, OPENAI_HOSTS, open_public
 from .e2_ipc import _unique_pairs
-from .e2_socket_activation import _worker_identity
-from .e2_subscription_boundary import base_command, privileges_locked
+from .e2_subscription_boundary import base_command
 from .execution import validate as validate_execution
 from .process_io import MAX_PRIVATE_INPUT_BYTES, bounded_process
 from .siwc_auth import AuthClient, AuthError, AuthStore
@@ -42,29 +40,11 @@ def runtime_ready():
         if source.read(4) != b"\x7fELF":
             raise AnalysisDenied("runtime")
     trusted_file(INSTALL / "codex-client.py")
-    trusted_file(Path("/usr/bin/bwrap"))
-    for path in (*reversed(CA.parents), CA):
-        info = path.lstat()
-        if info.st_uid != 0 or (not stat.S_ISLNK(info.st_mode) and info.st_mode & 0o022):
-            raise AnalysisDenied("runtime")
-    trusted_file(CA.resolve(strict=True))
+    cloud_transport_ready()
 
 
 def supervisor_ready():
-    if not _worker_identity() or not privileges_locked(Path("/proc/self/status").read_text()):
-        raise AnalysisDenied("identity")
-    for path in reversed(HOME.parents):
-        info = path.lstat()
-        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
-            raise AnalysisDenied("identity")
-    descriptor = os.open(HOME, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
-    try:
-        info = os.fstat(descriptor)
-        if (info.st_uid != os.geteuid() or info.st_gid != os.getegid()
-                or stat.S_IMODE(info.st_mode) != 0o700):
-            raise AnalysisDenied("identity")
-    finally:
-        os.close(descriptor)
+    service_identity()
     runtime_ready()
 
 

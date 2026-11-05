@@ -9,7 +9,7 @@ import stat
 
 from .analysis_contract import (SERVICE_MARGIN, request_seconds, AnalysisDenied, Approval, MAX_PACKET, REASONS,
                                 digest, parse_request, read_result, result_packet)
-from .analysis_sandbox import run_client, supervisor_ready
+from .analysis_sandbox import run_client, transport_supervisor_ready as supervisor_ready
 from .analysis_framing import send_message, receive_message
 from . import e2_account, e2_ipc
 
@@ -91,7 +91,7 @@ def send_once(approval):
         provider = selected["provider"] if selected is not None else "claude"
         if provider == "local":
             from .local_provider import complete
-            return complete(parsed, approval.sha256)
+            return complete(parsed, approval.sha256, approval.local_policy)
         if not e2_account.account_ready():
             raise AnalysisDenied("consent")
         before = endpoint(uid)
@@ -113,9 +113,10 @@ def send_once(approval):
                                          selected["effort"] if selected else None) + SERVICE_MARGIN), approval.sha256,
                                  mode=mode, provider=provider)
             send_once.last_meta = getattr(result, "meta", None)      # closed model metadata, kept apart from the text
-            if send_once.last_meta and "quota" in send_once.last_meta:
+            if send_once.last_meta and ("quota" in send_once.last_meta or "plan" in send_once.last_meta):
                 from .account_cli import remember
-                remember(provider, (selected or {}).get("account", "default"), send_once.last_meta["quota"])
+                remember(provider, (selected or {}).get("account", "default"), send_once.last_meta.get("quota"),
+                         plan=send_once.last_meta.get("plan"))
             return str(result)                                       # callers get the plain text they always got
     except socket.timeout:
         raise AnalysisDenied("timeout") from None

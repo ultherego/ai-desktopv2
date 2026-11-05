@@ -28,20 +28,29 @@ def _local_selected():
     return selected is not None and selected["provider"] == "local"
 
 
-def installation_ready():
+def installation_ready(provider=None):
+    from .execution import current
+    provider = provider or (current() or {}).get("provider", "claude")
     uid = identity()
-    if _local_selected():
+    if provider == "local":
         return
     if not e2_account.account_ready():
         raise AnalysisDenied("identity")
     if Path("/proc/1/comm").read_text().strip() != "systemd":
         raise AnalysisDenied("endpoint")
+    if provider == "codex":
+        from .codex_runtime import runtime_ready
+    elif provider == "claude":
+        from .analysis_sandbox import runtime_ready
+    else:
+        raise AnalysisDenied("input")
+    runtime_ready()
     unit_policy(uid)
 
 
-def status():
+def status(provider=None):
     try:
-        installation_ready()
+        installation_ready(provider)
         values = properties(manager_unit(identity()))
         active = values.get("ActiveState") not in ("inactive", "failed")
         print("Files and units: ready. Analysis session: " + ("running." if active else "stopped."))

@@ -68,11 +68,18 @@ def model_allowed(provider, model):
 
 
 def model_argument(value):
-    """argparse type: a Claude alias or a shape-valid id; the provider-specific check happens at resolution."""
-    if type(value) is str and (value in MODELS or LOCAL_MODEL.fullmatch(value)):
+    """Legacy cloud-only argument. Codex identifiers use lower-case ASCII."""
+    if type(value) is str and (value in MODELS or CODEX_MODEL.fullmatch(value)):
         return value
     import argparse
     raise argparse.ArgumentTypeError("invalid model; use a Claude alias (ai-desktop settings models) or a Codex ID")
+
+
+def service_model_argument(value):
+    """Shared CLI syntax; resolve() subsequently enforces the actual service's identifier rules."""
+    if model_allowed("local", value):
+        return value
+    return model_argument(value)
 
 
 def validate(value):

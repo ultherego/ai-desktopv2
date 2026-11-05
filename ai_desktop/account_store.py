@@ -6,6 +6,9 @@ import re
 from .agent_profiles import Store, ProfileError, _pairs
 
 CLOUD = ("claude", "codex")
+PLANS = frozenset(("free", "go", "plus", "pro", "max", "ultra", "prolite", "promax", "team", "business",
+                   "enterprise", "edu", "edu_plus", "edu_pro", "self_serve_business_prolite",
+                   "self_serve_business_usage_based", "enterprise_cbp_automation", "enterprise_cbp_usage_based"))
 _NAME = re.compile(r"[a-z][a-z0-9-]{0,31}\Z", re.ASCII)
 
 
@@ -32,6 +35,7 @@ class Accounts:
     retired: tuple = ()
     # A successful explicit login is historical evidence; the live credential might subsequently expire.
     logins: tuple = ()
+    plans: tuple = ()
 
     def __post_init__(self):
         if len(self.rows) > 32:
@@ -55,6 +59,18 @@ class Accounts:
         if (len({(p, n) for p, n, _ in self.logins}) != len(self.logins)
                 or any((p, n) not in seen or type(t) is not int or not 0 < t < 2**34 for p, n, t in self.logins)):
             raise ProfileError("accounts")
+
+        if (len({(p, n) for p, n, _, _ in self.plans}) != len(self.plans)
+                or any(p not in CLOUD or n not in self.items(p) or plan not in PLANS
+                       or type(t) is not int or not 0 < t < 2**34 for p, n, plan, t in self.plans)):
+            raise ProfileError("accounts")
+
+    def with_plan(self, service, name, plan, observed):
+        previous = next((row for row in self.plans if row[:2] == (service, name)), None)
+        if previous is not None and previous[3] > observed:
+            return self
+        retained = tuple(r for r in self.plans if r[:2] != (service, name))
+        return replace(self, plans=retained + ((service, name, plan, observed),))
 
     def logged_in(self, provider, name, when):
         retained = tuple(r for r in self.logins if r[:2] != (provider, name))
@@ -93,20 +109,20 @@ class Accounts:
         return replace(self, rows=retained + ((service, name, self.active(service) == name, observed, quota(samples)),))
 
     def data(self):
-        return {"schema": 1, "rows": list(self.rows), "retired": self.retired, "logins": self.logins}
+        return {"schema": 1, "rows": list(self.rows), "retired": self.retired, "logins": self.logins, "plans": self.plans}
 
 
 def decode(raw):
     value = json.loads(raw, object_pairs_hook=_pairs)
-    if (type(value) is not dict or set(value) != {"schema", "rows", "retired", "logins"} or type(value["schema"]) is not int
+    if (type(value) is not dict or set(value) != {"schema", "rows", "retired", "logins", "plans"} or type(value["schema"]) is not int
             or value["schema"] != 1 or type(value["rows"]) is not list
             or any(type(row) is not list or len(row) != 5 for row in value["rows"])
             or any(type(value[k]) is not list or len(value[k]) > 32
                    or any(type(row) is not list or len(row) != size for row in value[k])
-                   for k, size in (("retired", 2), ("logins", 3)))):
+                   for k, size in (("retired", 2), ("logins", 3), ("plans", 4)))):
         raise ProfileError("accounts")
     try:
-        return Accounts(*(tuple(tuple(row) for row in value[key]) for key in ("rows", "retired", "logins")))
+        return Accounts(*(tuple(tuple(row) for row in value[key]) for key in ("rows", "retired", "logins", "plans")))
     except (TypeError, ValueError):
         raise ProfileError("accounts") from None
 

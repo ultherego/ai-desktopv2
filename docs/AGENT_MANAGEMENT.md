@@ -51,12 +51,12 @@ After `agents setup`:
 | Profile | Skill | Access |
 |---|---|---|
 | `default` | `concise-assistant` | `changes` |
-| `diagnostic` | `cachyos-diagnostics` | `read-only` |
+| `diagnostic` | CachyOS diagnostic, desktop documentation and Arch procedures (17 for an empty selection) | `read-only` |
 | `programmer` | `code-development` | `changes` |
 | `reviewer` | `code-review` | `read-only` |
 | `analyst` | `project-analysis` | `read-only` |
 
-Profiles are in the private `~/.config/ai-desktop/agents.json`. In `material` and `project` the commands `/settings`, `/agent NAME`, `/model ALIAS` and `/effort LEVEL` change the next question when nothing is running. Changing the service requires a new conversation.
+Profiles are in the private `~/.config/ai-desktop/agents.json`. In `material` and `project` the commands `/settings`, `/agent NAME`, `/model ALIAS` and `/effort LEVEL` change the next question when nothing is running. In `ask`, `/provider NAME` can transfer the current conversation with explicit consent.
 
 The program runs only one role in the foreground. The client's native subagents and MCP servers are disabled.
 
@@ -86,7 +86,7 @@ Run `ai-desktop ask` once and keep working: after an answer, `>` comes back. Arr
 1. The last 32 exchanges, up to 128 KiB in total (question up to 128 KiB, answer up to 8 KiB with visible truncation).
 2. Task memory: up to 40 entries (400 B each, 10 KiB in total) with the goal, criterion, attempts, values, corrections and decisions. The model proposes updates in its answer, and when out of room the oldest unprotected entries are dropped first. The program adds facts itself: what it ran and with what exit code, what it applied, what was refused.
 
-Memory gives no permissions. When access to a file is revoked, the answers and model entries that depend on it are removed before the next question, and the program says so. The program does not remember turns older than 8, apart from what went into task memory.
+Memory gives no permissions. When access to a file is revoked, the answers and model entries that depend on it are removed before the next question, and the program says so. Only the latest 32 exchanges can be included verbatim in a request.
 
 ## Saved conversations
 
@@ -100,7 +100,7 @@ ai-desktop sessions resume ID
 ai-desktop sessions remove ID
 ```
 
-The save is in `~/.local/state/ai-desktop/conversations` (directory `0700`, files `0600`, up to 64 KiB per file, 128 conversations). It contains the limited text of the conversation, memory and metadata, not whole materials, although an answer may quote a file. Resuming re-checks the policy, the file or project and the agent's configuration. Consents, write authorizations and the login session are not restored. A conversation open in another process will not be removed. `ai-desktop stop` concerns the temporary client session, not saved conversations.
+The save is in `~/.local/state/ai-desktop/conversations` (directory `0700`, files `0600`, up to 1 MiB per file, 128 conversations). It contains the limited text of the conversation, memory and metadata, not whole materials, although an answer may quote a file. Resuming re-checks the policy, the file or project and the agent's configuration. Consents, write authorizations and the login session are not restored. A conversation open in another process will not be removed. `ai-desktop stop` concerns the temporary client session, not saved conversations.
 
 ## Commands and changes on the live system
 
@@ -145,3 +145,41 @@ The list of models in the menu comes from the client, run in a closed sandbox wi
 ## Older commands
 
 `claude` and `codex` are listed in `ai-desktop --help-all`. For daily work use `settings` and `login`. `doctor` shows brief metadata, and `doctor --v` a JSON report; it does not check login or whether the model works.
+
+## Local llama.cpp server
+
+Use an already-running, trusted `llama-server` on the same computer. AI Desktop sends OpenAI-compatible chat completions to `http://127.0.0.1:8080/v1/chat/completions` by default. In the existing `permissions.toml`, enable `local` under `[network]`. The optional `[local]` section selects an unprivileged numeric port (1024–65535). Keep the existing `[files]` rules.
+
+```toml
+[network]
+local = true
+
+[local]
+port = 8080
+```
+
+Select the service with `ai-desktop settings set --provider local`, or use `ai-desktop ask --provider local` for one conversation. The `default` model uses the model served by a single-model server. If your server uses an alias, select it with `ai-desktop settings set --provider local --model my-model`. Use an alias of up to 96 letters, digits, dots, underscores or hyphens, beginning with a letter or digit. `ai-desktop doctor` shows the configured address and policy while offline. To actively query the enabled loopback server, run `ai-desktop local models` or `ai-desktop local status`. Both read only `/v1/models`. A successful check confirms that the server returned a model catalog; some servers also advertise unloaded models.
+
+The approval names the recipient and port. The controller rechecks the permission file immediately before releasing the text. It sends the application instructions and the approved request body. Responses are untrusted text processed by the same operation, test and write checks as a remote response. The local adapter rejects native tool calls and redirects. There is no cloud fallback, OAuth, key lookup, server installation or automatic startup. External weather collection, if separately enabled and requested, still contacts the weather service. WebSearch is unavailable on this provider.
+
+The server is a separate, owner-managed program. Its launch options, file access, logging and outbound network are outside AI Desktop's sandbox. Trust extends to whoever can bind the configured TCP port: another local user could claim it while your server is stopped. Use this on a machine you control with a dedicated loopback server, never a reverse proxy that forwards to another recipient. Servers requiring API keys, TLS, streaming-only responses or a remote host are unsupported.
+
+### Separate subscription accounts
+
+The existing subscription for each service is named `default`. Register a named account, complete its private browser login, then select it for new tasks:
+
+```fish
+ai-desktop account add claude work --login
+ai-desktop account add codex personal --login
+ai-desktop account use claude work
+ai-desktop account list
+ai-desktop usage --json
+```
+
+Without `--login`, `add` only registers the name. Run `ai-desktop account login claude work` later. In a terminal, `account add` and `account use` can prompt for missing choices. Selecting an account changes new requests for that provider. The original login command operates on the legacy default subscription. Named slots are separate for each desktop UID and provider. The authenticated caller determines the UID. The service mounts only the selected Claude profile or reads only the selected Codex auth store. The selected name is part of the approved request. An already connected name cannot be relinked to a different subscription.
+
+To replace an expired named login, connect and select a fresh name. To **permanently disable** the old name, run `ai-desktop account retire claude work --confirm-retire` from your terminal. This records a permanent local tombstone and removes only that named profile's local credentials. It also blocks saved conversations bound to that name from reaching the provider. Revoke any remaining remote grant or session through the provider. The legacy default profile has its own lifecycle.
+
+### Quota readings
+
+`ai-desktop usage`, the panel and `status --json` read private local observations. After a successful approved request, the controller accepts reported 5-hour and 7-day utilization and reset times from native Claude Code rate-limit events or Codex app-server's `account/rateLimits/updated` event. A missing window is unknown. Each sample shows its timestamp. Old windows are labelled expired. The command does not spend a turn. It has no live polling endpoint: the pinned Codex `account/rateLimits/read` requires native Codex-backend auth, whereas the approved integration uses a scoped Sign in with ChatGPT token on the Responses API. The isolated Claude flow only consumes quota metadata the client supplies. The panel displays the last recognized native subscription plan when supplied, its observation time and the last successful named login. Current remote authentication and quota availability still require host acceptance for the pinned native clients.

@@ -147,7 +147,7 @@ class ProfileStoreTests(unittest.TestCase):
             catalog = profiles.catalog_for(selected)
             for name in ("arch-btrfs", "arch-systemd", "cachyos-boot-snapshots"):
                 self.assertIn("- " + name + ":", catalog)
-            self.assertNotIn("# Diagnosing Btrfs", catalog)
+            self.assertNotIn("# Btrfs diagnostics", catalog)
             original = profiles.defaults().put("diagnostic", replace(selected, skills=("arch-audio",)))
             self.assertEqual(profiles.prepared(original).profiles["diagnostic"].skills, ("arch-audio",))
 

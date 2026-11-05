@@ -36,7 +36,7 @@ SERVICE_LABELS = {name: execution.provider_name(name) for name in execution.PROV
 def _profile_flags(parser, *, create=False):
     parser.add_argument("--provider", choices=execution.PROVIDERS,
                         help="Choose the service for all agents")
-    parser.add_argument("--model", type=execution.model_argument, metavar="MODEL")
+    parser.add_argument("--model", type=execution.service_model_argument, metavar="MODEL")
     parser.add_argument("--effort", choices=profiles.EFFORTS, help="Reasoning level")
     parser.add_argument("--instructions", help="Your own role instructions, up to 4096 B")
     parser.add_argument("--access", choices=profiles.ACCESSES, help="read-only blocks file changes")
@@ -59,7 +59,8 @@ def build_parser(*, prog="ai-desktop claude", provider_neutral=False):
     if provider_neutral:
         settings.add_argument("--provider", choices=execution.PROVIDERS,
                               help="Choose the service for all agents")
-    settings.add_argument("--model", type=execution.model_argument, metavar="MODEL")
+    settings.add_argument("--model", type=execution.service_model_argument if provider_neutral else execution.model_argument,
+                          metavar="MODEL")
     settings.add_argument("--effort", choices=profiles.EFFORTS)
     agents = commands.add_parser("agents", help="Manage profiles")
     actions = agents.add_subparsers(dest="action")

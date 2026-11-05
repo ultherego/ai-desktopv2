@@ -87,7 +87,7 @@ class NamedAccounts(unittest.TestCase):
             analysis_sandbox.model_text(0, encode([{**rate, "session_id": "other"}, final]))
 
     def test_codex_quota_is_per_account_and_expiry_is_displayed(self):
-        limits = {"primary": {"usedPercent": 70, "windowDurationMins": 300, "resetsAt": 1000},
+        limits = {"planType": "pro", "primary": {"usedPercent": 70, "windowDurationMins": 300, "resetsAt": 1000},
                   "secondary": {"usedPercent": 3, "windowDurationMins": 10080, "resetsAt": 4000}}
         client = turn_ready()
         client.feed(record(rate_message(limits)))
@@ -95,11 +95,14 @@ class NamedAccounts(unittest.TestCase):
         self.assertEqual(client.meta["quota"], expected)
         self.assertEqual(codex_windows({**limits, "limitId": "other-pool"}), {})
         self.store.mutate(lambda state: state.add("codex", "work"))
-        cli.remember("codex", "work", expected, store=self.store, now=500)
+        self.assertEqual(client.meta["plan"], "pro")
+        cli.remember("codex", "work", expected, plan="pro", store=self.store, now=500)
         cli.remember("codex", "work", {"five_hour": {"percent": 30, "reset": 600}}, store=self.store, now=400)
         rows = cli.panel_rows(store=self.store, now=2000)
         work = next(row for row in rows if row["account"] == "work")
         self.assertIn("window expired", work["usage"])
+        self.assertEqual(work["plan"], "pro")
+        self.assertEqual(work["plan_observed_at"], 500)
         self.assertEqual(work["windows"], expected)
         self.assertEqual(work["observed_at"], 500)
         self.assertTrue(all(r["windows"] == {} and r["observed_at"] is None for r in rows if r != work))

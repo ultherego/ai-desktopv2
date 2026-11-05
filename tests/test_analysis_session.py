@@ -303,7 +303,7 @@ class RootLifecycleTests(unittest.TestCase):
                     "DropInPaths": "", "NeedDaemonReload": "no", "UnitFileState": "static", "ActiveState": "inactive", "MainPID": "0"}
         for key, value in (("DropInPaths", "/etc/override"), ("NeedDaemonReload", "yes"),
                             ("UnitFileState", "enabled"), ("ActiveState", "active"), ("FragmentPath", "/tmp/unit")):
-            with patch.object(admin, "runtime_ready"), patch.object(admin, "trusted_file"), \
+            with patch.object(admin, "cloud_transport_ready"), patch.object(admin, "trusted_file"), \
                     patch.object(admin, "properties", side_effect=lambda unit: dict(good(unit), **{key: value})), \
                     patch.object(admin, "create_claim") as claim, patch.object(admin, "command") as command:
                 with self.assertRaises(AnalysisDenied):

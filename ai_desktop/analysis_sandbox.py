@@ -91,6 +91,17 @@ def trusted_file(path):
     return path
 
 
+def cloud_transport_ready():
+    """Metadata shared by both cloud clients; the supervisor has no chosen provider during the READY handshake."""
+    trusted_file(INSTALL / "analysis-worker.py")
+    trusted_file(Path("/usr/bin/bwrap"))
+    for part in (*reversed(CA.parents), CA):
+        info = part.lstat()
+        if info.st_uid != 0 or (not stat.S_ISLNK(info.st_mode) and info.st_mode & 0o022):
+            raise AnalysisDenied("runtime")
+    trusted_file(CA.resolve(strict=True))
+
+
 def runtime_ready():
     trusted_file(BINARY)
     if not os.access(BINARY, os.X_OK):
@@ -99,18 +110,11 @@ def runtime_ready():
         if source.read(4) != b"\x7fELF":
             raise AnalysisDenied("runtime")
     trusted_file(INSTALL / "analysis-client.py")
-    trusted_file(INSTALL / "analysis-worker.py")
-    trusted_file(Path("/usr/bin/bwrap"))
-    # A system CA bundle may be a root-owned symlink (Arch). Resolve it only
-    # after validating the link and all its own ancestors as root-controlled.
-    for part in (*reversed(CA.parents), CA):
-        info = part.lstat()
-        if info.st_uid != 0 or (not stat.S_ISLNK(info.st_mode) and info.st_mode & 0o022):
-            raise AnalysisDenied("runtime")
-    trusted_file(CA.resolve(strict=True))
+    cloud_transport_ready()
 
 
-def supervisor_ready():
+def service_identity():
+    """Require the confined service UID, locked privileges and its own private state directory."""
     if not _worker_identity() or not privileges_locked(Path("/proc/self/status").read_text()):
         raise AnalysisDenied("identity")
     for path in reversed(HOME.parents):
@@ -118,21 +122,32 @@ def supervisor_ready():
         if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
             raise AnalysisDenied("identity")
     flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-    home_fd = os.open(HOME, flags)
+    descriptor = os.open(HOME, flags)
     try:
-        profile_fd = os.open("claude", flags, dir_fd=home_fd)
-        try:
-            # Descriptor metadata only; never enumerate/read credentials. A
-            # compromised process of this same service UID remains trusted A+.
-            for descriptor in (home_fd, profile_fd):
-                info = os.fstat(descriptor)
-                if (info.st_uid != os.geteuid() or info.st_gid != os.getegid()
-                        or stat.S_IMODE(info.st_mode) != 0o700):
-                    raise AnalysisDenied("identity")
-        finally:
-            os.close(profile_fd)
+        info = os.fstat(descriptor)
+        if (info.st_uid != os.geteuid() or info.st_gid != os.getegid()
+                or stat.S_IMODE(info.st_mode) != 0o700):
+            raise AnalysisDenied("identity")
     finally:
-        os.close(home_fd)
+        os.close(descriptor)
+
+
+def transport_supervisor_ready():
+    service_identity()
+    cloud_transport_ready()
+
+
+def supervisor_ready():
+    service_identity()
+    # Inspect the Claude profile's metadata without opening credential files.
+    descriptor = os.open(PROFILE, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        info = os.fstat(descriptor)
+        if (info.st_uid != os.geteuid() or info.st_gid != os.getegid()
+                or stat.S_IMODE(info.st_mode) != 0o700):
+            raise AnalysisDenied("identity")
+    finally:
+        os.close(descriptor)
     runtime_ready()
 
 
@@ -264,6 +279,9 @@ def check_auth(code, output, *, connection_failed=False):
     if (result.get("authMethod") != "claude.ai"
             or result.get("configDirectory") != INNER_PROFILE):
         raise AnalysisDenied("auth-method")
+    from .account_store import PLANS
+    plan = result.get("subscriptionType")
+    return plan if type(plan) is str and plan in PLANS else None
 
 
 def _answer_events(output):
@@ -435,7 +453,7 @@ def run_client(action, report=b"", *, cancelled=None, mode="analysis"):
                             raise failure
                     if code not in (0, 1):
                         raise child_failure(errors, "client")
-                    check_auth(code, out, connection_failed=status_connection_failed.is_set())
+                    plan = check_auth(code, out, connection_failed=status_connection_failed.is_set())
                 if action == "login":
                     account_runtime.connected(account_path)
                     return "claude.ai"
@@ -451,9 +469,10 @@ def run_client(action, report=b"", *, cancelled=None, mode="analysis"):
                             if reason is not None:
                                 raise AnalysisDenied(reason)
                         raise analysis_failure(code, out, errors, analysis_connection_failed.is_set())
-                    if action == "web":
-                        return web_text(out)
-                    return model_text(code, out, mode=mode)
+                    answer = web_text(out) if action == "web" else model_text(code, out, mode=mode)
+                    if type(plan) is str:
+                        return ModelText(answer, {**(getattr(answer, "meta", None) or {"models": []}), "plan": plan})
+                    return answer
             finally:
                 proxy.shutdown()
                 thread.join(timeout=2)

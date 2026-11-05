@@ -148,7 +148,8 @@ def main(action, *, allow=False, details=False, named=None):
 
 def named_worker(action, uid, provider, name):
     from .e2_socket_activation import _worker_identity
-    from .analysis_sandbox import profile_lock, run_client, supervisor_ready
+    from .analysis_sandbox import profile_lock, run_client, service_identity
+    from .codex_runtime import supervisor_ready as codex_ready
     try:
         if not _worker_identity() or not os.isatty(0) or not os.isatty(1):
             return 2
@@ -156,13 +157,14 @@ def named_worker(action, uid, provider, name):
             return 2
         with account_runtime.selected(int(uid), provider, name):
             if action == "retire":
+                service_identity()
                 with profile_lock():
                     account_runtime.retire(HOME / provider)
                 return 0
-            supervisor_ready()
             if provider == "claude":
                 run_client("login")
                 return 0
+            codex_ready()
             with profile_lock():
                 return auth_worker("login")
     except (OSError, ValueError, AnalysisDenied):
