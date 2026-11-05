@@ -1,33 +1,40 @@
 ---
 name: arch-amdgpu
-description: Diagnozuje karty AMD ze sterownikiem amdgpu w Arch Linux. Użyj przy zawieszeniach, artefaktach, migotaniu, problemach z dźwiękiem HDMI, monitorowaniu albo zmianie taktowania karty.
+description: Diagnozuje zawieszenia, artefakty i problemy wyświetlania kart AMD w Arch Linux. Użyj po ustaleniu objawu; odróżnia regresję sterownika, ścieżkę obrazu i problem sprzętowy przed zmianą ustawień.
 ---
 
-# AMDGPU w Arch Linux
+# Diagnostyka AMDGPU
 
-## Procedura
+## Dane wejściowe i dostęp
 
-1. Potwierdź kartę i sterownik: `lspci -k -d ::03xx`.
-2. Sprawdź, czy `linux-firmware-amdgpu` jest aktualny: sterownik wymaga najnowszego firmware.
-3. Przeczytaj `journalctl -k -b` pod kątem `amdgpu` i `drm`. Po zawieszeniu sprawdź poprzedni rozruch: `journalctl -k -b -1`.
-4. Ustal, czy problem pojawił się po zmianie jądra lub po podkręcaniu.
-5. Odczytaj stan, jak niżej, i dopiero wtedy proponuj zmianę.
+Ustal model GPU, APU czy karta dedykowana, wersję działającego jądra, dokładny objaw i moment jego wystąpienia. Zapytaj o ostatnią aktualizację, zmianę monitora i strojenie tylko wtedy, gdy tych danych nie ma w rozmowie.
 
-## Odczyt
+Polecenia poniżej są odczytami wymagającymi odpowiedniej reguły `allow`; logi i pliki wymagają własnego dostępu. Brak uprawnień lub pliku w piaskownicy oznacza brak obserwacji. Nie uruchamiaj powłoki ani zapisu przez `/sys` w celu obejścia odmowy.
 
-Plik karty to `/sys/class/drm/card0/device/` (numer karty może być inny):
-- `gpu_busy_percent`, `pp_dpm_sclk`, `pp_dpm_mclk`, `mem_info_vram_used`, `mem_info_vram_total`;
-- `hwmon/hwmon*/temp1_input`, `pp_od_clk_voltage`, `pp_power_profile_mode`;
-- `/sys/kernel/debug/dri/0/amdgpu_pm_info` (wymaga roota).
+## Rozpoznanie
 
-## Znane objawy
+1. `lspci -k` identyfikuje urządzenie PCI i używany sterownik; `uname -r` identyfikuje jądro. Przy kilku GPU powiąż objaw z konkretnym urządzeniem.
+2. Jeśli polityka pozwala, odczytaj `journalctl -k -b --no-pager -n 100` z czasu awarii. Po restarcie potrzebny może być poprzedni rozruch. Brak zachowanego dziennika nie wyklucza zawieszenia.
+3. W dozwolonym kontekście znajdź urządzenie DRM powiązane z tym PCI i jego katalog `hwmon`. Nie zakładaj numerów `card0`, `dri/0` ani `hwmon0`. Czytaj tylko istniejące, obsługiwane pola; nie wnioskuj z braku opcjonalnego interfejsu o uszkodzeniu.
 
-- Artefakty przy odświeżaniu powyżej 60 Hz lub zawieszenia w grach: dynamiczne zarządzanie energią. Obejście: poziom `high` lub `low` w `power_dpm_force_performance_level`. Pomaga też inna wersja jądra.
-- Biały lub szary ekran, migotanie po zmianie rozdzielczości: parametr jądra `amdgpu.sg_display=0`.
-- Dźwięk zbyt szybki lub jego brak przy 4K przez HDMI: spróbuj HDR lub trybu „Ultra HD” w monitorze.
+## Interpretacja
 
-## Podkręcanie
+- Brak urządzenia w PCI: sprawdź wykrywanie sprzętu; zmiana parametru AMDGPU nie wyjaśni tego wyniku.
+- Inny sterownik lub brak sterownika: ustal powiązanie modułu z urządzeniem i błędy jego ładowania, zanim oceniasz wydajność.
+- Reset GPU, timeout lub błąd firmware w czasie objawu: skoreluj z obciążeniem i zmianą jądra. Sama obecność słowa `amdgpu` nie potwierdza przyczyny.
+- Migotanie tylko jednego wyjścia lub trybu: ustal monitor, złącze, odświeżanie i VRR; porównaj z działającym trybem. Nie uznawaj od razu zarządzania energią za przyczynę.
+- Wartości temperatury, zajętości VRAM i obciążenia oceniaj razem z czasem pomiaru; pojedyncza wysoka wartość nie dowodzi awarii.
 
-Odblokowanie wymaga parametru `amdgpu.ppfeaturemask`. Wiki ostrzega, że ustawienie wszystkich bitów (`0xffffffff`) może włączyć niestabilne funkcje: bezpieczniej dodać tylko `0x4000` do bieżącej maski. **Zmiana napięć i limitów grozi niestabilnością.** Zanim uznasz sprzęt za wadliwy, sprawdź, czy karta nie jest podkręcona, i przywróć wartości domyślne: `echo "r"` do `pp_od_clk_voltage`.
+## Zmiana i sprawdzenie
 
-Źródło: Arch Wiki, <https://wiki.archlinux.org/title/AMDGPU>.
+Zmieniaj jedną rzecz po osobnej zgodzie, z zapisanym stanem wyjściowym i sposobem przywrócenia. Parametr `amdgpu.sg_display=0` dotyczy tylko APU; rozważaj go wyłącznie przy pasującym problemie opisanym w dokumentacji jądra. Nie stosuj go jako ogólnej naprawy kart dedykowanych.
+
+Nie odblokowuj funkcji podkręcania ani nie resetuj cudzych ustawień napięcia lub zegarów w ramach diagnostyki. Testem jest powtórzenie tego samego scenariusza i porównanie objawu oraz dziennika. Brak odtworzenia awarii w krótkiej próbie nie dowodzi trwałej naprawy.
+
+## Wynik
+
+Podaj urządzenie i sterownik, potwierdzone obserwacje z czasem, najbardziej prawdopodobną przyczynę oraz alternatywę. Gdy brakuje danych, zakończ wskazaniem jednego potrzebnego odczytu, bez zgadywania naprawy.
+
+## Źródła
+
+- [Parametry AMDGPU: `sg_display`, `ppfeaturemask`](https://docs.kernel.org/gpu/amdgpu/module-parameters.html).

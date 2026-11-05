@@ -2,6 +2,7 @@
 
 ## Niewydane
 
+- Przebudowane procedury 21 Skilli: interpretacja wyników, warunki dalszych kroków, rozpoznanie ograniczeń dostępu i weryfikacja zmian. Usunięte zbyt szerokie recepty, m.in. pełny balance jako domyślne sprzątanie i `systemctl revert` jako cofnięcie pojedynczej edycji.
 - Pliki ze znakiem BOM i końcami linii Windows, np. CSV z Excela, dają się czytać i edytować. Model i diff widzą zwykły tekst, a zapis zachowuje format pliku. Cofnięcie przywraca dokładnie te same bajty. Pomieszane końce linii: odczyt działa, edycja jest odrzucana.
 - `ai-desktop ask`: wynik wykonanej zmiany zostaje w pamięci, gdy następna odpowiedź modelu nie dotrze, więc model nie zaproponuje jej ponownie. Po cofnięciu dostępu nowe, niezależne odpowiedzi zostają, a szczegóły akcji zależnych od tego pliku znikają. Rozmowa z wieloma plikami zawsze się zapisuje.
 - `ai-desktop ask`: końcowa odpowiedź dostaje wyniki poleceń i wczytane Skille, a nie tylko odczytane pliki. „Ustaliliśmy zmianę, zrób to” działa: etap edycji dostaje rozmowę, pamięć zadania, wyniki poleceń i Skille.

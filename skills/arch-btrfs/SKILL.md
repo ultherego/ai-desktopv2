@@ -1,36 +1,38 @@
 ---
 name: arch-btrfs
-description: Diagnozuje system plików Btrfs w Arch Linux. Użyj przy braku miejsca mimo wolnej przestrzeni, błędach danych, scrubie, balance, kompresji, migawkach albo wolnym montowaniu.
+description: Diagnozuje zajętość i błędy Btrfs. Użyj przy ENOSPC, niejasnym zużyciu miejsca, błędach sum kontrolnych albo ocenie potrzeby balance lub scrub.
 ---
 
-# Btrfs w Arch Linux
+# Diagnostyka Btrfs
 
-## Brak miejsca
+## Ustal zakres
 
-1. `df` i `du` podają złe wartości na Btrfs. Użyj `btrfs filesystem usage /` (wymaga roota) albo `btrfs filesystem df /`.
-2. Sprawdź migawki: dane współdzielone z migawką nie zwalniają miejsca po usunięciu pliku.
-3. Dużo przydzielonych, a pustych bloków: zaproponuj `btrfs balance start --bg /`, stan: `btrfs balance status /`. Na jednym dysku balance służy głównie do tego.
+Ustal punkt montowania, liczbę urządzeń, objaw i ostatnią zmianę. Nie zakładaj, że problem dotyczy `/`. Migawki i podwolumeny mogą współdzielić dane; odczyt `df` lub `du` nie wystarcza do wyjaśnienia całej alokacji.
 
-## Podejrzenie błędów danych
+## Odczyt i interpretacja
 
-1. Sprawdź `journalctl -k -b` pod kątem `BTRFS`.
-2. `btrfs scrub start /`, stan: `btrfs scrub status /`. Sprawdza całe urządzenie, nawet gdy wskażesz podwolumen. Długi scrub może mocno nagrzać dysk NVMe bez dobrego chłodzenia.
-3. Co miesiąc: `btrfs-scrub@-.timer` z pakietu `btrfs-progs`.
+Wykorzystuj tylko odczyty dozwolone przez kontroler. `btrfs filesystem usage PUNKT`, `btrfs filesystem show PUNKT`, `btrfs device stats PUNKT` i wąski fragment dziennika jądra mogą wymagać uprawnień lub danych od użytkownika. Widok montowań piaskownicy nie dowodzi układu hosta. Odmowa dostępu jest brakującym dowodem, nie awarią Btrfs.
 
-## `btrfs check`
+| Obserwacja | Następny krok |
+|---|---|
+| Duża różnica między przydzielonym a użytym miejscem | Rozdziel dane, metadane i nieprzydzieloną przestrzeń; ustal profile i udział migawek. Sama różnica nie uzasadnia balance. |
+| Usunięcie plików nie zwalnia miejsca | Sprawdź, czy ich extenty pozostają w migawkach; przedstaw zakres ewentualnego usuwania osobno. |
+| ENOSPC przy wolnym miejscu w `df` | Sprawdź wolne miejsce robocze i alokację metadanych; nie uruchamiaj pełnego balance. |
+| Błędy I/O, brak urządzenia, rosnące liczniki błędów | Zatrzymaj strojenie; priorytetem są kopia danych i diagnoza urządzeń. Nie zeruj liczników. |
+| Brak danych o układzie lub profilu | Zakończ diagnozę wskazaniem brakującego odczytu; nie zgaduj naprawy. |
 
-Działa na odmontowanym systemie plików, a jego naprawa jest wciąż niedojrzała. **Nie proponuj `btrfs check --repair` jako pierwszego kroku.** Najpierw kopia danych i dokumentacja: <https://btrfs.readthedocs.io/>.
+## Ewentualna zmiana
 
-## Inne objawy
+- Balance dobieraj do ustalonej przyczyny. Filtr `usage=0` dotyczy pustych grup bloków; inne progi wymagają uzasadnienia na podstawie zajętości. Pełny balance przenosi dane i metadane całego systemu plików, obciąża I/O i potrzebuje miejsca roboczego. `--bg` nie ogranicza tego zakresu.
+- Scrub sprawdza sumy kontrolne i może naprawiać z poprawnej repliki. Nie zastępuje pełnej kontroli struktur. Nawet scrub z `-r` na systemie zamontowanym do zapisu może powodować zapisy; nie przedstawiaj go jako zwykłego odczytu.
+- Nie proponuj `btrfs check --repair` ani zmiany profili jako ogólnej naprawy. Nie defragmentuj całego drzewa w celu odzyskania miejsca: może zerwać współdzielenie extentów.
+- Każda operacja wymaga osobnego planu, zgody, oceny obciążenia i testu wyniku. Przerwanie balance nie cofa już wykonanej relokacji; nie obiecuj rollbacku, którego nie ma.
 
-- Długie montowanie dużego wolumenu: `x-systemd.mount-timeout` w `fstab`.
-- Ciągła aktywność dysku w spoczynku: `discard=async` jest domyślne od jądra 6.2; limit w `/sys/fs/btrfs/UUID/discard/iops_limit`.
-- `open_ctree failed`: przy kilku dyskach może oznaczać brak jednego z nich.
+## Wynik
 
-## Ustawienia
+Podaj przyczynę lub hipotezę, dowody z zajętości i błędów oraz jeden następny krok. Po zatwierdzonej operacji porównaj te same odczyty i status operacji; sam kod zakończenia nie dowodzi rozwiązania problemu.
 
-- Kompresja: `compress=zstd` działa na nowe zapisy. Istniejące pliki wymagają `btrfs filesystem defragment -czstd`, co przy migawkach może zwiększyć zajęte miejsce. Rzeczywisty stopień: `compsize`.
-- Bazy danych i obrazy maszyn: `chattr +C` na pustym katalogu wyłącza kopiowanie przy zapisie dla nowych plików.
-- Migawki nie są rekurencyjne: zagnieżdżony podwolumen będzie w nich pusty. Nie są też kopią zapasową.
+## Źródła
 
-Źródło: Arch Wiki, <https://wiki.archlinux.org/title/Btrfs>.
+- [Balance: filtry, koszt i ENOSPC](https://btrfs.readthedocs.io/en/latest/btrfs-balance.html#filters).
+- [Scrub: zakres kontroli i naprawy](https://btrfs.readthedocs.io/en/latest/btrfs-scrub.html#description).

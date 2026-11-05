@@ -1,70 +1,40 @@
 ---
 name: cachyos-packages
-description: Rozwiązuje błędy pacmana i repozytoriów CachyOS. Użyj przy błędach aktualizacji, podpisów, kluczy, serwerów lustrzanych albo przy pytaniach o repozytoria v3, v4 i znver4.
+description: Diagnozuje repozytoria, mirrory i podpisy pakietów CachyOS. Użyj przy błędach pobierania, różnicach wersji lub ocenie zgodności zoptymalizowanego repozytorium z CPU.
 ---
 
-# Pakiety i repozytoria CachyOS
+# Pakiety CachyOS
 
-## Procedura
+## Rozpoznanie
 
-1. Przeczytaj dokładny komunikat błędu. Nie zgaduj go z opisu.
-2. Odczytaj stan: `/etc/pacman.conf` i ostatnie wpisy `/var/log/pacman.log`.
-3. Znajdź komunikat w tabeli poniżej i zaproponuj najmniej inwazyjny krok. Kolejny tylko wtedy, gdy poprzedni nie pomógł.
-4. Każde polecenie zmieniające system opisz jako plan, z tym, co zrobi. Sprawdź, czy nie ma ogłoszenia o ręcznej interwencji.
+Ustal dokładny komunikat, polecenie, pakiet, czas ostatniej aktualizacji i źródło pakietu. Dla konfliktów plików i blokady bazy wykorzystaj procedurę `arch-pacman`, jeśli jest udostępniona. Tutaj rozpatruj specyfikę repozytoriów CachyOS.
 
-## Repozytoria
+Odczytaj tylko potrzebne, dozwolone fragmenty `/etc/pacman.conf`, wskazanych mirrorlist i logu transakcji. Porównaj `pacman -Qi NAZWA` z `pacman -Si NAZWA`, jeśli szablony na to pozwalają. Nie proś o źródła zawierające dane logowania; w takim przypadku potrzebny jest minimalny fragment zredagowany przez użytkownika. Nie odczytuj całego magazynu kluczy. Brak uprawnień oznacza brak danych do diagnozy.
 
-CachyOS ma pakiety Archa przebudowane pod poziomy procesora: `x86-64-v3`, `x86-64-v4` i Zen 4/5. Bloki w `/etc/pacman.conf`:
+## Decyzje
 
-- v3: `[cachyos-v3]`, `[cachyos-core-v3]`, `[cachyos-extra-v3]`;
-- v4: `[cachyos-v4]`, `[cachyos-core-v4]`, `[cachyos-extra-v4]`;
-- Zen 4/5: `[cachyos-znver4]`, `[cachyos-core-znver4]`, `[cachyos-extra-znver4]`;
-- zawsze też `[cachyos]`, `[core]`, `[extra]`, `[multilib]`.
-
-v4 i znver4 używają `/etc/pacman.d/cachyos-v4-mirrorlist`. Przed oceną najpierw odczytaj `/etc/pacman.conf`, nie zakładaj poziomu.
-
-Sprawdzenie procesora:
-- `/lib/ld-linux-x86-64.so.2 --help | grep supported` (dla v4 szukaj `x86-64-v4 (supported, searched)`);
-- `gcc -march=native -Q --help=target 2>&1 | grep -Po "^\s+-march=\s+\K(\w+)$"` (wynik `znver4` lub `znver5` oznacza Zen 4/5).
-
-Procesory Intel od 12. generacji mogą zgłaszać v4, ale nie obsługują AVX-512: traktuj je jako v3.
-
-Repozytorium `[cachyos]` zawiera własnego `pacman`. Szukanie pakietów: <https://packages.cachyos.org/>. Zmiana poziomu to przebudowa całego systemu i odrębna procedura z <https://wiki.cachyos.org/features/optimized_repos/>: nigdy jako efekt uboczny.
-
-## Błędy pacmana (według wiki)
-
-| Komunikat | Co zaproponować po kolei |
+| Obserwacja | Dalsze sprawdzenie |
 |---|---|
-| `signature is invalid` | `sudo pacman -Syu`, potem `sudo cachyos-rate-mirrors`, potem reset kluczy |
-| `404 Not Found` | `sudo pacman -Syu`, ponów instalację |
-| `unable to lock database` | sprawdź, czy nie działa inny pacman; dopiero wtedy `sudo rm /var/lib/pacman/db.lck` |
-| `failed retrieving file`, `Connection timed out` | `sudo cachyos-rate-mirrors`, potem `sudo pacman -Syu` |
-| `local is newer than` | `sudo pacman -Syuu` (dopuszcza obniżenie wersji) |
-| `failed to commit transaction (conflicting files)` | ustal właściciela pliku, usuń konflikt świadomie; nie używaj `--overwrite` odruchowo |
-| `could not remove` | czyszczenie pamięci pakietów w CachyOS Hello |
+| 404 lub niezgodność wersji między mirrorami | Ustal aktualność lokalnej bazy i wybranego mirrora; sprawdź ogłoszenia. Dopiero potwierdzony problem mirrora uzasadnia jego zmianę. |
+| Timeout pobierania | Oddziel błąd jednego mirrora od problemu połączenia lub DNS. Polecenie w piaskownicy bez sieci nie jest testem łączności hosta. |
+| Niepoprawny podpis | Ustal pakiet, podpisujący klucz, czas systemowy i stan odpowiedniego pakietu keyring. Nie wyłączaj weryfikacji podpisów. |
+| `local is newer than` | Sprawdź, czy to opóźniony mirror, celowy downgrade w repozytorium czy pakiet z innego źródła. Samo ostrzeżenie nie uzasadnia obniżenia wersji. |
+| Nieoczekiwana architektura lub instrukcja CPU | Sprawdź faktycznie włączone repozytoria i zgodność CPU według aktualnej dokumentacji; nie wnioskuj tylko z nazwy rodziny procesora. |
 
-CachyOS Hello, karta Troubleshooting, ma przyciski: Reset keyrings, Clear package cache, Remove db lock.
+## Ewentualna zmiana
 
-Pełny reset kluczy to operacja ostateczna:
-```
-sudo rm -rf /etc/pacman.d/gnupg/
-sudo pacman-key --init
-sudo pacman-key --populate
-sudo pacman-key --recv-keys F3B607488DB35A47 --keyserver keyserver.ubuntu.com
-sudo pacman-key --lsign-key F3B607488DB35A47
-sudo rm -R /var/lib/pacman/sync
-```
+- Zmiana mirrorlist, aktualizacja keyringu i synchronizacja pakietów to oddzielne plany z zakresem transakcji i zgodą. Zachowaj poprzednią konfigurację, aby móc cofnąć konkretną zmianę.
+- Podwójne `-u` dopuszcza downgrade pakietów. Przed takim planem wyjaśnij, dlaczego wersje z repozytorium są właściwe i jakie pakiety mogą się cofnąć.
+- Nie podawaj uniwersalnej recepty kasowania keyringu, baz lub ręcznego podpisywania klucza. Przy podejrzeniu naruszenia zaufania zatrzymaj instalację i zweryfikuj aktualną procedurę oraz odcisk klucza w źródle dystrybucji.
+- Zmiana poziomu zoptymalizowanych repozytoriów obejmuje wiele pakietów. Wymaga odrębnego zadania, zgodności CPU, planu odzyskania i aktualnej dokumentacji. Nie wykonuj jej jako naprawy pojedynczego pakietu.
+- Nie dodawaj nowych uprawnień ani poleceń samodzielnie. Jeśli kontroler nie obsługuje operacji, przedstaw plan do decyzji użytkownika.
 
-## Serwery lustrzane
+## Wynik
 
-`sudo cachyos-rate-mirrors` testuje serwery i zapisuje `/etc/pacman.d/cachyos-mirrorlist`. Warto po spowolnieniach aktualizacji i błędach pobierania.
+Podaj porównane wersje i źródła, potwierdzoną przyczynę lub hipotezę oraz jeden następny krok. Po zatwierdzonej zmianie sprawdź ten sam pakiet i pierwotny błąd; zniknięcie ostrzeżenia nie dowodzi sprawności aplikacji.
 
-## Dobre praktyki
+## Źródła
 
-- Aktualizuj cały system (`pacman -Syu`), nie częściowo. Polecenia aktualizacji i usuwania to zmiany systemu: opisuj je jako plan.
-- Pamac według wiki może uszkodzić klucze; zalecany jest `pacman`, a z graficznych CachyOS Package Installer.
-- Ostrożnie z AUR: użytkownik powinien przeczytać PKGBUILD.
-- Przed aktualizacją sprawdź ogłoszenia o znanych problemach wymagających ręcznej interwencji.
-- `pacman -Qk NAZWA` sprawdza pliki pakietu. Tylko odczyt: `pacman -Q`, `-Qi`, `-Qs`, `-Qu`.
-
-Źródła: <https://wiki.cachyos.org/cachyos_basic/faq/>, <https://wiki.cachyos.org/features/optimized_repos/>.
+- [CachyOS FAQ: błędy pacmana](https://wiki.cachyos.org/cachyos_basic/faq/).
+- [Zgodność i migracja zoptymalizowanych repozytoriów](https://wiki.cachyos.org/features/optimized_repos/#migrating-from-x86-64-v3-to-x86-64-v4-or-znver4).
+- [pacman: opcja sysupgrade](https://man.archlinux.org/man/pacman.8.en).

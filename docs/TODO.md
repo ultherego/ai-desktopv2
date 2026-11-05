@@ -13,6 +13,8 @@ Etapy i warunki ich ukończenia opisuje [ROADMAP.md](ROADMAP.md).
 - [x] Zależność od cofniętego pliku nie przechodzi na niezależne odpowiedzi.
 - [ ] Zgodne limity szablonów `change` (polityka 128, kontrakt 24).
 - [ ] Skill przy pytaniu ogólnym bez `permissions.toml`.
+- [x] Przebudowa 21 procedur Skills, niezależny przegląd treści i scenariuszy oraz regresje przekazywania pełnej treści (`improve/skills-procedures`; dowody w ROADMAP).
+- [ ] Odbiór poprawionych procedur Skills w rzeczywistej rozmowie na CachyOS po CI konkretnego head.
 - [x] Dłuższy limit oczekiwania przy najwyższym rozumowaniu i komunikat mówiący, że chodzi o czas.
 - [x] Lista `task rollback` i `task status` od najnowszych wpisów, z datą. Dziś kolejność wynika ze skrótu planu, więc łatwo wybrać nie to zadanie.
 - [x] Jasny błąd, gdy `--workspace` wskazuje plik zamiast katalogu.

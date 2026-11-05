@@ -1,34 +1,40 @@
 ---
 name: arch-pacman
-description: Rozwiązuje błędy pacmana i aktualizacji w Arch Linux. Użyj przy konfliktach plików, uszkodzonych pakietach, blokadzie bazy, błędach pobierania, przerwanej aktualizacji albo sprzątaniu pamięci pakietów.
+description: Diagnozuje błędy pacmana, konflikty plików i przerwane aktualizacje. Użyj do rozpoznania przyczyny przed planem naprawy bazy, pakietów lub pamięci podręcznej.
 ---
 
-# Pacman w Arch Linux
+# Diagnostyka pacmana
 
-## Procedura
+## Dane wejściowe
 
-1. Przeczytaj dokładny komunikat. Jeśli problem zaczął się po aktualizacji, sprawdź `/var/log/pacman.log`.
-2. Odczytaj stan. Tylko odczyt: `pacman -Qi NAZWA`, `pacman -Qo /ścieżka/pliku`, `pacman -Qk NAZWA`, `pacman -Qdt` (osierocone), `pacman -Si NAZWA`.
-3. Dobierz krok z sekcji poniżej i opisz go jako plan.
-4. Arch wspiera tylko pełne aktualizacje. Nie proponuj częściowych (`pacman -Sy NAZWA`).
+Ustal dokładne polecenie i komunikat, nazwę pakietu, etap transakcji oraz czy działa inny menedżer pakietów. Jeśli awaria nastąpiła po aktualizacji, potrzebny jest odpowiedni fragment `/var/log/pacman.log`, nie cały raport komputera.
 
-## Błędy
+Odczyty wybieraj z aktualnych uprawnień: `pacman -Qi NAZWA`, `pacman -Qk NAZWA`, `pacman -Qo PLIK` i `pacman -Si NAZWA`. Zapytanie `-Si` opisuje lokalną bazę synchronizacji, której aktualność trzeba ustalić osobno. Odmowy nie obchodź przez `sudo`, powłokę ani polecenie z listy zmian.
 
-- **`failed to commit transaction (conflicting files)`**: pacman celowo nie nadpisuje plików. Ustal właściciela przez `pacman -Qo` i skąd plik się wziął. Program zainstalowany ręcznie, np. przez `make install`, trzeba odinstalować.
-- **`invalid or corrupted package`**: usuń częściowe pobrania `find /var/cache/pacman/pkg/ -iname "*.part" -delete`. Tę samą przyczynę może mieć nieaktualny `archlinux-keyring`.
-- **`unable to lock database`**: blokada `/var/lib/pacman/db.lck` może zostać po przerwaniu. Usuń ją dopiero wtedy, gdy na pewno nie działa żaden pacman.
-- **`Not found in sync db`, `Target not found`, `Failed retrieving file`**: sprawdź, czy pakiet istnieje i czy jego repozytorium jest włączone (np. `multilib`). Potem `pacman -Syu`, a jeśli to nie pomoże, `pacman -Syyu`.
+## Rozpoznaj przyczynę
 
-## Przerwana aktualizacja i system, który nie startuje
+| Obserwacja | Następny krok |
+|---|---|
+| Blokada bazy | Sam plik `db.lck` nie dowodzi osierocenia. Ustal aktywną transakcję na hoście; prywatna lista procesów piaskownicy jej nie wyklucza. Bez tego nie proponuj usuwania blokady. |
+| Konflikt pliku | Ustal właściciela przez `-Qo` i pochodzenie pliku. Nie usuwaj pliku pakietu ani nie stosuj globalnego `--overwrite`. |
+| Niepoprawny podpis lub uszkodzone archiwum | Rozdziel podpis, klucz, czas systemowy i błąd pobrania. Zachowaj weryfikację podpisów; nie wyłączaj `SigLevel`. |
+| 404 lub brak pakietu | Zweryfikuj nazwę, włączone repozytorium i stan bazy lub mirrora. Powtarzane odświeżanie nie rozwiąże wyłączonego repozytorium. |
+| Przerwanie po rozpoczęciu instalacji | Ustal pakiety i zakończone kroki z logu. Nie uznawaj poprawnego odczytu bazy za dowód spójności plików. |
+| `local is newer than` | Porównaj wersje i źródło pakietu; obniżenie wersji wymaga osobnego uzasadnienia. |
 
-1. Uruchom nośnik instalacyjny, zamontuj system i ESP, wejdź przez `arch-chroot`.
-2. W `/var/log/pacman.log` znajdź pakiety z przerwanej operacji.
-3. Powtórz dokładnie tę aktualizację: `pacman -Syu` z pełną listą tych pakietów. Dzięki temu uruchomią się właściwe skrypty.
+## Plan naprawy
 
-## Sprzątanie
+Arch wymaga spójnej pełnej aktualizacji; nie proponuj częściowej aktualizacji z samym odświeżeniem baz. Nie używaj `-Syyu`, resetu kluczy ani kasowania pamięci jako automatycznej eskalacji po dowolnym błędzie.
 
-- `paccache -r` (pakiet `pacman-contrib`) zostawia trzy ostatnie wersje. `paccache.timer` robi to co tydzień.
-- `pacman -Sc` usuwa pakiety niezainstalowane. `pacman -Scc` czyści wszystko i uniemożliwia powrót do wersji z pamięci: uprzedź o tym.
-- Pliki `.pacnew` to nowe wersje konfiguracji, których pacman nie nadpisał. Scala je użytkownik.
+Każda instalacja, usunięcie, downgrade, odblokowanie lub czyszczenie to osobna zmiana systemu: określ pakiety i pliki, zależności, ryzyko, zgodę i sposób odzyskania. Aktualizacja uruchamia skrypty i hooki; nie obiecuj jej atomowego cofnięcia.
 
-Źródło: Arch Wiki, <https://wiki.archlinux.org/title/Pacman>.
+Przed czyszczeniem ustal potrzebne wersje do odzyskania. Nie kasuj całej pamięci podręcznej; `.pacnew` wymaga świadomego scalenia, a pakiet osierocony nie musi być zbędny użytkownikowi.
+
+## Weryfikacja i wynik
+
+Sprawdź, czy pierwotny komunikat zniknął, transakcja się zakończyła i odpowiednie pliki oraz funkcja programu są poprawne. Podaj przyczynę z dowodem, zakres faktycznie wykonanej zmiany i pozostałe braki. Bez bezpiecznego planu odzyskania zakończ na diagnozie.
+
+## Źródła
+
+- [pacman: operacje i opcje](https://man.archlinux.org/man/pacman.8.en).
+- [Specyfika błędów CachyOS](https://wiki.cachyos.org/cachyos_basic/faq/).

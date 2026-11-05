@@ -1,27 +1,34 @@
 ---
 name: arch-bluetooth
-description: Diagnozuje Bluetooth z BlueZ w Arch Linux. Użyj, gdy kontroler nie działa, urządzenie nie paruje się albo Bluetooth przestaje działać po uśpieniu.
+description: Diagnozuje brak kontrolera Bluetooth, problemy parowania i regresje po uśpieniu w BlueZ. Użyj do odróżnienia braku sprzętu, blokady radia, stanu usługi i problemu jednego urządzenia.
 ---
 
-# Bluetooth w Arch Linux
+# Diagnostyka Bluetooth
 
-## Procedura
+## Zakres i dostęp
 
-1. Sprawdź usługę: `systemctl status bluetooth`, log: `journalctl -u bluetooth -b`.
-2. Sprawdź kontroler: czy istnieje `/sys/class/bluetooth`, czy moduły są załadowane (`lsmod`, zwykle `btusb`, czasem `btrtl`, `btintel`, `btbcm`).
-3. Sprawdź stan w `bluetoothctl`: `show`, `devices`.
-4. Przy błędzie `org.bluez.Error.NotReady` kontroler może być wyłączony lub zablokowany.
-5. Szczegóły: `btmon`, albo `bluetoothd` uruchomiony z `-n -d` po zatrzymaniu usługi.
+Ustal, czy wcześniej działało, czy awaria dotyczy wszystkich urządzeń i czy zaczęła się po uśpieniu lub aktualizacji. Nazwy i adresy urządzeń ogranicz do niezbędnych danych; nie żądaj kluczy parowania.
 
-## Parowanie (robi użytkownik)
+`bluetoothctl` korzysta z D-Bus. Dostęp do gniazda hosta nie jest gwarancją operacji tylko do odczytu. Wykonuj jedynie dokładne odczyty z `allow`; nie uruchamiaj interaktywnego menu, skanowania ani parowania jako rozpoznania. Odmowa dostępu lub brak magistrali oznaczają lukę w obserwacjach.
 
-`bluetoothctl`, potem `agent on`, `default-agent`, `scan on`, `pair MAC`, `connect MAC`, `trust MAC`. Adresy urządzeń są danymi osobistymi: cytuj je tylko, gdy to konieczne.
+## Rozpoznanie i decyzje
 
-## Znane sprawy
+1. Jeśli dozwolone, sprawdź `systemctl status bluetooth.service --no-pager`. Przy stanie `failed` odczytaj krótki fragment `journalctl -u bluetooth.service -b --no-pager -n 50` z czasu awarii. Brak dostępu do logu nie oznacza, że log jest pusty.
+2. Ustal, czy kontroler jest wykryty: `lsusb` lub `lspci -k` zależnie od sprzętu. `rfkill list` może wskazać blokadę sprzętową lub programową. Brak kontrolera kieruje do sprzętu, sterownika i firmware, nie do ponownego parowania.
+3. Dostępny odczyt `bluetoothctl show` rozdziela brak kontrolera, `Powered: no` i działające radio. Błąd `NotReady` wymaga ustalenia tego stanu, nie dowodzi jednej konkretnej przyczyny.
+4. Radio działa, lecz problem dotyczy jednego znanego urządzenia: odczytaj tylko jego stan przez `bluetoothctl info ADRES`, używając adresu ustalonego wcześniej. Rozróżnij sparowane, zaufane i połączone; to różne właściwości.
+5. Po wybudzeniu porównaj stan kontrolera i dziennik z czasem uśpienia. Gdy parowanie i połączenie działają, a zawodzi tylko audio, przejdź do dostępnego `arch-audio`.
 
-- Komputer budzi się przez Bluetooth: w trybie S2idle kontroler pozostaje aktywny. Wiki opisuje usługę wyłączającą go przed uśpieniem, ale wtedy mysz ani klawiatura Bluetooth nie obudzą komputera.
-- Dźwięk Bluetooth działa tylko po zalogowaniu, bo PipeWire i PulseAudio to usługi użytkownika: zobacz Skill `arch-audio`.
-- Błędy po wybudzeniu: przeczytaj dziennik jądra z tego czasu, zanim zaproponujesz zmianę.
-- Dual boot wymaga przeniesienia kluczy parowania między systemami.
+## Zmiana i sprawdzenie
 
-Źródło: Arch Wiki, <https://wiki.archlinux.org/title/Bluetooth>.
+Włączenie radia, usunięcie parowania, `trust`, `pair`, `connect` i restart usługi zmieniają stan. Wymagają osobnego planu i zgody; ostrzeż o rozłączeniu używanej klawiatury lub myszy. Nie czyść bazy BlueZ i nie przenoś kluczy między systemami w ramach domyślnej diagnozy.
+
+Przed zmianą zapisz właściwy stan urządzenia. Testuj połączenie oraz funkcję urządzenia, a przy regresji także cykl uśpienia. Jeśli kroku nie da się cofnąć bez ponownego parowania, powiedz to przed zgodą. Przechwytywanie `btmon` wymaga odrębnego zakresu i przeglądu danych.
+
+## Wynik
+
+Podaj, czy problem dotyczy wykrywania, blokady, usługi, połączenia czy funkcji urządzenia. Dołącz potrzebny fragment dowodu i jeden dalszy krok. Zakończ bez naprawy, gdy brak wiarygodnego stanu hosta.
+
+## Źródła
+
+- [BlueZ: `bluetoothctl`, odczyty i polecenia sterujące](https://github.com/bluez/bluez/blob/master/doc/bluetoothctl.rst).
