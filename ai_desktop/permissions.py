@@ -7,6 +7,7 @@ to the exact configuration inode, metadata and bytes until transfer approval.
 """
 from contextlib import contextmanager
 import errno
+import hashlib
 from dataclasses import dataclass
 import json
 import os
@@ -624,6 +625,10 @@ class Policy:
     _commands: tuple = ()
     _changes: tuple = ()
     _share_processes: bool = False
+
+    def fingerprint(self):
+        """Identifies the exact permissions.toml this policy came from, including what `access()` does not list."""
+        return hashlib.sha256(self._raw).hexdigest()
 
     def provider_allowed(self, provider):
         if provider not in ("claude", "codex"):

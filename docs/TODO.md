@@ -15,7 +15,7 @@ Stan: pakiet `0.1.0-70`. Ograniczenia obecnej wersji opisuje [KNOWN_LIMITATIONS.
 - [x] Zapis istniejącego pliku nie nadpisuje równoczesnego zapisu edytora (wymiana `RENAME_EXCHANGE` z porównaniem; test na prawdziwym systemie przed scaleniem).
 - [x] `commands.change`: gdy zgoda wygaśnie lub polityka się zmieni w trakcie polecenia, wynik jest pokazany i odnotowany, a program podaje test i wycofanie do uruchomienia ręcznie.
 - [x] Błędna suma klienta: README nie uruchamia pliku, a `PKGBUILD` odmawia budowy.
-- [ ] `ConversationConsent`: wiązanie zgody pomija `deny`, część limitów i `share_processes`.
+- [x] `ConversationConsent`: zgoda na rozmowę obejmuje cały `permissions.toml`.
 - [ ] Pamięć rozmowy po cofnięciu dostępu: zredagowana odpowiedź i argumenty poleceń mogą przenosić treść cofniętego pliku.
 - [ ] Odciąć w piaskownicy poleceń odczytu gniazda Unix hosta (D-Bus, Docker), bez dawania poleceniom sieci.
 - [ ] Sprawdzić ogólny filtr wywołań systemowych dla klienta.
