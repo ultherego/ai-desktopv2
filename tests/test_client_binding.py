@@ -291,6 +291,23 @@ class ClientBindingTests(unittest.TestCase):
             self.assertEqual(fixture.main(["--allow-disposable-client-binding-test"]), 2)
             launch.assert_not_called()
 
+    def test_kernel_fixture_diagnostics_are_closed_without_paths_or_process_prose(self):
+        import ci_client_binding as fixture
+        failure = fixture.FixtureFailure("first-exec", code=3,
+            errors=b"FIXTURE: executable=expected-deleted\n")
+        self.assertIn("stderr=exe-expected-deleted", failure.diagnostic())
+        self.assertIn("exit=3", failure.diagnostic())
+        with self.assertRaises(fixture.FixtureFailure):
+            fixture.checked_result("first-exec", (3, b"", b"FIXTURE: executable=expected-deleted\n"))
+        output = io.StringIO()
+        failure = fixture.FixtureFailure("snapshot", reason="PRIVATE", code=999999,
+            errors=b"bwrap: PRIVATE /home/secret\nPermission denied")
+        with patch.object(fixture, "run", side_effect=failure), contextlib.redirect_stdout(output):
+            self.assertEqual(fixture.main(["--allow-disposable-client-binding-test"]), 2)
+        self.assertIn("stderr=bwrap-permission", output.getvalue())
+        self.assertNotIn("PRIVATE", output.getvalue())
+        self.assertNotIn("/home", output.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

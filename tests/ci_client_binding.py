@@ -4,6 +4,8 @@ The only root writes are to a freshly created, fixed /opt fixture directory.
 Never run this installer on a developer host. The ELF is compiled here from
 the synthetic source below and never has credentials or an egress bridge.
 """
+from contextlib import contextmanager
+import errno
 import os
 from pathlib import Path
 import subprocess
@@ -38,7 +40,15 @@ int main(int argc, char **argv) {
   ssize_t size = readlink("/proc/self/exe", executable, sizeof(executable)-1);
   if (argc != 3 || size < 0) return 2;
   executable[size] = 0;
-  if (strcmp(executable, argv[2])) return 3;
+  if (strcmp(executable, argv[2])) {
+    size_t expected = strlen(argv[2]);
+    if (!strncmp(executable, argv[2], expected) && !strcmp(executable + expected, " (deleted)"))
+      fputs("FIXTURE: executable=expected-deleted\n", stderr);
+    else if (strstr(executable, "memfd:"))
+      fputs("FIXTURE: executable=memfd\n", stderr);
+    else fputs("FIXTURE: executable=other\n", stderr);
+    return 3;
+  }
   for (int fd = 3; fd < 8192; ++fd)
     if (fcntl(fd, F_GETFD) != -1 || errno != EBADF) return 4;
   int fd = open(argv[1], O_RDONLY);
@@ -54,6 +64,69 @@ int main(int argc, char **argv) {
 '''
 
 
+_STAGES = frozenset(("preflight", "compile", "install", "snapshot", "mount", "first-exec",
+                     "update", "updated-exec", "source-recheck", "fd-close", "cleanup"))
+_REASONS = frozenset(("assertion", "os-error", "command", "client-missing", "client-unsafe",
+                      "client-layout", "client-unavailable", "client-changed", "input", "client",
+                      "timeout", "output-limit", "other"))
+
+
+def stderr_kind(raw):
+    """Finite categories only: never emit process-owned prose or a host path."""
+    if raw == b"":
+        return "empty"
+    for kind in ("expected-deleted", "memfd", "other"):
+        if raw == ("FIXTURE: executable=" + kind + "\n").encode("ascii"):
+            return "exe-" + kind
+    if type(raw) is bytes and raw.startswith(b"bwrap:"):
+        for fragment, kind in ((b"Permission denied", "permission"),
+                               (b"No such file or directory", "missing-path"),
+                               (b"Read-only file system", "readonly"),
+                               (b"Failed to bind mount", "bind")):
+            if fragment in raw:
+                return "bwrap-" + kind
+        return "bwrap-setup"
+    return "other"
+
+
+class FixtureFailure(ValueError):
+    def __init__(self, stage, *, reason="assertion", code=None, errors=b"", number=None):
+        self.stage = stage if stage in _STAGES else "preflight"
+        self.reason = reason if reason in _REASONS else "other"
+        self.code = str(code) if type(code) is int and -255 <= code <= 255 else "none"
+        self.stderr = stderr_kind(errors)
+        self.errno = errno.errorcode.get(number, "none") if type(number) is int else "none"
+        super().__init__(self.stage)
+
+    def diagnostic(self):
+        return ("stage=" + self.stage + " reason=" + self.reason + " exit=" + self.code
+                + " stderr=" + self.stderr + " errno=" + self.errno)
+
+
+@contextmanager
+def phase(stage):
+    try:
+        yield
+    except FixtureFailure:
+        raise
+    except AnalysisDenied as exc:
+        raise FixtureFailure(stage, reason=exc.reason) from None
+    except subprocess.CalledProcessError as exc:
+        raise FixtureFailure(stage, reason="command", code=exc.returncode, errors=exc.stderr) from None
+    except subprocess.TimeoutExpired:
+        raise FixtureFailure(stage, reason="timeout") from None
+    except OSError as exc:
+        raise FixtureFailure(stage, reason="os-error", number=exc.errno) from None
+    except ValueError:
+        raise FixtureFailure(stage) from None
+
+
+def checked_result(stage, result):
+    code, output, errors = result
+    if (code, output, errors) != (0, b"ORIGINAL\n", b""):
+        raise FixtureFailure(stage, code=code, errors=errors)
+
+
 def require_ci():
     if (os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("RUNNER_OS") != "Linux"
             or os.getuid() <= 0 or os.getuid() != os.geteuid() or os.getgid() != os.getegid()):
@@ -65,22 +138,24 @@ def require_ci():
         raise ValueError("fixture already exists")
 
 
-def checked(argv):
-    subprocess.run(argv, env={"PATH": "/usr/bin", "LANG": "C.UTF-8"},
-                   stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                   check=True, timeout=30)
+def checked(argv, *, stage="install"):
+    with phase(stage):
+        subprocess.run(argv, env={"PATH": "/usr/bin", "LANG": "C.UTF-8"},
+                       stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                       check=True, timeout=30)
 
 
 def run():
-    require_ci()
+    with phase("preflight"):
+        require_ci()
     created = False
     with tempfile.TemporaryDirectory(prefix="aid-client-binding-") as temporary:
         directory = Path(temporary)
         source = directory / "native.c"
         source.write_text(SOURCE)
         first, second = directory / "first", directory / "second"
-        checked(["/usr/bin/cc", "-O2", str(source), "-o", str(first)])
-        checked(["/usr/bin/cc", "-O2", '-DMARKER="REPLACED"', str(source), "-o", str(second)])
+        checked(["/usr/bin/cc", "-O2", str(source), "-o", str(first)], stage="compile")
+        checked(["/usr/bin/cc", "-O2", '-DMARKER="REPLACED"', str(source), "-o", str(second)], stage="compile")
         original, changed = directory / "original", directory / "changed"
         original.write_bytes(b"ORIGINAL")
         changed.write_bytes(b"REPLACED")
@@ -94,30 +169,32 @@ def run():
             checked(["/usr/bin/sudo", "-n", "/usr/bin/install", "-m", "644", str(original), str(RESOURCE)])
             with patch.object(clients, "_CANDIDATES", {"codex": str(NATIVE), "claude": "/usr/bin/claude"}), \
                     patch.object(clients, "_PACKAGE_ROOTS", {"codex": (str(FIXTURE),), "claude": ()}):
-                with binding.bind("codex") as bound:
-                    command = base_command() + bound.mount_args() + [
-                        "--chdir", "/work", bound.binary, str(RESOURCE), str(NATIVE)]
-                    result = bounded_process(command, env={"PATH": "/usr/bin", "LANG": "C.UTF-8"},
-                        pass_fds=bound.pass_fds, timeout=10, limit=4096)
-                    if result != (0, b"ORIGINAL\n", b""):
-                        raise ValueError("bound execution, resource, readonly or fd boundary")
+                with phase("snapshot"), binding.bind("codex") as bound:
+                    with phase("mount"):
+                        command = base_command() + bound.mount_args() + [
+                            "--chdir", "/work", bound.binary, str(RESOURCE), str(NATIVE)]
+                    with phase("first-exec"):
+                        result = bounded_process(command, env={"PATH": "/usr/bin", "LANG": "C.UTF-8"},
+                            pass_fds=bound.pass_fds, timeout=10, limit=4096)
+                        checked_result("first-exec", result)
                     # Freeze mount arguments, then replace both host files. The
                     # already-bound child must still execute/read original bytes.
-                    command = base_command() + bound.mount_args() + [
-                        "--chdir", "/work", bound.binary, str(RESOURCE), str(NATIVE)]
-                    checked(["/usr/bin/sudo", "-n", "/usr/bin/install", "-m", "755", str(second), str(NATIVE)])
-                    checked(["/usr/bin/sudo", "-n", "/usr/bin/install", "-m", "644", str(changed), str(RESOURCE)])
-                    result = bounded_process(command, env={"PATH": "/usr/bin", "LANG": "C.UTF-8"},
-                        pass_fds=bound.pass_fds, timeout=10, limit=4096)
-                    if result != (0, b"ORIGINAL\n", b""):
-                        raise ValueError("source replacement changed bound bytes")
+                    with phase("mount"):
+                        command = base_command() + bound.mount_args() + [
+                            "--chdir", "/work", bound.binary, str(RESOURCE), str(NATIVE)]
+                    checked(["/usr/bin/sudo", "-n", "/usr/bin/install", "-m", "755", str(second), str(NATIVE)], stage="update")
+                    checked(["/usr/bin/sudo", "-n", "/usr/bin/install", "-m", "644", str(changed), str(RESOURCE)], stage="update")
+                    with phase("updated-exec"):
+                        result = bounded_process(command, env={"PATH": "/usr/bin", "LANG": "C.UTF-8"},
+                            pass_fds=bound.pass_fds, timeout=10, limit=4096)
+                        checked_result("updated-exec", result)
                     try:
                         bound.recheck()
                     except AnalysisDenied as exc:
                         if exc.reason != "client-changed":
-                            raise ValueError("wrong changed-client result") from None
+                            raise FixtureFailure("source-recheck", reason=exc.reason) from None
                     else:
-                        raise ValueError("source change not detected")
+                        raise FixtureFailure("source-recheck")
                     retained = bound.pass_fds
                 for descriptor in retained:
                     try:
@@ -125,10 +202,10 @@ def run():
                     except OSError:
                         pass
                     else:
-                        raise ValueError("snapshot descriptor leaked")
+                        raise FixtureFailure("fd-close")
         finally:
             if created:
-                checked(["/usr/bin/sudo", "-n", "/usr/bin/rm", "-rf", "--", str(FIXTURE)])
+                checked(["/usr/bin/sudo", "-n", "/usr/bin/rm", "-rf", "--", str(FIXTURE)], stage="cleanup")
 
 
 def main(argv=None):
@@ -137,6 +214,9 @@ def main(argv=None):
         return 2
     try:
         run()
+    except FixtureFailure as exc:
+        print("CI CLIENT BINDING: FAIL " + exc.diagnostic())
+        return 2
     except (AnalysisDenied, OSError, ValueError, subprocess.SubprocessError):
         print("CI CLIENT BINDING: FAIL (synthetic payload boundary)")
         return 2
