@@ -73,7 +73,34 @@ def require_ci():
         raise ValueError("existing-endpoint")
 
 
+def install_skills():
+    """Install the same complete bundles used by the package, with root ownership."""
+    from ai_desktop import skills
+    source = ROOT / "skills"
+    directories = sorted(source.iterdir())
+    if not directories:
+        raise ValueError("missing-skills")
+    bundles = []
+    for directory in directories:
+        snapshot = skills.bundle(directory.name, root=source)
+        bundles.append((directory, tuple(snapshot["references"])))
+    # Validate the whole source tree before any privileged installation. The
+    # production loader remains responsible for ownership, modes and links.
+    owner = ("sudo", "-n", "/usr/bin/install", "-o", "root", "-g", "root")
+    destination = prior.DEST / "skills"
+    prior._run(*owner, "-d", "-m755", str(destination))
+    for directory, references in bundles:
+        target = destination / directory.name
+        prior._run(*owner, "-d", "-m755", str(target))
+        prior._run(*owner, "-m644", str(directory / "SKILL.md"), str(target / "SKILL.md"))
+        if references:
+            prior._run(*owner, "-d", "-m755", str(target / "references"))
+            prior._run(*owner, "-m644", *(str(directory / "references" / (name + ".md"))
+                                        for name in references), str(target / "references"))
+
+
 def install(temp, file_home):
+    install_skills()
     source = temp / "shim.c"
     source.write_text(SHIM)
     prior._run("/usr/bin/cc", "-Wall", "-Werror", "-O2", str(source), "-o", str(temp / "client"))

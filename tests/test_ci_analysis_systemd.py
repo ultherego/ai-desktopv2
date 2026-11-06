@@ -5,6 +5,8 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -34,6 +36,64 @@ class CiAnalysisGuardTests(unittest.TestCase):
             self.assertEqual(driver.main(["--allow-disposable-analysis-test"]), 2)
         self.assertNotIn("SECRET", out.getvalue())
         install.assert_not_called()
+
+    def test_fixture_installs_complete_skills_for_all_default_profiles(self):
+        from ai_desktop import agent_profiles, skills
+        # Profile stores deliberately reject /tmp as a writable ancestor.
+        with tempfile.TemporaryDirectory(dir=Path.home()) as temp:
+            destination = Path(temp) / "installed"
+            home = Path(temp) / "home"
+            home.mkdir(mode=0o700)
+
+            def install(*command):
+                self.assertEqual(command[:7], ("sudo", "-n", "/usr/bin/install", "-o", "root", "-g", "root"))
+                self.assertTrue(Path(command[-1]).is_relative_to(destination))
+                # Exercise real copying/modes in a temporary tree. Ordinary CI
+                # runs as an unprivileged user; only ownership assignment is
+                # omitted here, after asserting the actual CI install uses root.
+                subprocess.run([command[2], *command[7:]], check=True, capture_output=True)
+
+            with patch.object(driver.prior, "DEST", destination), patch.object(driver.prior, "_run", side_effect=install):
+                driver.install_skills()
+            source = driver.ROOT / "skills"
+            installed = destination / "skills"
+            expected = {path.relative_to(source): path.read_bytes() for path in source.rglob("*.md")}
+            self.assertEqual({path.relative_to(installed): path.read_bytes()
+                              for path in installed.rglob("*.md")}, expected)
+            for path in (installed, *installed.rglob("*")):
+                self.assertEqual(path.stat().st_mode & 0o777, 0o755 if path.is_dir() else 0o644)
+            with patch.object(skills, "ROOT", installed), patch.object(skills, "user_root", return_value=home / "private-skills"):
+                store = agent_profiles.Store(home=home)
+                for name, profile in store.load().config.entries:
+                    with self.subTest(profile=name):
+                        selected = agent_profiles.resolve(profile=name, store=store)
+                        for skill in profile.skills:
+                            self.assertIn("- " + skill + ":", selected["instructions"])
+                            snapshot = skills.bundle(skill)
+                            for reference in snapshot["references"]:
+                                self.assertIn(skill + "/" + reference + ":", selected["instructions"])
+                # Installed-source checks are real: neither missing nor unsafe
+                # resources can silently fall back to the source checkout.
+                reference = installed / "arch-pacman/references/package-queries.md"
+                reference.chmod(0o666)
+                with self.assertRaises(agent_profiles.ProfileError):
+                    agent_profiles.resolve(store=store)
+                reference.chmod(0o644)
+                (installed / "concise-assistant/SKILL.md").unlink()
+                with self.assertRaises(agent_profiles.ProfileError):
+                    agent_profiles.resolve(store=store)
+
+    def test_skill_install_refuses_linked_bundle_before_privileged_commands(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            shutil.copytree(driver.ROOT / "skills", root / "skills")
+            reference = root / "skills/arch-pacman/references/package-queries.md"
+            reference.unlink()
+            reference.symlink_to(driver.ROOT / "skills/arch-pacman/references/package-queries.md")
+            with patch.object(driver, "ROOT", root), patch.object(driver.prior, "_run") as command:
+                with self.assertRaises(ValueError):
+                    driver.install_skills()
+                command.assert_not_called()
 
     def test_generated_fixture_keeps_policy_guards_and_limits_override_to_home(self):
         # Installation/compiler/systemd calls are intercepted. Only new,
