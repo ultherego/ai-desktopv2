@@ -99,11 +99,12 @@ Important: **the content of a file or the output of a command can lead the model
 | Deleting files | A list of files and `[y/n]`. Files go to the task trash. |
 | Change from `change` | The change, test and undo shown, typing the whole word `yes`. An undo after a failure also requires `yes`. |
 | Undo and restore | A separate `[y/n]`. |
-| `material`, `project` | Consent per question. Whole-file analysis: one consent per task, valid for 30 minutes. Next project stage: a separate `[y/n]`. |
-| `task run` | Sending and writing separately; multi-process suites also require their copy-test approval. |
+| `material` | Consent per question. Whole-file analysis: one consent per task, valid for 30 minutes. |
+| `project` analysis | One approval for at most 5 stages, 40 requests, 10 MiB of project data and 50 minutes. Source, policy, recipient and deadline checks apply before continuation; changed scope stops the task. |
+| `task run` | One initial approval covers sending the selected files, bounded preparation and one exact declared test on a selected-file copy, including Go/npm. The full diff and write still need a separate approval. |
 | Project suites in `ask`/`project` | Current runtime: a separate approval for the permitted local copy and fixed recipe, before the final write decision. |
 
-The agreed next flow binds one approval to the declared plan, stage budgets and copy tests. It must not silently add a test, widen data access or reuse approval after a relevant change. Final diff approval, live system changes, deletion and undo remain separate. This simplification is not yet the current prompt flow.
+Candidate 84 binds project analysis to its declared stage budgets and standalone tasks to their preparation and one declared copy test. It cannot silently add a test, widen data access or reuse approval after a relevant change. Combining preparation, additional edit-data transfer and project-copy tests in ordinary conversations/project edits remains open in S9. Final diff approval, live system changes, deletion and undo remain separate. Candidate 84 needs its own CachyOS acceptance before merge.
 
 The consent prompt clears previously typed characters from the terminal, so pasted text does not approve an action you have not yet seen.
 Without a terminal there is no consent: the program refuses. There is no unattended mode. Consent does not protect against another process controlling the same terminal.
