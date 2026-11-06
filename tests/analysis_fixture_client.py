@@ -23,6 +23,19 @@ FILE_FIXTURE = None
 EDIT_FIXTURE = None
 HOME_FIXTURE = None
 WEB_FIXTURE = None
+EXECUTION_FIXTURE = None
+
+
+def validate_invocation(args, environment):
+    """Match exact legacy or controller-frozen fixture commands and environment."""
+    for action in ("version", "status", "analyze", "login", "web", "offline-logout"):
+        selections = (None, EXECUTION_FIXTURE) if action in ("analyze", "web") else (None,)
+        for selected in selections:
+            if args == client_command(action, selected):
+                effort = selected["effort"] if selected is not None else None
+                assert environment == client_environment(action, effort)
+                return action
+    raise AssertionError("fixture-command")
 
 
 def validate_web_payload(data):
@@ -87,10 +100,8 @@ def validate_file_payload(data):
 
 def main():
     args = [str(BINARY)] + sys.argv[1:]
-    action = next((name for name in ("version", "status", "analyze", "login", "web", "offline-logout") if args == client_command(name)), None)
-    assert action is not None
+    action = validate_invocation(args, dict(os.environ))
     assert os.geteuid() > 0 and privileges_locked(Path("/proc/self/status").read_text())
-    assert dict(os.environ) == client_environment(action)
     assert not Path("/var/lib/ai-desktop").exists() and not Path("/run/user").exists()
     assert not Path("/etc/claude-code").exists()
     assert not Path("/home/runner").exists() and not Path("/root").exists()

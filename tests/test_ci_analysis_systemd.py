@@ -95,6 +95,53 @@ class CiAnalysisGuardTests(unittest.TestCase):
                     driver.install_skills()
                 command.assert_not_called()
 
+    def test_native_fixture_accepts_frozen_default_catalog_and_rejects_changed_controls(self):
+        from ai_desktop import agent_profiles, analysis_child, analysis_contract, analysis_sandbox
+        with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryDirectory(dir=Path.home()) as home, \
+                patch.object(driver.prior, "_run"):
+            driver.install(Path(temp), home)
+            namespace = {"__name__": "fixture_validator_test"}
+            exec(compile((Path(temp) / "fixture-client.py").read_text(), "fixture-client.py", "exec"), namespace)
+            validate = namespace["validate_invocation"]
+            selected = agent_profiles.resolve(store=agent_profiles.Store(home=Path(home)))
+            self.assertEqual(namespace["EXECUTION_FIXTURE"], selected)
+            self.assertIn(agent_profiles.CATALOG_HEADER, selected["instructions"])
+            sources = [dict(report=driver.report_fixture(), question="SYNTHETIC: analysis question"),
+                       dict(report=None, question="SYNTHETIC", context=[]),
+                       dict(report=None, question="SYNTHETIC", web=True),
+                       dict(report=None, question="SYNTHETIC", access={"files": [], "systemd": [], "weather": False}),
+                       dict(report=None, task={"instruction": "SYNTHETIC", "files": [
+                           {"path": "file.txt", "content": "SYNTHETIC", "writable": True}]})]
+            for controls in (None, selected):
+                for source in sources:
+                    with self.subTest(controls=controls is not None, source=source.keys()):
+                        approved = analysis_contract.application_input(**source, execution=controls)
+                        parsed, _ = analysis_contract.parse_request(approved.encode())
+                        action = "web" if source.get("web") else "analyze"
+                        body, frozen = analysis_child.native_input(action, parsed.encode())
+                        self.assertNotIn("execution", json.loads(body))
+                        self.assertEqual(frozen, controls)
+                        command = analysis_sandbox.client_command(action, frozen)
+                        environment = analysis_sandbox.client_environment(action, frozen["effort"] if frozen else None)
+                        self.assertEqual(validate(command, environment), action)
+            for action in ("version", "status", "login", "offline-logout"):
+                self.assertEqual(validate(analysis_sandbox.client_command(action),
+                                          analysis_sandbox.client_environment(action)), action)
+            command = analysis_sandbox.client_command("analyze", selected)
+            environment = analysis_sandbox.client_environment("analyze", selected["effort"])
+            for case in ("prompt", "tools", "model", "environment"):
+                altered, env = list(command), dict(environment)
+                if case == "prompt":
+                    altered[-1] += "\nUNAPPROVED"
+                elif case == "tools":
+                    altered[altered.index("--tools") + 1] = "Bash"
+                elif case == "model":
+                    altered.extend(["--model", "opus"])
+                else:
+                    env["ANTHROPIC_API_KEY"] = "SYNTHETIC"
+                with self.subTest(case=case), self.assertRaises(AssertionError):
+                    validate(altered, env)
+
     def test_generated_fixture_keeps_policy_guards_and_limits_override_to_home(self):
         # Installation/compiler/systemd calls are intercepted. Only new,
         # synthetic fixture files are written in temporary directories.

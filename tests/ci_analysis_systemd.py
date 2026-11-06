@@ -138,10 +138,21 @@ def install(temp, file_home):
         raise ValueError("home-fixture-template")
     if template.count("WEB_FIXTURE = None\n") != 1:
         raise ValueError("web-fixture-template")
+    if template.count("EXECUTION_FIXTURE = None\n") != 1:
+        raise ValueError("execution-fixture-template")
+    # The native client receives execution controls in argv, not in its JSON
+    # stdin. Freeze this exact default catalog before entering the namespace;
+    # the fixture must not accept arbitrary role text or read host Skills there.
+    from ai_desktop import agent_profiles
+    selected = agent_profiles.defaults().profiles["default"]
+    execution_expected = {"provider": selected.provider, "model": selected.model, "effort": selected.effort,
+                          "instructions": agent_profiles.catalog_for(selected), "profile": "default",
+                          "access": selected.access}
     client.write_text(template.replace("FILE_FIXTURE = None\n", "FILE_FIXTURE = " + repr(expected) + "\n")
                      .replace("EDIT_FIXTURE = None\n", "EDIT_FIXTURE = " + repr(edit_expected) + "\n")
                      .replace("HOME_FIXTURE = None\n", "HOME_FIXTURE = " + repr(home_expected) + "\n")
-                     .replace("WEB_FIXTURE = None\n", "WEB_FIXTURE = " + repr({"question": web_fixture.QUESTION}) + "\n"))
+                     .replace("WEB_FIXTURE = None\n", "WEB_FIXTURE = " + repr({"question": web_fixture.QUESTION}) + "\n")
+                     .replace("EXECUTION_FIXTURE = None\n", "EXECUTION_FIXTURE = " + repr(execution_expected) + "\n"))
     prior._run("sudo", "-n", "/usr/bin/install", "-m644", str(client), str(prior.DEST / "fixture-client.py"))
     ui = temp / "fixture-ui.py"
     ui.write_text("import sys\nfrom pathlib import Path\nsys.path.insert(0, '/usr/lib/ai-desktop')\n"
