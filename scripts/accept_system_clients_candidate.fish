@@ -98,7 +98,7 @@ function __aidsc_cycle --argument-names aid_mode aid_sha aid_repo aid_provider a
         test -f "$aid_package"; and not test -L "$aid_package"; or return 2
         set -l aid_package_info (/usr/bin/pacman -Qp "$aid_package")
         or return $status
-        __aidsc_step PACKAGE_VERSION test "$aid_package_info" = 'ai-desktop 0.1.0-84'
+        __aidsc_step PACKAGE_VERSION test "$aid_package_info" = 'ai-desktop 0.1.0-85'
         or return $status
         bsdtar -xOf "$aid_package" .INSTALL > "$aid_tmp/package.install"
         or return $status

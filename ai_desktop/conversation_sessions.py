@@ -1,9 +1,10 @@
-"""Opt-in local conversation memory; never a source of grants or credentials.
+"""Private local conversation memory; never a source of grants or credentials.
 
-Records contain the saved questions, answers and context metadata selected by
-``--session``. The store does not import source files, grants, plans, OAuth or a
-native client's session. Every resume must pass the ordinary policy, current
-binding and fresh consent again.
+Ordinary interactive ``ask`` conversations are saved after their first
+completed turn unless ``--no-save`` is selected. ``--session`` still creates or
+resumes an explicit record. The store does not import source files, grants,
+plans, OAuth or a native client's session. Every resume must pass the ordinary
+policy, current binding and fresh consent again.
 Advisory locks serialize cooperating controllers; hostile same-UID writers are
 outside the filesystem guarantees, as elsewhere in AI Desktop.
 """
@@ -302,17 +303,28 @@ class Store:
             os.close(fd)
             raise
 
-    def create(self, kind, path="", binding="", execution_config=None):
+    def create(self, kind, path="", binding="", execution_config=None, *, initial_state=None):
+        """Publish a new record once. ``initial_state`` is only the exported, non-authoritative state of ``ask``."""
         _binding(kind, path, binding)
         selected = _execution(execution_config)
+        if initial_state is not None:
+            required = {"history", "turns", "memory", "paths", "meta"}
+            if (kind != "ask" or type(initial_state) is not dict
+                    or not required <= set(initial_state) <= {"history", *_OPTIONAL}):
+                raise SessionError("session-memory")
+            initial_state = copy.deepcopy(initial_state)
+        now = int(time.time())
+        value = {"schema": 1, "id": secrets.token_hex(12), "revision": 0, "kind": kind,
+                 "path": path, "binding": binding, "execution": selected, "history": [],
+                 "created": now, "updated": now}
+        if initial_state is not None:
+            value.update(initial_state)
+            _fit_ask_record(value)
+        value = _record(value)
         with self._root(create=True) as root, self._locked(root):
             ids = self._ids(root)
             if len(ids) >= MAX_SESSIONS:
                 raise SessionError("session-limit")
-            now = int(time.time())
-            value = {"schema": 1, "id": secrets.token_hex(12), "revision": 0, "kind": kind,
-                     "path": path, "binding": binding, "execution": selected, "history": [],
-                     "created": now, "updated": now}
             self._publish(root, value)
             lease = self._lease(root, value["id"])
         return Conversation(self, value, lease)

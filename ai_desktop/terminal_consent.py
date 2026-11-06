@@ -17,7 +17,6 @@ PROMPTS = {
     "ask-question": "Send this request to Claude? [y/n]: ",
     "switch-provider": "Use this recipient for the conversation and send this context with future requests? [y/n/view]: ",
     "files-read": "Read these files for the question? [y/n]: ",
-    "save-thread": "Save this conversation locally so you can come back to it? [y/n]: ",
     "run-change": "This CHANGE can alter the system. Type yes to run it (or n): ",
     "run-undo": "The test failed. Run the undo shown above? Type yes (or n): ",
     "systemd-read": "Allow this systemd read? [y/n]: ",

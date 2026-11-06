@@ -52,6 +52,49 @@ class ConversationTests(unittest.TestCase):
         self.assertIn("--session new", output.getvalue())
         self.assertFalse((self.home / ".local").exists())
 
+    def test_initial_ask_state_is_one_complete_private_publication(self):
+        from ai_desktop import conversation_state
+
+        talk = conversation_state.Conversation()
+        talk.finish("Keep this decision", "The durable answer", None, (), actions=())
+        exported = conversation_state.export(talk)
+        with patch.object(self.store, "_publish", wraps=self.store._publish) as publish:
+            value = self.store.create("ask", "", "", CONFIG, initial_state=exported)
+        self.addCleanup(value.close)
+
+        publish.assert_called_once()
+        record = self.store.read(value.session_id)
+        self.assertEqual(record["revision"], 0)
+        for key, item in exported.items():
+            self.assertEqual(record[key], item)
+        self.assertEqual(stat.S_IMODE(self.path(value).stat().st_mode), 0o600)
+        raw = self.path(value).read_text()
+        for authority in ("oauth", "grant", "approval", "permissions"):
+            self.assertNotIn(authority, raw.lower())
+
+        exported["history"][0]["answer"] = "changed after publication"
+        self.assertEqual(self.store.read(value.session_id)["history"][0]["answer"], "The durable answer")
+
+    def test_invalid_or_interrupted_initial_checkpoint_never_publishes_a_partial_record(self):
+        self.assertRefused(
+            lambda: self.store.create("ask", "", "", CONFIG, initial_state={"history": []}),
+            "session-memory",
+        )
+        self.assertFalse((self.home / ".local").exists())
+
+        from ai_desktop import conversation_state
+        talk = conversation_state.Conversation()
+        talk.finish("Question", "Answer", None, (), actions=())
+        with patch.object(sessions.os, "link", side_effect=OSError("interrupted")):
+            self.assertRefused(
+                lambda: self.store.create("ask", "", "", CONFIG,
+                                          initial_state=conversation_state.export(talk)),
+                "session-file",
+            )
+        self.assertTrue(self.store.path.is_dir())
+        self.assertFalse(any(name.endswith(".json") or name.startswith(".new-")
+                             for name in os.listdir(self.store.path)))
+
     def test_create_append_close_and_resume_are_real_private_files(self):
         value = self.conversation()
         self.assertRegex(value.session_id, r"\A[a-f0-9]{24}\Z")

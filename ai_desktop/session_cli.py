@@ -8,13 +8,13 @@ from .conversation_sessions import SessionError, Store, recipient_label
 from .terminal_menu import MenuInputError, choose
 
 PAGE_SIZE = 8
-EMPTY = "No saved conversations. The program asks about saving when you leave a conversation (or use --session new)."
+EMPTY = "No saved conversations. ai-desktop ask saves after the first completed turn; use --no-save for a temporary conversation or --session new to create one explicitly."
 MANAGE_PAGE = 9                  # nine threads + up to three actions fit the twelve rows of one menu
 
 
 def build_parser():
     parser = argparse.ArgumentParser(prog="ai-desktop sessions",
-                                     description="Local conversations saved with --session; does not start AI")
+                                     description="Local saved conversations; does not start AI")
     commands = parser.add_subparsers(dest="action")
     commands.add_parser("list", help="Show saved conversations")
     commands.add_parser("menu", help="Choose a conversation and an action with the arrow keys")

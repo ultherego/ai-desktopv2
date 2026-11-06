@@ -174,6 +174,12 @@ Local project-test copies have an independent contract: default 2,000 files / 8 
 
 On-demand procedure and reference selection in all modes is controller-managed. The knowledge envelope is canonically bound to consent and reconstructed without inheriting a worker's ambient catalog. Bundled references have source/version provenance and hashes but remain untrusted evidence. Package-version evidence comes only from a successful, untruncated exact allowed query and is reset with the task. No new command grant, network route, desktop detection/download or shell tool is implied by loading documentation.
 
+### Automatic local conversation checkpoints (candidate 85)
+
+Ordinary interactive `ask` creates no file until a turn or controller-recorded action completes. The complete bounded conversation state is validated before a single initial publication; later checkpoints use the existing lease, revision comparison, private temporary file, `fsync` and atomic replacement. `--no-save` disables creation and update for that invocation. A failed initial publication leaves no JSON or temporary record and the process continues with in-memory state; a failed later update preserves the previous durable revision.
+
+Saved state is data, never authority. It can contain bounded quoted answers, task notes and source identities, but not OAuth credentials, native-client state, consent grants, test grants, write approvals or policy permissions. Resume re-evaluates the current recipient, policy and sources before transfer. The design does not provide an unlimited transcript, semantic compaction, streaming, protection from a hostile same-UID process or a power-loss guarantee.
+
 ### Bounded preparation and test approvals (candidate 84)
 
 A project analysis approval covers at most 5 stages, 40 requests, 10 MiB of project data and 3000 seconds, with the existing per-stage 8-request/2-MiB/600-second caps. The approved project identity, index, policy and recipient are rechecked; refreshing a changed index does not create new authority. Standalone task scope approval binds the selected snapshot, exact test recipe, recipient, process and finite preparation budget. One test consumes that approval even on failure. Tests remain isolated, failed tests prevent a write, and each final diff has a separate hash-bound write approval. Neither grant is persisted. This slice does not remove the existing project-edit copy-test decision or authorize arbitrary commands, extra transfers, automatic test retries or host writes.

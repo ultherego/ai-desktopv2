@@ -72,44 +72,6 @@ class TitleAndLabelTests(StoreCase):
         value.close()
 
 
-class SaveOfferTests(StoreCase):
-    def offer(self, answer, conversation=None):
-        phases = []
-        with patch("ai_desktop.terminal_consent.confirm", return_value=answer) as confirm, \
-                patch("ai_desktop.conversation_sessions.Store", return_value=self.store), \
-                patch("ai_desktop.execution.current", return_value=PROFILE), redirect_stdout(io.StringIO()) as out:
-            saved = ask_cli._offer_save(conversation or talk("Chcę ustalić, dlaczego start jest wolny"), phases.append)
-        return saved, confirm, out.getvalue(), phases
-
-    def test_a_yes_saves_the_whole_state_as_a_thread(self):
-        saved, confirm, out, phases = self.offer(True)
-        confirm.assert_called_once_with("save-thread")
-        self.assertIsNotNone(saved)
-        saved.close()
-        record = self.store.read(saved.session_id)
-        self.assertEqual(record["title"], "Chcę ustalić, dlaczego start jest wolny")
-        self.assertTrue(record["memory"]["entries"])
-        self.assertIn("saved locally", out)
-        self.assertEqual(phases, ["session-save"])
-
-    def test_a_no_writes_nothing_at_all(self):
-        saved, confirm, out, _ = self.offer(False)
-        self.assertIsNone(saved)
-        self.assertEqual(self.store.list(), [])
-
-    def test_a_failing_store_reports_and_does_not_end_the_command(self):
-        with patch("ai_desktop.terminal_consent.confirm", return_value=True), \
-                patch("ai_desktop.conversation_sessions.Store", side_effect=sessions.SessionError("session-file")), \
-                patch("ai_desktop.execution.current", return_value=PROFILE), redirect_stdout(io.StringIO()) as out:
-            self.assertIsNone(ask_cli._offer_save(talk("x y"), lambda value: None))
-        self.assertIn("Nothing was saved", out.getvalue())
-
-    def test_the_prompt_never_names_a_provider(self):
-        from ai_desktop.terminal_consent import PROMPTS
-        self.assertNotIn("Claude", PROMPTS["save-thread"])
-        self.assertNotIn("Codex", PROMPTS["save-thread"])
-
-
 class PickThreadTests(StoreCase):
     def pick(self, choices):
         queue, seen = list(choices), []

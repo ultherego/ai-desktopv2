@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-85: automatic local conversation checkpoints
+
+- Interactive `ask` creates a private local record only after the first completed turn or completed action, then atomically checkpoints every later completed turn. A declined, cancelled or failed first turn that performed no action leaves no empty conversation behind.
+- `--no-save` keeps the conversation only in memory and cannot be combined with `--session`. Existing explicit session creation and resume remain available.
+- The bounded record contains recent conversation state and provenance, never OAuth credentials, reusable grants, write approvals or a native-client session. Resuming still rechecks the current policy, sources, recipient and consent. A failed checkpoint leaves no partial JSON record, reports the local-storage problem and lets the in-memory conversation continue.
+- This changes local persistence and requires exact-candidate CachyOS CI/LOCAL, package and installed-file acceptance before merge. Full durable transcripts, semantic compaction, streaming and the `-c` shortcut remain unfinished.
+
 ## 0.1.0-84: bounded task approvals
 
 - Approve up to five read-only project analysis stages once, with visible request, data and time limits. Further stages keep the same project snapshot, policy and recipient; changes or expiry stop the task. Ctrl+C interrupts it.

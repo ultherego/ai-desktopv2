@@ -2,7 +2,7 @@
 
 Covers: the greeting appears once, every answer returns to `> `, arrow-key editing and recall, a declined turn that sends
 nothing and does not close the conversation, Ctrl-C during a wait that cancels only that turn, idle time that makes no
-request, a double Ctrl-D exit, and the terminal settings restored afterwards. A scripted `reader` is not enough for this."""
+request, a double Ctrl-D exit under explicit `--no-save`, and the terminal settings restored afterwards. A scripted `reader` is not enough for this."""
 import os as _os
 _os.environ.setdefault("AI_DESKTOP_MODEL_CATALOG", "off")
 import fcntl
@@ -48,7 +48,7 @@ with patch.object(agent_profiles, 'resolve', return_value=profile), patch.object
         patch.object(ask_cli, 'installation_ready'), patch.object(ask_cli, '_choose_thread', return_value=('new', None)), \
         patch.object(ask_cli, 'managed_session', side_effect=lambda **kwargs: nullcontext()), \
         patch.object(ask_cli, 'send_once', side_effect=send):
-    raise SystemExit(cli.main(['ask']))
+    raise SystemExit(cli.main(['ask', '--no-save']))
 """
 
 
@@ -182,9 +182,8 @@ class ConversationPtyTests(unittest.TestCase):
         mark = driver.wait_for("Ctrl-D again", mark)
         mark = driver.wait_for("> ", mark)
         driver.send(b"\x04")
-        driver.wait_for("Save this conversation", mark)                         # consent to keep the thread, default: no
-        driver.send(b"no\n")
         self.assertEqual(driver.finish(), 0, driver.text()[-800:])
+        self.assertNotIn("Save this conversation", driver.text())
         self.assertEqual(driver.text().count("How can I help?"), 1)         # the greeting appears once
         self.assertEqual(termios.tcgetattr(driver.slave), driver.before)       # terminal settings restored
 
@@ -211,9 +210,8 @@ class ConversationPtyTests(unittest.TestCase):
         mark = driver.wait_for("Ctrl-D again", mark)
         mark = driver.wait_for("> ", mark)
         driver.send(b"\x04")
-        driver.wait_for("Save this conversation", mark)
-        driver.send(b"no\n")
         self.assertEqual(driver.finish(), 0, driver.text()[-800:])
+        self.assertNotIn("Save this conversation", driver.text())
 
     def test_typing_a_slash_lists_commands_tab_completes_and_a_control_is_not_sent(self):
         driver = Driver(self)
@@ -257,9 +255,8 @@ class ConversationPtyTests(unittest.TestCase):
         driver.wait_for("> ", mark)
         self.assertIsNone(driver.process.poll(), "one Ctrl-D after a new message must only warn")
         driver.send(b"\r")                                                   # empty line ends the conversation
-        driver.wait_for("Save this conversation", mark)
-        driver.send(b"no\n")
         self.assertEqual(driver.finish(), 0, driver.text()[-800:])
+        self.assertNotIn("Save this conversation", driver.text())
 
 
 if __name__ == "__main__":

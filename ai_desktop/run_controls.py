@@ -117,7 +117,8 @@ def add_arguments(parser, *, session=False):
     parser.add_argument("--effort", choices=execution.EFFORTS,
                         help="Reasoning level for this run")
     if session:
-        parser.add_argument("--session", metavar="new|ID", help="Explicitly save the conversation or resume a local session")
+        parser.add_argument("--session", metavar="new|ID",
+                            help="Create or resume a specific local conversation; ask saves completed turns by default")
 
 
 def label(config=execution.UNSET):
