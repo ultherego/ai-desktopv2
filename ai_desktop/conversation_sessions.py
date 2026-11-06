@@ -1,9 +1,10 @@
-"""Opt-in local conversation memory; never a source of grants or credentials.
+"""Private local conversation memory; never a source of grants or credentials.
 
-Records contain the saved questions, answers and context metadata selected by
-``--session``. The store does not import source files, grants, plans, OAuth or a
-native client's session. Every resume must pass the ordinary policy, current
-binding and fresh consent again.
+Ordinary interactive ``ask`` conversations are checkpointed after completed
+turns unless ``--no-save`` is selected. ``--session`` still resumes or creates
+an explicit record. The store does not import source files, grants, plans, OAuth
+or a native client's session. Every resume must pass the ordinary policy,
+current binding and fresh consent again.
 Advisory locks serialize cooperating controllers; hostile same-UID writers are
 outside the filesystem guarantees, as elsewhere in AI Desktop.
 """
@@ -178,7 +179,7 @@ def _same(left, right):
 class Store:
     def __init__(self, home=None):
         # Ignore XDG/HOME overrides inherited from an untrusted invocation.
-        self.home = Path(pwd.getpwuid(os.geteuid()).pw_dir if home is None else home)
+        self.home = Path(pwd.getpwuid(os.getuid()).pw_dir if home is None else home)
         if not self.home.is_absolute() or str(self.home) != os.path.normpath(str(self.home)):
             raise SessionError("session-home")
         self.path = self.home / ".local/state/ai-desktop/conversations"
@@ -302,9 +303,15 @@ class Store:
             os.close(fd)
             raise
 
-    def create(self, kind, path="", binding="", execution_config=None):
+    def create(self, kind, path="", binding="", execution_config=None, *, initial_state=None):
+        """Publish a new record once. ``initial_state`` is the first complete ask checkpoint, not a later update."""
         _binding(kind, path, binding)
         selected = _execution(execution_config)
+        if initial_state is not None:
+            required = {"history", "memory", "paths", "turns", "meta"}
+            if (kind != "ask" or type(initial_state) is not dict
+                    or not required <= set(initial_state) <= {"history", *_OPTIONAL}):
+                raise SessionError("session-schema")
         with self._root(create=True) as root, self._locked(root):
             ids = self._ids(root)
             if len(ids) >= MAX_SESSIONS:
@@ -313,6 +320,10 @@ class Store:
             value = {"schema": 1, "id": secrets.token_hex(12), "revision": 0, "kind": kind,
                      "path": path, "binding": binding, "execution": selected, "history": [],
                      "created": now, "updated": now}
+            if initial_state is not None:
+                value.update(copy.deepcopy(initial_state))
+                _fit_ask_record(value)
+                _record(value)
             self._publish(root, value)
             lease = self._lease(root, value["id"])
         return Conversation(self, value, lease)
