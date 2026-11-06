@@ -53,5 +53,7 @@ class DesktopIntegrationTests(unittest.TestCase):
                      "ai-desktop-codex-limits", "ai-desktop-codex-limits-disconnect"):
             self.assertIn(f'launch("{name}.desktop", [', widget)
             self.assertTrue((DESKTOP / (name + ".desktop")).is_file())
-        self.assertEqual(widget.count("Qt.openUrlExternally("), 1)
-        self.assertIn('onClicked: Qt.openUrlExternally("https://chatgpt.com/settings/usage")', widget)
+        self.assertNotIn("Qt.openUrlExternally(", widget)
+        self.assertNotIn("https://chatgpt.com/settings/usage", widget)
+        self.assertIn('onClicked: root.fetchLiveLimits(usageCard.account.account)', widget)
+        self.assertIn('onClicked: root.manageLiveLimits(usageCard.account.account, false)', widget)
