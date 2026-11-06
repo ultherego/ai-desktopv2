@@ -52,55 +52,9 @@ def build_agent_command(workspace, binary, skills_root, action, digest, home, ne
 
 
 def main(argv=None):
-    argv = sys.argv[1:] if argv is None else argv
-
-    if len(argv) != 1 or argv[0] not in ALLOWED:
-        print("Usage: python3 -B -m ai_desktop.agent version|help")
-        return 2
-
-    if shutil.which("bwrap") is None:
-        print("bwrap not found")
-        return 2
-
-    try:
-        binary = claude_binary()
-        digest = source_hash(ROOT)
-        home = Path.home()
-        netns = os.readlink("/proc/self/ns/net")
-
-        with tempfile.TemporaryDirectory(
-            prefix="ai-desktop-launch-", dir="/tmp"
-        ) as temporary:
-
-            command = build_agent_command(
-                Path(temporary), binary, ROOT,
-                argv[0], digest, home, netns
-            )
-
-            probe = command[:-2] + [
-                "/usr/bin/python3", "-I", "-B", "-c", PROBE
-            ]
-
-            checked = subprocess.run(
-                probe, check=False, timeout=20
-            )
-
-            if checked.returncode != 0:
-                print("AGENT PROBE: FAIL")
-                return 1
-
-            print("AGENT PROBE: PASS", flush=True)
-
-            result = subprocess.run(
-                command, check=False, timeout=30
-            )
-
-    except (OSError, ValueError, subprocess.TimeoutExpired) as exc:
-        print(f"AGENT: ERROR ({type(exc).__name__})")
-        return 1
-
-    print("AGENT: PASS" if result.returncode == 0 else "AGENT: FAIL")
-    return 0 if result.returncode == 0 else 1
+    """The old probe command now shares production client discovery/compatibility."""
+    from .launcher import main as launch
+    return launch(sys.argv[1:] if argv is None else argv)
 
 
 if __name__ == "__main__":

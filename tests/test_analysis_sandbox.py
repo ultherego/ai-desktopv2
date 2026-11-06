@@ -13,6 +13,8 @@ from ai_desktop import analysis_admin as admin, analysis_sandbox as sandbox, ana
 from ai_desktop.analysis_contract import AnalysisDenied, SYSTEM_PROMPT
 from ai_desktop import analysis_contract as contract, task_contract
 from test_web_search_result import stream as web_stream, web_events
+from system_client_fixtures import FakeBinding
+from claude_client_fixtures import compatibility_results
 
 
 class AnalysisSandboxTests(unittest.TestCase):
@@ -27,13 +29,14 @@ class AnalysisSandboxTests(unittest.TestCase):
 
     def test_version_failure_classifies_only_fixed_child_errors(self):
         for stderr, stage, reason in (
-            (b"SECRET-OAUTH", "version", "version"),
+            (b"SECRET-OAUTH", "compatibility", "client-version"),
             (b"bwrap: SECRET-PATH", "namespace", "sandbox"),
             (b"CLIENT: REFUSED stage=boundary reason=sandbox\nSECRET", "boundary", "sandbox"),
-            (b"CLIENT: REFUSED stage=SECRET reason=SECRET", "version", "version"),
+            (b"CLIENT: REFUSED stage=SECRET reason=SECRET", "compatibility", "client-version"),
         ):
             with self.subTest(stage=stage), patch.object(sandbox, "supervisor_ready"), \
                     patch.object(sandbox, "profile_lock", return_value=contextlib.nullcontext()), \
+                    patch.object(sandbox.client_binding, "bind", side_effect=lambda _: FakeBinding("claude")), \
                     patch.object(sandbox, "namespace_command", return_value=["unused"]), \
                     patch.object(sandbox, "bounded_process", return_value=(2, b"SECRET", stderr)), \
                     patch.object(sandbox, "_Proxy") as proxy, self.assertRaises(AnalysisDenied) as caught:
@@ -161,13 +164,13 @@ class AnalysisSandboxTests(unittest.TestCase):
                                               (1, error, b"CLIENT: REFUSED stage=boundary reason=sandbox", "sandbox")):
             proxy = Mock()
             proxy.begin_phase.return_value.is_set.return_value = False
-            results = [(0, (contract.CLIENT_VERSION + " (Claude Code)").encode(), b""),
-                       (0, json.dumps({"loggedIn": True, "authMethod": "claude.ai",
+            results = compatibility_results() + [(0, json.dumps({"loggedIn": True, "authMethod": "claude.ai",
                                        "configDirectory": sandbox.INNER_PROFILE}).encode(), b""),
                        (code, native, errors)]
             question = b'SYNTHETIC_PUBLIC_QUESTION'
             with self.subTest(expected=expected), patch.object(sandbox, "supervisor_ready"), \
                     patch.object(sandbox, "profile_lock", return_value=contextlib.nullcontext()), \
+                    patch.object(sandbox.client_binding, "bind", side_effect=lambda _: FakeBinding("claude")), \
                     patch.object(sandbox, "namespace_command", return_value=["fixed-web"]) as command, \
                     patch.object(sandbox, "_Proxy", return_value=contextlib.nullcontext(proxy)), \
                     patch.object(sandbox, "bounded_process", side_effect=results) as process:
@@ -177,7 +180,7 @@ class AnalysisSandboxTests(unittest.TestCase):
                     with self.assertRaises(AnalysisDenied) as caught:
                         sandbox.run_client("web", question, mode="web")
                     self.assertEqual(caught.exception.reason, expected)
-            self.assertEqual(process.call_count, 3)
+            self.assertEqual(process.call_count, 7)
             self.assertEqual(command.call_args.args[0], "web")
             self.assertEqual(process.call_args.kwargs["input_bytes"], question)
             self.assertEqual(process.call_args.kwargs["limit"], 131072)
@@ -253,19 +256,19 @@ class AnalysisSandboxTests(unittest.TestCase):
             proxy.begin_phase.return_value.is_set.return_value = False
             native = json.dumps({"type": "result", "subtype": "success", "is_error": False,
                                  "num_turns": 1, "permission_denials": [], "result": "wynik"}).encode()
-            results = [(0, (contract.CLIENT_VERSION + " (Claude Code)").encode(), b""),
-                       (0, json.dumps({"loggedIn": True, "authMethod": "claude.ai",
+            results = compatibility_results() + [(0, json.dumps({"loggedIn": True, "authMethod": "claude.ai",
                                        "configDirectory": sandbox.INNER_PROFILE}).encode(), b""),
                        (0, native, b"")]
             source = b"SYNTHETIC_INPUT" * 20000
             with self.subTest(mode=mode), \
                     patch.object(sandbox, "supervisor_ready"), \
                     patch.object(sandbox, "profile_lock", return_value=contextlib.nullcontext()), \
+                    patch.object(sandbox.client_binding, "bind", side_effect=lambda _: FakeBinding("claude")), \
                     patch.object(sandbox, "namespace_command", return_value=["fixed-namespace"]) as command, \
                     patch.object(sandbox, "_Proxy", return_value=contextlib.nullcontext(proxy)), \
                     patch.object(sandbox, "bounded_process", side_effect=results) as process:
                 self.assertEqual(sandbox.run_client("analyze", source, mode=mode), "wynik")
-            self.assertEqual(process.call_count, 3)
+            self.assertEqual(process.call_count, 7)
             final = process.call_args
             self.assertEqual(final.args, (["fixed-namespace"],))
             self.assertEqual(final.kwargs["input_bytes"], source)

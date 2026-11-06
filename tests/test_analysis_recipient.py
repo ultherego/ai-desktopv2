@@ -184,7 +184,7 @@ class AnalysisRecipientTests(unittest.TestCase):
             send.side_effect = failure
             self.assertEqual(self.invoke(), 2)
         self.assertEqual(self.native[0]["provider"], "codex")
-        self.assertIn("The trusted Codex", self.output.getvalue())
+        self.assertIn("The isolated Codex runtime", self.output.getvalue())
         self.assertNotIn("The trusted Claude Code", self.output.getvalue())
 
     def test_absent_execution_in_preview_never_inherits_ambient_codex_label(self):

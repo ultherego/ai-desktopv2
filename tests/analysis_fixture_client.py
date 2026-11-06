@@ -15,6 +15,7 @@ import time
 sys.path.insert(0, "/usr/lib/ai-desktop")
 from ai_desktop.analysis_contract import CLIENT_VERSION, MAX_PACKET, MAX_CONTEXT_BYTES, canonical, application_input
 from ai_desktop.analysis_sandbox import BINARY, INNER_PROFILE, client_command, client_environment
+from ai_desktop.client_compat import FIRST_INVALID_OPTION, INVALID_OPTION
 from ai_desktop.e2_subscription_boundary import privileges_locked
 from ai_desktop.report_policy import validate_report
 
@@ -28,13 +29,14 @@ EXECUTION_FIXTURE = None
 
 def validate_invocation(args, environment):
     """Match exact legacy or controller-frozen fixture commands and environment."""
-    for action in ("version", "status", "analyze", "login", "web", "offline-logout"):
+    for action in ("version", "status", "analyze", "login", "web", "offline-logout",
+                   "compat-options", "compat-web", "compat-reject", "compat-rpc"):
         selections = (None, EXECUTION_FIXTURE) if action in ("analyze", "web") else (None,)
         for selected in selections:
             if args == client_command(action, selected):
                 effort = selected["effort"] if selected is not None else None
-                assert environment == client_environment(action, effort)
-                return action
+                if environment == client_environment(action, effort):
+                    return action
     raise AssertionError("fixture-command")
 
 
@@ -101,6 +103,10 @@ def validate_file_payload(data):
 def main():
     args = [str(BINARY)] + sys.argv[1:]
     action = validate_invocation(args, dict(os.environ))
+    # auth status has the same argv in both cases. Only the compatibility
+    # namespace has no mounted profile at all; never inspect real credentials.
+    if action == "status" and not Path(INNER_PROFILE).exists():
+        action = "compat-rpc"
     assert os.geteuid() > 0 and privileges_locked(Path("/proc/self/status").read_text())
     assert not Path("/var/lib/ai-desktop").exists() and not Path("/run/user").exists()
     assert not Path("/etc/claude-code").exists()
@@ -124,6 +130,16 @@ def main():
         assert not Path(INNER_PROFILE).exists()
         print(CLIENT_VERSION + " (Claude Code)")
         return 0
+    if action.startswith("compat-"):
+        assert not Path(INNER_PROFILE).exists()
+        assert not Path("/run/egress.sock").exists()
+        if action in ("compat-options", "compat-web", "compat-reject"):
+            sentinel = FIRST_INVALID_OPTION if action == "compat-reject" else INVALID_OPTION
+            print("error: unknown option '" + sentinel + "'", file=sys.stderr)
+            return 1
+        assert action == "compat-rpc"
+        print(json.dumps({"loggedIn": False, "configDirectory": INNER_PROFILE, "authMethod": "none"}))
+        return 1
     profile = Path(INNER_PROFILE)
     mode = (profile / "fixture-mode").read_text()
     if mode == "account-lifecycle":

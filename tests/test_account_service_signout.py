@@ -9,6 +9,8 @@ from unittest.mock import patch
 
 from ai_desktop import account_runtime, analysis_sandbox, codex_admin, siwc_auth
 from ai_desktop.analysis_contract import AnalysisDenied
+from system_client_fixtures import FakeBinding
+from claude_client_fixtures import compatibility_results
 
 
 class ServiceSignoutTests(unittest.TestCase):
@@ -22,21 +24,26 @@ class ServiceSignoutTests(unittest.TestCase):
         self.enterContext(patch.object(siwc_auth.AuthClient, "_request", side_effect=AssertionError("no network")))
         self.output = self.enterContext(redirect_stdout(io.StringIO()))
         self.enterContext(patch.object(analysis_sandbox, "runtime_ready"))
+        self.enterContext(patch.object(analysis_sandbox.client_binding, "bind", side_effect=lambda _: FakeBinding("claude")))
         self.native = self.enterContext(patch.object(analysis_sandbox, "bounded_process", side_effect=self.native_run))
 
-    def native_run(self, command, *, env, timeout, limit):
+    def native_run(self, command, *, env, timeout, limit, pass_fds, cancelled=None):
         self.assertEqual(env, {"PATH": "/usr/bin", "LANG": "C.UTF-8"})
         self.assertIn("--unshare-net", command)
         self.assertNotIn("/run/egress.sock", command)
+        self.assertEqual(pass_fds, ())
         action = command[-2]
-        if action == "version":
+        probes = ("version", "compat-options", "compat-web", "compat-reject", "compat-rpc")
+        if action in probes:
             self.assertNotIn("--bind", command)
-            return 0, (analysis_sandbox.CLIENT_VERSION + " (Claude Code)").encode(), b""
+            self.assertFalse(any(command[i + 2] == analysis_sandbox.INNER_PROFILE
+                                 for i, value in enumerate(command[:-2]) if value in ("--bind", "--ro-bind")))
+            return compatibility_results()[probes.index(action)]
         mounts = [(command[i], command[i + 1]) for i in range(len(command) - 2)
                   if command[i] in ("--ro-bind", "--bind") and command[i + 2] == analysis_sandbox.INNER_PROFILE]
         self.assertEqual(len(mounts), 1)
         flag, path = mounts[0]
-        # This stands in for the pinned native executable inside the private profile mount.
+        # This stands in for the bound system executable inside the private profile mount.
         entry = Path(path) / ".credentials.json"
         if action == "offline-logout":
             self.assertEqual(flag, "--bind")
@@ -118,16 +125,15 @@ class ServiceSignoutTests(unittest.TestCase):
         self.assertEqual(self.action("check", "claude"), 4)
         self.assertEqual(self.action("logout", "claude"), 0)
         self.assertEqual(entry.read_text(), '{"unrelated":"keep"}')
-        version = 0, (analysis_sandbox.CLIENT_VERSION + " (Claude Code)").encode(), b""
         good = 0, b'{"loggedIn":true,"authMethod":"claude.ai","configDirectory":"/home/client/profile"}', b""
         for reported in ((1, b"", b""), (1, b"{}", b""),
                          (0, b'{"loggedIn":true,"authMethod":"api-key"}', b""),
                          (0, b'{"loggedIn":true,"authMethod":"claude.ai","configDirectory":"/other"}', b"")):
-            self.native.side_effect = (version, reported)
+            self.native.side_effect = compatibility_results() + [reported]
             self.assertEqual(self.action("check", "claude"), 2)
-        self.native.side_effect = (version, good, (0, b"success", b""), good)
+        self.native.side_effect = compatibility_results() + [good, (0, b"success", b""), good]
         self.assertEqual(self.action("logout", "claude"), 2)
-        self.native.side_effect = (version, good, (1, b"", b"partial failure"), (1, b'{"loggedIn":false}', b""))
+        self.native.side_effect = compatibility_results() + [good, (1, b"", b"partial failure"), (1, b'{"loggedIn":false}', b"")]
         self.assertEqual(self.action("logout", "claude"), 0)
         self.native.side_effect = ((0, b"wrong version", b""),)
         self.assertEqual(self.action("check", "claude"), 2)
@@ -177,12 +183,14 @@ class ServiceSignoutTests(unittest.TestCase):
                 account_runtime.directory(legacy)
             # Stop before a browser/listener or real authentication, verify the immutable registration.
             with patch.object(codex_admin.http.server, "HTTPServer") as server, \
+                    patch("ai_desktop.codex_runtime.probe_client"), \
                     patch.object(siwc_auth.AuthClient, "begin_login", side_effect=siwc_auth.AuthError("denied")) as login:
                 server.return_value.__enter__.return_value.server_port = 1455
                 self.assertEqual(codex_admin.auth_worker("login"), 2)
                 self.assertEqual(login.call_args.kwargs, {"account_id": original})
             (path / "accounts.json").unlink()
-            with patch.object(codex_admin.http.server, "HTTPServer", side_effect=AssertionError("no new grant")):
+            with patch.object(codex_admin.http.server, "HTTPServer", side_effect=AssertionError("no new grant")), \
+                    patch("ai_desktop.codex_runtime.probe_client"):
                 self.assertEqual(codex_admin.auth_worker("login"), 2)
         self.assertEqual(self.action("check", "codex", "work"), 6)
         self.assertEqual(self.action("logout", "codex", "work"), 6)

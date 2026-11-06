@@ -16,7 +16,7 @@ FISH = shutil.which("fish")
 class HomeCandidateScriptTests(unittest.TestCase):
     def test_embedded_python_is_valid_without_execution(self):
         snippets = re.findall(r"python3 -I -B -c '([^']*)'", SCRIPT.read_text())
-        self.assertEqual(len(snippets), 2)
+        self.assertEqual(len(snippets), 1)
         for snippet in snippets:
             ast.parse(snippet)
 

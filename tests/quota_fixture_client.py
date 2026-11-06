@@ -6,7 +6,7 @@ import sys
 
 sys.path.insert(0, "/usr/lib/ai-desktop")
 from ai_desktop.codex_account_protocol import DEVICE_URL, fixed_command
-from ai_desktop.codex_protocol import CLIENT_VERSION
+from ai_desktop.codex_protocol import CLIENT_VERSION, fixed_command as analysis_command
 from ai_desktop.codex_runtime import BINARY, INNER_HOME, client_environment
 from ai_desktop.e2_subscription_boundary import privileges_locked
 
@@ -27,12 +27,26 @@ def main():
         print("codex-cli " + CLIENT_VERSION)
         return 0
 
-    assert [str(BINARY), *sys.argv[1:]] == fixed_command(str(BINARY))
-    assert Path("/run/egress.sock").is_socket()
-    return serve(home)
+    for rejected in (False, True):
+        expected = fixed_command(str(BINARY)) + (["--ai-desktop-invalid-compatibility-option"] if rejected else []) + ["--help"]
+        if [str(BINARY), *sys.argv[1:]] == expected:
+            assert not any(home.iterdir()) and not Path("/run/egress.sock").exists()
+            print("Synthetic app-server help")
+            return 2 if rejected else 0
+
+    offline = not Path("/run/egress.sock").exists()
+    expected = [fixed_command(str(BINARY))]
+    if offline:
+        expected.append(analysis_command(str(BINARY), effort="high"))
+    assert [str(BINARY), *sys.argv[1:]] in expected
+    if offline:
+        assert not any(home.iterdir())
+    else:
+        assert Path("/run/egress.sock").is_socket()
+    return serve(home, offline=offline)
 
 
-def serve(home):
+def serve(home, *, offline=False):
     assert not ({p.name for p in home.iterdir()} - {"auth.json"})
     credential = home / "auth.json"
     login_id = "11111111-2222-4333-8444-555555555555"
@@ -44,6 +58,7 @@ def serve(home):
         if method == "initialize":
             result = {"userAgent": "synthetic"}
         elif method == "account/login/start":
+            assert not offline
             assert not credential.exists() and data["params"] == {"type": "chatgptDeviceCode"}
             result = {"type": "chatgptDeviceCode", "verificationUrl": DEVICE_URL,
                       "userCode": "TEST-CODE", "loginId": login_id}
@@ -60,9 +75,17 @@ def serve(home):
             continue
         elif method == "account/read":
             assert data["params"] == {"refreshToken": False}
-            assert json.loads(credential.read_text())["tokens"]["access_token"] == "synthetic-access"
-            result = {"account": {"type": "chatgpt", "planType": "pro", "email": None}, "requiresOpenaiAuth": True}
+            if offline:
+                assert not credential.exists()
+                result = {"account": None, "requiresOpenaiAuth": True}
+            else:
+                assert json.loads(credential.read_text())["tokens"]["access_token"] == "synthetic-access"
+                result = {"account": {"type": "chatgpt", "planType": "pro", "email": None}, "requiresOpenaiAuth": True}
+        elif method == "model/list":
+            assert offline and data["params"] == {"limit": 64, "includeHidden": False}
+            result = {"data": [{"id": "synthetic-model", "displayName": "Synthetic", "hidden": False}], "nextCursor": None}
         elif method == "account/rateLimits/read":
+            assert not offline
             assert credential.exists() and data["params"] == {"excludeResetCreditDetails": True}
             result = {"rateLimits": {"limitId": "codex", "planType": "pro",
                        "primary": {"usedPercent": 31, "windowDurationMins": 300, "resetsAt": 2000000000},

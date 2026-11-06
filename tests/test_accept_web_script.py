@@ -16,18 +16,20 @@ FISH = shutil.which("fish")
 class WebCandidateScriptTests(unittest.TestCase):
     def test_embedded_python_is_valid_without_execution(self):
         snippets = re.findall(r"python3 -I -B -c '([^']*)'", SCRIPT.read_text())
-        self.assertEqual(len(snippets), 2)
+        self.assertEqual(len(snippets), 1)
         for snippet in snippets:
             ast.parse(snippet)
 
     def test_modes_stop_before_forbidden_operations_and_do_not_publish(self):
         source = SCRIPT.read_text()
         local_exit = source.index('if test "$aid_mode" = --local-only')
-        native_copy = source.index('__aid18_step NATIVE_COPY')
+        build = source.index('__aid18_logged BUILD')
         install_exit = source.index('if contains -- "$aid_mode" --allow-install --allow-codex-install')
         self.assertLess(source.index('__aid18_logged LOCAL'), local_exit)
-        self.assertLess(local_exit, native_copy)
-        self.assertLess(native_copy, source.index('__aid18_step UPGRADE'))
+        self.assertLess(local_exit, build)
+        self.assertLess(build, source.index('__aid18_step UPGRADE'))
+        self.assertNotIn('NATIVE_COPY', source)
+        self.assertNotIn('fetch_codex_client.py', source)
         self.assertLess(source.index('__aid18_step INSTALLED'), install_exit)
         self.assertLess(install_exit, source.index('__aid18_step HOST_WEB'))
         for command in ('git commit', 'git push', 'git merge', 'ROADMAP.md', 'README.md'):

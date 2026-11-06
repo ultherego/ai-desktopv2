@@ -34,6 +34,8 @@ def auth_worker(action, *, details=False):
         with profile_lock():
             if action == "logout":
                 return _account_action("logout", "codex")
+            from .codex_runtime import probe_client
+            probe_client()
             return _codex_login(details)
     except (AuthError, AnalysisDenied, OSError, ValueError, KeyboardInterrupt):
         print("Codex: the account operation did not finish. Credentials are not shown.")
@@ -177,7 +179,7 @@ def main(action, *, allow=False, details=False, named=None):
             provider, name = named
             uid = int(os.environ.get("SUDO_UID", ""))
             account_runtime.identity(uid, provider, name, allow_default=action in ("check", "logout"))
-        if named is None or action == "login":
+        if action == "login":
             if named and provider == "claude":
                 from .analysis_sandbox import runtime_ready as claude_ready
                 claude_ready()

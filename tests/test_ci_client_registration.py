@@ -1,0 +1,100 @@
+"""Privileged synthetic registration is unreachable outside its explicit CI fixture."""
+from contextlib import redirect_stdout
+import io
+from pathlib import Path
+from types import SimpleNamespace
+import unittest
+from unittest.mock import patch
+
+import ci_client_registration as driver
+
+
+class ClientRegistrationCiGuardTests(unittest.TestCase):
+    def test_missing_flag_and_non_ci_run_do_not_execute_any_command(self):
+        with patch.object(driver, "checked") as execute, patch.dict(driver.os.environ, {}, clear=True), \
+                redirect_stdout(io.StringIO()) as output:
+            for arguments in ([], ["--allow-install"], [driver.FLAG, "extra"], [driver.FLAG]):
+                self.assertEqual(driver.main(arguments), 2)
+            execute.assert_not_called()
+        self.assertNotIn("Traceback", output.getvalue())
+
+    def test_root_mixed_ids_and_existing_fixture_refuse_before_any_command(self):
+        with patch.dict(driver.os.environ, {"GITHUB_ACTIONS": "true", "RUNNER_OS": "Linux"}), \
+                patch.object(driver.os, "getuid", return_value=1001), patch.object(driver.os, "geteuid", return_value=1001), \
+                patch.object(driver.os, "getgid", return_value=1001), patch.object(driver.os, "getegid", return_value=1001), \
+                patch.object(driver, "ubuntu"), patch.object(driver, "checked") as execute, \
+                patch.object(driver.os.path, "lexists", return_value=True), redirect_stdout(io.StringIO()):
+            self.assertEqual(driver.main([driver.FLAG]), 2)
+            for identity in ("getuid", "geteuid", "getegid"):
+                with patch.object(driver.os, identity, return_value=0):
+                    self.assertEqual(driver.main([driver.FLAG]), 2)
+            execute.assert_not_called()
+
+    def test_root_action_refuses_in_checkout_even_as_root_before_source_or_cache_access(self):
+        with patch.object(driver.os, "getuid", return_value=0), patch.object(driver.os, "geteuid", return_value=0), \
+                patch.object(driver, "ubuntu") as platform, patch.object(driver, "checked") as execute, \
+                patch.object(driver, "_trusted") as trusted, redirect_stdout(io.StringIO()):
+            self.assertEqual(driver.main(["--root-fixture", "register", "a" * 64]), 2)
+        platform.assert_not_called()
+        trusted.assert_not_called()
+        execute.assert_not_called()
+
+    def test_fixture_ancestors_must_be_trusted_before_any_root_write_or_claim(self):
+        with patch.dict(driver.os.environ, {"GITHUB_ACTIONS": "true", "RUNNER_OS": "Linux"}), \
+                patch.object(driver.os, "getuid", return_value=1001), patch.object(driver.os, "geteuid", return_value=1001), \
+                patch.object(driver.os, "getgid", return_value=1001), patch.object(driver.os, "getegid", return_value=1001), \
+                patch.object(driver, "ubuntu"), patch.object(driver, "checked") as execute, \
+                patch.object(driver, "_trusted", side_effect=ValueError("fixture-ownership")) as trust, \
+                patch.object(driver.os.path, "lexists") as exists, redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(driver.main([driver.FLAG]), 2)
+            trust.assert_called_once_with(Path("/usr/lib"), directory=True)
+            execute.assert_not_called()
+            exists.assert_not_called()
+        self.assertIn("check=fixture-ancestor", output.getvalue())
+
+    def test_root_action_rejects_paths_commands_or_invalid_digest_before_context(self):
+        cases = ([], ["shell", "a" * 64], ["register", "/tmp/source"], ["remove", "a" * 64, "b" * 64],
+                 ["refresh", "a" * 64], ["refresh", "a" * 64, "invalid"], ["register", "a" * 64, "/bin/sh"])
+        with patch.object(driver, "root_context") as context:
+            for arguments in cases:
+                self.assertEqual(driver.root_action(arguments), 2)
+            context.assert_not_called()
+
+    def test_privileged_command_is_fixed_and_contains_only_action_and_reviewed_hashes(self):
+        completed = SimpleNamespace(returncode=0, stdout=b'{"provider":"codex","status":"registered","digest":"' + b"a" * 64 + b'"}\n', stderr=b"PRIVATE")
+        with patch.object(driver, "invoke", return_value=completed) as run, redirect_stdout(io.StringIO()):
+            driver.privileged("refresh", "a" * 64, "b" * 64)
+        run.assert_called_once_with(["/usr/bin/sudo", "-n", "--", "/usr/bin/python3", "-I", "-B", str(driver.HELPER),
+                                     "--root-fixture", "refresh", "a" * 64, "b" * 64])
+
+    def test_unexpected_root_refusal_exposes_only_closed_reason_action_and_return_code(self):
+        for output, exposed in ((b"ROOT FIXTURE: REFUSED reason=guard-fixture-ownership\n", "guard-fixture-ownership"),
+                                (b"ROOT FIXTURE: REFUSED reason=source-unsafe\n", "source-unsafe"),
+                                (b"ROOT FIXTURE: REFUSED reason=/PRIVATE/path\n", "unrecognized"),
+                                (b"PRIVATE secret\n" + b"x" * 4096, "unrecognized")):
+            with self.subTest(exposed=exposed), patch.object(driver, "invoke", return_value=SimpleNamespace(
+                    returncode=2, stdout=output, stderr=b"PRIVATE native or source detail")), redirect_stdout(io.StringIO()) as log:
+                with self.assertRaisesRegex(ValueError, "wrong-refusal"):
+                    driver.privileged("register", "0" * 64, reason="source-changed")
+                self.assertEqual(log.getvalue(), "CI REGISTRATION ROOT: action=register expected=source-changed exit=2 reason=" + exposed + "\n")
+                self.assertNotIn("PRIVATE", log.getvalue())
+
+    def test_root_guard_errors_emit_only_closed_diagnostic_codes(self):
+        for error, expected in ((ValueError("fixture-source"), "guard-fixture-source"),
+                                (ValueError("PRIVATE source"), "guard-input"),
+                                (PermissionError("PRIVATE path"), "guard-access"),
+                                (FileNotFoundError("PRIVATE path"), "guard-missing"),
+                                (ImportError("PRIVATE import"), "guard-import")):
+            with patch.object(driver, "root_context", side_effect=error), redirect_stdout(io.StringIO()) as log:
+                self.assertEqual(driver.root_action(["register", "a" * 64]), 2)
+                self.assertEqual(log.getvalue(), "ROOT FIXTURE: REFUSED reason=" + expected + "\n")
+
+    def test_unexpected_exit_keeps_diagnostics_without_releasing_captured_streams(self):
+        with patch.object(driver, "invoke", return_value=SimpleNamespace(returncode=1, stdout=b"PRIVATE", stderr=b"PRIVATE")), \
+                redirect_stdout(io.StringIO()) as log, self.assertRaisesRegex(ValueError, "fixture-command"):
+            driver.privileged("refresh", "a" * 64, "b" * 64)
+        self.assertEqual(log.getvalue(), "CI REGISTRATION ROOT: action=refresh expected=success exit=1 reason=unrecognized\n")
+
+
+if __name__ == "__main__":
+    unittest.main()

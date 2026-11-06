@@ -9,13 +9,12 @@ import stat
 import tempfile
 import threading
 
-from . import account_runtime, codex_runtime
+from . import account_runtime, client_binding, codex_runtime
 from .account_store import PLANS, named_account, quota
 from .analysis_child import _Bridge, check_boundary
 from .analysis_contract import AnalysisDenied, canonical
 from .analysis_sandbox import HOME, _identity_files, child_failure, failure_stage, profile_lock, service_identity
 from .analysis_seccomp import install_mode_filter
-from .codex_protocol import CLIENT_VERSION
 from .e2_connect_proxy import CODEX_ACCOUNT_HOSTS, ConnectProxy, open_public
 from .e2_ipc import _unique_pairs
 from .process_io import bounded_process
@@ -73,7 +72,7 @@ def _write_json(path, value):
 
 
 def _native_account(document):
-    # Only the pinned native credential format can survive the disposable CODEX_HOME.
+    # Only the adapter's validated native credential format can survive the disposable CODEX_HOME.
     # Tokens and identifiers are never emitted, logged or compared with desktop metadata.
     if (type(document) is not dict or set(document) - {"auth_mode", "OPENAI_API_KEY", "tokens", "last_refresh"}
             or document.get("auth_mode") != "chatgpt" or document.get("OPENAI_API_KEY") is not None):
@@ -174,11 +173,8 @@ def _safe_result(value):
     return value
 
 
-def _version(directory):
-    code, out, err = bounded_process(codex_runtime.namespace_command("version", directory), env=_SESSION_ENV,
-                                     timeout=10, limit=4096)
-    if code or out.strip() != ("codex-cli " + CLIENT_VERSION).encode("ascii"):
-        raise child_failure(err, "version") if code else AnalysisDenied("version")
+def _version(directory, binding):
+    return codex_runtime.compatibility(directory, binding)
 
 
 class _AccountProxy(ConnectProxy):
@@ -186,7 +182,7 @@ class _AccountProxy(ConnectProxy):
     block_on_close = False
 
 
-def _exchange(action, directory, challenge):
+def _exchange(action, directory, challenge, binding):
     from .codex_account_protocol import validate_challenge
     delivered = False
     first = bytearray()
@@ -213,9 +209,11 @@ def _exchange(action, directory, challenge):
         thread = threading.Thread(target=proxy.serve_forever, daemon=True)
         thread.start()
         try:
-            cmd = codex_runtime.namespace_command("quota-" + action, directory)
+            cmd = codex_runtime.namespace_command("quota-" + action, directory, binding=binding)
             code, out, err = bounded_process(cmd, env=_SESSION_ENV, timeout=timeout, limit=8192,
+                                             pass_fds=binding.pass_fds,
                                              stdout_chunk=on_stdout if action == "connect" else None)
+            binding.recheck()
         finally:
             proxy.shutdown()
             thread.join(timeout=2)
@@ -282,18 +280,19 @@ def run(action, uid, alias, *, challenge=None):
             generation = _binding(uid, alias, enroll=action == "connect")
         old = _receipt(path, generation) if action == "read" else None
         # Refuse absent, stale and foreign grants before even starting --version.
-        # No credential enters the namespace until the pinned version passes.
+        # No credential enters the namespace until the bound client passes the offline compatibility probes.
         codex_runtime.runtime_ready()
-        with tempfile.TemporaryDirectory(prefix="ai-desktop-quota-") as temp:
+        with client_binding.bind("codex") as binding, tempfile.TemporaryDirectory(prefix="ai-desktop-quota-") as temp:
             work = Path(temp)
             _identity_files(work)
-            _version(work)
+            _version(work, binding)
+            binding.recheck()
             staging = work / "native-home"
             staging.mkdir(mode=0o700)
             if action == "read":
                 _write_json(staging / "auth.json", old)
             try:
-                result = _exchange(action, work, challenge)
+                result = _exchange(action, work, challenge, binding)
             except AnalysisDenied:
                 if action != "read":
                     raise

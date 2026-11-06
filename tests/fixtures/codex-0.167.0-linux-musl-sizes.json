@@ -1,0 +1,194 @@
+{
+  "description": "Metadata only, streamed from the official archive without extraction or native execution; all payload members were ordinary files or directories, no links. This is measurement evidence, not a vendor runtime dependency or version pin.",
+  "url": "https://github.com/openai/codex/releases/download/rust-v0.167.0/codex-package-x86_64-unknown-linux-musl.tar.gz",
+  "archive_size": 200178910,
+  "archive_sha256": "3bbf75e83de6b58aed28f2cf6e33ad423ec31fd4700a1457b94be557ea5a7c6e",
+  "directories": [
+    "bin",
+    "codex-path",
+    "codex-resources",
+    "codex-resources/voice",
+    "codex-resources/voice/bin",
+    "codex-resources/voice/lib",
+    "codex-resources/voice/lib/gstreamer-1.0",
+    "codex-resources/voice/licenses"
+  ],
+  "files": [
+    {
+      "path": "bin/codex",
+      "size": 320575976
+    },
+    {
+      "path": "bin/codex-code-mode-host",
+      "size": 79209744
+    },
+    {
+      "path": "bin/codex-exec-server",
+      "size": 81940392
+    },
+    {
+      "path": "codex-package.json",
+      "size": 246
+    },
+    {
+      "path": "codex-path/rg",
+      "size": 5408904
+    },
+    {
+      "path": "codex-resources/bwrap",
+      "size": 529776
+    },
+    {
+      "path": "codex-resources/voice/NOTICE.md",
+      "size": 2403
+    },
+    {
+      "path": "codex-resources/voice/bin/codex-voice-host",
+      "size": 40487744
+    },
+    {
+      "path": "codex-resources/voice/lib/gstreamer-1.0/libgstapp.so",
+      "size": 6488
+    },
+    {
+      "path": "codex-resources/voice/lib/gstreamer-1.0/libgstaudioconvert.so",
+      "size": 41040
+    },
+    {
+      "path": "codex-resources/voice/lib/gstreamer-1.0/libgstaudioresample.so",
+      "size": 35264
+    },
+    {
+      "path": "codex-resources/voice/lib/gstreamer-1.0/libgstcoreelements.so",
+      "size": 479848
+    },
+    {
+      "path": "codex-resources/voice/lib/gstreamer-1.0/libgstopus.so",
+      "size": 73464
+    },
+    {
+      "path": "codex-resources/voice/lib/gstreamer-1.0/libgstrtp.so",
+      "size": 757800
+    },
+    {
+      "path": "codex-resources/voice/lib/gstreamer-1.0/libgstrtpmanager.so",
+      "size": 564072
+    },
+    {
+      "path": "codex-resources/voice/lib/libffi.so.8",
+      "size": 63096
+    },
+    {
+      "path": "codex-resources/voice/lib/libgio-2.0.so.0",
+      "size": 2338512
+    },
+    {
+      "path": "codex-resources/voice/lib/libglib-2.0.so.0",
+      "size": 1521616
+    },
+    {
+      "path": "codex-resources/voice/lib/libgmodule-2.0.so.0",
+      "size": 15720
+    },
+    {
+      "path": "codex-resources/voice/lib/libgobject-2.0.so.0",
+      "size": 454720
+    },
+    {
+      "path": "codex-resources/voice/lib/libgstallocators-1.0.so.0",
+      "size": 30416
+    },
+    {
+      "path": "codex-resources/voice/lib/libgstapp-1.0.so.0",
+      "size": 106144
+    },
+    {
+      "path": "codex-resources/voice/lib/libgstaudio-1.0.so.0",
+      "size": 636544
+    },
+    {
+      "path": "codex-resources/voice/lib/libgstbase-1.0.so.0",
+      "size": 573072
+    },
+    {
+      "path": "codex-resources/voice/lib/libgstnet-1.0.so.0",
+      "size": 74192
+    },
+    {
+      "path": "codex-resources/voice/lib/libgstpbutils-1.0.so.0",
+      "size": 321880
+    },
+    {
+      "path": "codex-resources/voice/lib/libgstreamer-1.0.so.0",
+      "size": 1582088
+    },
+    {
+      "path": "codex-resources/voice/lib/libgstrtp-1.0.so.0",
+      "size": 211744
+    },
+    {
+      "path": "codex-resources/voice/lib/libgsttag-1.0.so.0",
+      "size": 273976
+    },
+    {
+      "path": "codex-resources/voice/lib/libgstvideo-1.0.so.0",
+      "size": 1004720
+    },
+    {
+      "path": "codex-resources/voice/lib/libintl.so.8",
+      "size": 6304
+    },
+    {
+      "path": "codex-resources/voice/lib/libopus.so.0",
+      "size": 565744
+    },
+    {
+      "path": "codex-resources/voice/lib/libpcre2-8.so.0",
+      "size": 442424
+    },
+    {
+      "path": "codex-resources/voice/lib/libz.so.1",
+      "size": 109296
+    },
+    {
+      "path": "codex-resources/voice/licenses/LGPL-2.1.txt",
+      "size": 26431
+    },
+    {
+      "path": "codex-resources/voice/licenses/Opus.txt",
+      "size": 1945
+    },
+    {
+      "path": "codex-resources/voice/licenses/PCRE2.md",
+      "size": 4011
+    },
+    {
+      "path": "codex-resources/voice/licenses/libffi.txt",
+      "size": 1132
+    },
+    {
+      "path": "codex-resources/voice/licenses/proxy-libintl.txt",
+      "size": 25292
+    },
+    {
+      "path": "codex-resources/voice/licenses/sljit.txt",
+      "size": 1444
+    },
+    {
+      "path": "codex-resources/voice/licenses/zlib.txt",
+      "size": 1002
+    },
+    {
+      "path": "codex-resources/voice/manifest.json",
+      "size": 4768
+    },
+    {
+      "path": "codex-resources/voice/runtime.json",
+      "size": 13941
+    },
+    {
+      "path": "codex-resources/voice/sources.json",
+      "size": 4911
+    }
+  ]
+}

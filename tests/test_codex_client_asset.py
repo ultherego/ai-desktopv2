@@ -202,11 +202,12 @@ class CodexClientAssetTests(unittest.TestCase):
         with contextlib.redirect_stderr(stderr):
             self.assertEqual(asset.main(["--url", "https://example.invalid"]), 2)
         self.assertNotIn("example.invalid", stderr.getvalue())
-        with patch.object(asset, "prepare", side_effect=asset.AssetDenied("download")):
+        with patch.object(asset, "prepare", side_effect=AssertionError("retired CLI must never download")) as prepare:
             stderr = io.StringIO()
             with contextlib.redirect_stderr(stderr):
                 self.assertEqual(asset.main([]), 2)
-            self.assertEqual(stderr.getvalue(), "CODEX ASSET: REFUSED reason=download\n")
+            prepare.assert_not_called()
+            self.assertIn("standalone preparation retired", stderr.getvalue())
 
 
 if __name__ == "__main__":

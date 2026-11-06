@@ -59,36 +59,7 @@ function __aid14_cycle --argument-names aid_expected aid_repo aid_tmp aid_scope
     cd "$aid_tree"; or return $status
     __aid14_step COMMIT git log -1 --format='%H %s'
     or return $status
-    __aid14_step NATIVE_COPY python3 -I -B -c '
-import os, shutil, stat, sys
-from pathlib import Path
-source, target = Path("/usr/lib/ai-desktop/claude-code"), Path(sys.argv[1])
-for path in reversed(source.parents):
-    info = path.lstat()
-    if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
-        raise SystemExit("NATIVE COPY: REFUSED parent")
-with os.fdopen(os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC), "rb") as src:
-    before = os.fstat(src.fileno())
-    if (not stat.S_ISREG(before.st_mode) or before.st_uid != 0 or before.st_gid != 0
-            or before.st_nlink != 1 or before.st_mode & 0o022 or not before.st_mode & 0o111
-            or src.read(4) != b"\x7fELF"):
-        raise SystemExit("NATIVE COPY: REFUSED source")
-    src.seek(0)
-    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o700)
-    with os.fdopen(fd, "wb") as dst:
-        shutil.copyfileobj(src, dst)
-        dst.flush()
-        os.fchmod(dst.fileno(), 0o755)
-        os.fsync(dst.fileno())
-    after = os.fstat(src.fileno())
-    fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
-    if any(getattr(before, key) != getattr(after, key) for key in fields):
-        raise SystemExit("NATIVE COPY: REFUSED changed source")
-print("Native client copied from the accepted package; not run, no OAuth.")
-' "$aid_tree/packaging/arch/claude-code"
-    or return $status
-    __aid14_step NATIVE_MATCH cmp /usr/lib/ai-desktop/claude-code "$aid_tree/packaging/arch/claude-code"
-    or return $status
+    # Native clients are independently installed system packages; never copy them into this build.
     __aid14_logged CI "$aid_tmp/ci.log" python3 -B scripts/verify.py --mode ci --fail-fast --json "$aid_tmp/ci.json"
     or return $status
     __aid14_logged LOCAL "$aid_tmp/local.log" python3 -B scripts/verify.py --mode local --fail-fast --json "$aid_tmp/local.json"

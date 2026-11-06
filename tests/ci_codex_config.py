@@ -22,12 +22,13 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from ai_desktop import codex_account_protocol as native, codex_protocol
+from ai_desktop import client_compat, codex_compat, codex_account_protocol as native, codex_protocol
 from ai_desktop.analysis_contract import AnalysisDenied, application_input
 from ai_desktop.codex_protocol import (CLIENT_VERSION, Protocol, exchange, fixed_command,
                                       notification_fields, startup_notification)
 from ai_desktop.e2_ipc import _unique_pairs
 from ai_desktop.e2_subscription_boundary import base_command
+from ai_desktop.process_io import bounded_process
 from scripts import fetch_codex_client as asset
 
 MAX_OUTPUT = 131072
@@ -256,6 +257,36 @@ def offline_native_account(argv):
     raise StartupDenied("native-account")
 
 
+def compatibility_probe(binary, directory):
+    """Exercise the production offline compatibility adapter against the genuine fixture."""
+    argv = command(binary, directory, native_account=True)
+    native_start = argv.index("--chdir") + 2
+    env = {"PATH": "/usr/bin", "LANG": "C.UTF-8"}
+    def run(action):
+        if action == "compat-rpc":
+            # Match both production adapters: SIWC analysis must load its own
+            # strict provider/ephemeral-store configuration without any token.
+            analysis = command(binary, directory) + ["-c", 'model_reasoning_effort="high"']
+            codex_protocol._exchange(analysis, codex_compat.ProbeProtocol(native_account=False), env=env,
+                                     timeout=20, stop_after_reply=True)
+            codex_protocol._exchange(argv, codex_compat.ProbeProtocol(), env=env,
+                                     timeout=20, stop_after_reply=True)
+            return 0, b'{"initialize":true,"signed_out":true,"models":true}', b""
+        if action == "version":
+            selected = argv[:native_start] + ["/opt/codex", "--version"]
+        elif action in ("compat-help", "compat-reject"):
+            selected = argv + ([client_compat.INVALID_OPTION] if action == "compat-reject" else []) + ["--help"]
+        else:
+            raise StartupDenied("preflight")
+        return bounded_process(selected, env=env, timeout=20, limit=client_compat.MAX_OUTPUT)
+    try:
+        result = client_compat.check("codex", run)
+        if result.status != "compatible-tested":
+            raise StartupDenied("pin")
+    except AnalysisDenied:
+        raise StartupDenied("protocol") from None
+
+
 def fixture_native_quota(binary, directory):
     """Exercise genuine v0.166.0 account and quota RPCs against a synthetic, loopback-only backend."""
     argv = command(binary, directory, native_account=True)
@@ -295,6 +326,7 @@ def run():
             (os.getuid(), os.getgid()))
         (directory / "group").write_text("client:x:%d:\n" % os.getgid())
         initialize_only(command(binary, directory))
+        compatibility_probe(binary, directory)
         offline_native_account(command(binary, directory, native_account=True))
         fixture_native_quota(binary, directory)
         offline_turn(turn_command(binary, directory))
@@ -312,7 +344,7 @@ def main(argv=None):
     except (asset.AssetDenied, OSError, ValueError, subprocess.SubprocessError):
         print("CI CODEX CONFIG: FAIL reason=preflight")
         return 2
-    print("CI CODEX CONFIG: PASS pinned=0.166.0 strict-config=PASS initialize=PASS network=OFF auth=NONE native-account=signed-out native-quota=31%/47%(loopback-fixture) turn=PASS(offline, stops at network) inference=NOT_RUN")
+    print("CI CODEX CONFIG: PASS pinned=0.166.0 strict-config=PASS initialize=PASS system-compatibility=PASS network=OFF auth=NONE native-account=signed-out native-quota=31%/47%(loopback-fixture) turn=PASS(offline, stops at network) inference=NOT_RUN")
     return 0
 
 

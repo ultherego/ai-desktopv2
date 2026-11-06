@@ -57,25 +57,22 @@ def _installed_skills_match():
 
 
 def installed_matches(*, native=True):
-    """Installed package equals this tree. native=False skips untracked native
-    clients (only the install runner copies them into its worktree); the code, units and
-    helpers and every packaged Skill are still compared byte for byte."""
+    """Compare application code, units, helpers and every packaged Skill.
+
+    System clients are independently managed. ``native=True`` additionally
+    checks Claude readiness for the legacy Claude-specific AI scenarios;
+    provider-neutral acceptance uses ``native=False`` and its selected probe.
+    """
     offline._installed_matches()
     _installed_skills_match()
     mappings = [(p, INSTALL / "ai_desktop" / p.name) for p in (ROOT / "ai_desktop").glob("*.py")]
     mappings += [(ROOT / "packaging/systemd" / name, INSTALL / name)
                  for name in ("analysis-client.py", "analysis-worker.py", "analysis-session.py",
-                              "codex-auth.py", "codex-client.py")]
+                              "codex-auth.py", "codex-client.py", "codex-quota.py", "client-admin.py")]
     mappings += [(ROOT / "packaging/systemd" / name, Path("/usr/lib/systemd/system") / name)
-                 for name in ("ai-desktop-analysis@.socket", "ai-desktop-analysis@.service")]
-    # Only the executable, never desktop/service credential files.
-    if native:
-        mappings.append((ROOT / "packaging/arch/claude-code", BINARY))
-        codex = ROOT / "packaging/arch/codex"
-        # Optional staging is explicit: absence means no Codex binary was
-        # packaged. lexists catches a dangling symlink and fails closed below.
-        if os.path.lexists(codex):
-            mappings.append((codex, INSTALL / "codex"))
+                 for name in ("ai-desktop-analysis@.socket", "ai-desktop-analysis@.service",
+                              "ai-desktop-codex-limits@.socket", "ai-desktop-codex-limits@.service")]
+    # System clients belong to their own packages, never this source tree.
     for source, target in mappings:
         trusted_file(target)
         if source.is_symlink() or not source.is_file():
@@ -83,7 +80,8 @@ def installed_matches(*, native=True):
         with source.open("rb") as a, target.open("rb") as b:
             if hashlib.file_digest(a, "sha256").digest() != hashlib.file_digest(b, "sha256").digest():
                 raise ValueError("installed-code")
-    runtime_ready()
+    if native:
+        runtime_ready()
 
 
 def run(*args, timeout=30):
@@ -148,7 +146,7 @@ def preflight():
     if (uid <= 0 or uid != os.getuid() or not os.isatty(0) or not os.isatty(1)
             or Path("/proc/1/comm").read_text().strip() != "systemd"):
         raise ValueError("host")
-    if offline._command(["/usr/bin/pacman", "-Q", "ai-desktop"]) != "ai-desktop 0.1.0-80":
+    if offline._command(["/usr/bin/pacman", "-Q", "ai-desktop"]) != "ai-desktop 0.1.0-83":
         raise ValueError("package")
     installed_matches()
     units = ["ai-desktop-analysis@" + str(uid) + suffix for suffix in (".socket", ".service")]

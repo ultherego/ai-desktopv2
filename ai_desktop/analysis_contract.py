@@ -352,10 +352,12 @@ CONSENT_CEILING = 3600        # a whole question never stays approved longer tha
 REASONS = frozenset({"consent", "input", "endpoint", "runtime", "identity", "busy",
                      "sandbox", "auth-required", "auth-method", "version", "client",
                      "timeout", "output-limit", "result", "internal", "cancelled",
-                     "authorization", "cleanup", "network", "rate-limit", "provider-unavailable", "web-no-results"})
+                     "authorization", "cleanup", "network", "rate-limit", "provider-unavailable", "web-no-results",
+                     "client-missing", "client-unsafe", "client-layout", "client-changed",
+                     "client-unavailable", "client-version", "client-protocol"})
 STAGES = frozenset({"internal", "terminal", "supervisor", "profile", "version", "namespace",
                     "proxy", "native-login", "auth-status", "analysis", "boundary", "bridge",
-                    "native-exec", "runtime", "manager", "input", "mode-filter"})
+                    "native-exec", "runtime", "manager", "input", "mode-filter", "compatibility"})
 
 
 class AnalysisDenied(RuntimeError):
@@ -507,7 +509,9 @@ def application_input(report, question="", task=None, context=None, access=None,
         data["knowledge"] = knowledge
     provider = selected["provider"] if selected is not None else "claude"
     context_by_provider = {"claude": CLIENT_CONTEXT, "codex": CODEX_CLIENT_CONTEXT}
-    version_by_provider = {"claude": CLIENT_VERSION, "codex": "0.166.0", "local": "chat-completions-v1"}
+    version_by_provider = {"claude": "system >= " + CLIENT_VERSION + "; offline compatibility required",
+                           "codex": "system >= 0.166.0; offline compatibility required",
+                           "local": "chat-completions-v1"}
     if provider == "local":
         if web:
             raise ValueError("local provider does not support web search")

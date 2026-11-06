@@ -8,6 +8,8 @@ from unittest.mock import Mock, patch
 
 from ai_desktop import analysis_sandbox as sandbox, provider_errors as errors
 from ai_desktop.analysis_contract import AnalysisDenied, CLIENT_VERSION
+from system_client_fixtures import FakeBinding
+from claude_client_fixtures import compatibility_results
 
 
 def failure(status, **changes):
@@ -128,18 +130,18 @@ class NativeSupervisorFailureTests(unittest.TestCase):
             return event
         proxy = SimpleNamespace(begin_phase=begin_phase, serve_forever=lambda: None,
                                 shutdown=Mock())
-        results = [(0, (CLIENT_VERSION + " (Claude Code)").encode(), b""),
-                   (0, json.dumps({"loggedIn": True, "authMethod": "claude.ai",
+        results = compatibility_results() + [(0, json.dumps({"loggedIn": True, "authMethod": "claude.ai",
                                    "configDirectory": sandbox.INNER_PROFILE}).encode(), b""), final]
         with patch.object(sandbox, "supervisor_ready"), \
                 patch.object(sandbox, "profile_lock", return_value=contextlib.nullcontext()), \
+                patch.object(sandbox.client_binding, "bind", side_effect=lambda _: FakeBinding("claude")), \
                 patch.object(sandbox, "namespace_command", return_value=["unused"]), \
                 patch.object(sandbox, "_Proxy", return_value=contextlib.nullcontext(proxy)), \
                 patch.object(sandbox, "bounded_process", side_effect=results) as process:
             with self.assertRaises(AnalysisDenied) as caught:
                 sandbox.run_client("analyze", b"synthetic request")
         proxy.shutdown.assert_called_once()
-        self.assertEqual(process.call_count, 3)
+        self.assertEqual(process.call_count, 7)
         self.assertNotIn("SECRET", str(caught.exception))
         return caught.exception.reason
 

@@ -8,6 +8,7 @@ Rectangle {
     required property real sampledAt
     property bool active: false
     property Component emptyUsageAction
+    property string emptyUsageText: Status.emptyUsageText(account)
     property string fontFamily: ""
     property color accentColor: "#fab387"
     property color surfaceColor: "#252536"
@@ -167,9 +168,7 @@ Rectangle {
             visible: !card.hasUsage
             wrapMode: Text.Wrap
             elide: Text.ElideNone
-            text: card.account.status === "retired" ? "Account retired" : card.account.provider === "codex"
-                  ? "Codex has not reported limits for this account. ChatGPT opens with the account signed in to your browser."
-                  : "Usage not reported"
+            text: card.emptyUsageText
         }
         Loader {
             active: !!card.emptyUsageAction && !card.hasUsage && card.account.provider === "codex" && card.account.status !== "retired"

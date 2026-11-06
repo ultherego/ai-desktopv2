@@ -121,5 +121,23 @@ Item {
             verify(right.x <= card.width && right.y <= card.height,
                    "A gauge overflows the card bounds");
         }
+
+        function test_codexEmptyAndObservedLimitsStayInCard() {
+            const account = {provider: "codex", account: "personal", selected: true,
+                             auth_state: "signed_in", native_limits_cleanup_pending: true, windows: {}};
+            card.account = account;
+            wait(0);
+            const empty = findChild(card, "emptyUsage");
+            verify(empty.visible);
+            compare(empty.text, "Reconnect this account's limits to show usage and reset times here.");
+            verify(noCurrentFill("five_hour") && noCurrentFill("seven_day"));
+            card.account = Object.assign({}, account, {native_limits_cleanup_pending: false, live_limits_connected: true,
+                            quota_source: "codex_native", observed_at: card.sampledAt - 60,
+                            windows: {five_hour: reading(29), seven_day: reading(47)}});
+            wait(0);
+            verify(!empty.visible);
+            verifyFill("five_hour", 29);
+            verifyFill("seven_day", 47);
+        }
     }
 }

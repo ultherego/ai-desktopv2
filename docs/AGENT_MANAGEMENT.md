@@ -2,9 +2,9 @@
 
 An agent never adds permissions. Files, commands and network are decided by `~/.config/ai-desktop/permissions.toml`, and writing by your consent.
 
-## Client transition
+## Independently installed clients
 
-Candidate 0.1.0-80 retains the working 0.1.0-79 runtime and login flows below. Its `doctor` report adds system-client file metadata, with version and protocol unchecked and the discovered client inactive. The agreed target uses compatible system-installed Claude or Codex clients independently, with shared discovery/preflight and no vendor binaries in the AI Desktop package. Detection alone does not switch adapters or reuse an existing user CLI login. See [client installation and transition](AGENT_INSTALL.md) for the current path and the requirements for the replacement.
+Candidate 0.1.0-81 uses independently installed Claude or Codex clients through the existing isolated account flows below. The application package contains no vendor executables. System packages work directly; official native/HOME/npm installations need `ai-desktop clients register PROVIDER`. After updating that source, `clients refresh PROVIDER` approves the new bytes. Registration is system-wide and takes priority over the provider package until explicitly removed. Ordinary `doctor` and panel status inspect metadata only; `ai-desktop doctor --clients` explicitly checks the selected client's compatibility offline without a profile, network or model request. The new execution boundary still requires its own CachyOS acceptance. See [client installation, compatibility and migration](AGENT_INSTALL.md).
 
 ## Settings and login
 
@@ -129,19 +129,18 @@ In `version = 2` there is no hidden list of names. If `read` covers `~/.config/a
 
 ## Codex through a ChatGPT subscription
 
-Codex is selected and enabled independently of Claude. Treat this adapter as experimental. The working 0.1.0-79 package path uses the official **Codex 0.166.0** client ([release](https://github.com/openai/codex/releases/tag/rust-v0.166.0)). The preparation below remains a transition procedure until the system-client runtime is accepted.
+Codex is selected and enabled independently of Claude. Treat this adapter as experimental. Install the system `openai-codex` package independently, then use its shared compatibility check and the existing AI Desktop account flow:
 
 ```fish
-cd ~/ai-desktop
-python3 -B scripts/fetch_codex_client.py    # downloads the archive, checks SHA-256, does not run the client
-# rebuild and install the package
+ai-desktop agent use codex
+ai-desktop doctor --clients
 ai-desktop codex status
 ai-desktop login --codex
 ai-desktop ask --agent reviewer
 ai-desktop codex logout --allow-chatgpt-logout
 ```
 
-In `[network]` set `codex = true`: the permissions for Claude and Codex are separate, and the policy is not changed for you. The script writes `packaging/arch/codex` and does not overwrite an existing file.
+In `[network]` set `codex = true`: the permissions for Claude and Codex are separate, and the policy is not changed for you. Compatible client updates do not require rebuilding AI Desktop. Registered sources require an explicit `clients refresh codex`; otherwise the previously approved copy remains selected. Native client or resource replacement during an operation refuses further phases; begin a new operation after the package update. SIWC account checks/logout and native quota disconnection remain available if the native client has been removed.
 
 Login is the official "Sign in with ChatGPT" flow handled by a trusted component of the service account. It does not copy existing credentials and does not use an API key. Tokens are in `/var/lib/ai-desktop/codex` and remain after the package is uninstalled unless you log out; logging out also tries to revoke the credential and says so if there is no confirmation.
 

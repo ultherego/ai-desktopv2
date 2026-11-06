@@ -1,11 +1,18 @@
 import tempfile
 from pathlib import Path
 import unittest
+from unittest.mock import patch
 
-from ai_desktop.agent import PROBE, build_agent_command
+from ai_desktop.agent import PROBE, build_agent_command, main
 
 
 class AgentTests(unittest.TestCase):
+
+    def test_retained_agent_command_uses_shared_launcher_and_propagates_refusal(self):
+        for result in (0, 2):
+            with self.subTest(result=result), patch("ai_desktop.launcher.main", return_value=result) as launch:
+                self.assertEqual(main(["version"]), result)
+            launch.assert_called_once_with(["version"])
 
     def test_probe_syntax(self):
         compile(PROBE, "<probe>", "exec")

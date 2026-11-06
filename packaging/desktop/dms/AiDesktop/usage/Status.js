@@ -62,6 +62,27 @@ function currentAccount(snapshot, provider) {
     return snapshot?.accounts?.find(a => a.provider === provider && a.selected && a.status !== "retired") || null;
 }
 
+function emptyUsageText(account) {
+    if (account.status === "retired")
+        return "Account retired";
+    if (account.provider !== "codex")
+        return "Usage not reported";
+    if (account.selected !== true)
+        return "Select this account in Accounts & login to read its limits.";
+    if (account.auth_state === "signed_out")
+        return "Sign in to Codex, then connect limits to show usage here.";
+    if (account.auth_state !== "signed_in")
+        return "Check sign-in before connecting limits for this account.";
+    if (account.native_limits_cleanup_pending === true)
+        return "Reconnect this account's limits to show usage and reset times here.";
+    if (account.live_limits_connected === true) {
+        if (account.quota_source === "codex_native" && account.observed_at > 0)
+            return "Codex did not report a 5-hour or 7-day window.";
+        return "Read limits to show usage and reset times here.";
+    }
+    return "Connect this account's limits to show usage and reset times here.";
+}
+
 function canSelectService(snapshot, provider) {
     if (!snapshot || !["claude", "codex", "local"].includes(provider) || snapshot.selected === provider)
         return false;

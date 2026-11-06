@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.1.0-83: Codex limits inside the widget
+
+- Replace the Codex card's browser fallback with the next applicable account action: check sign-in, connect or reconnect limits, or refresh the existing connection. Show the provider's actual percentages and local reset times in the card; missing readings stay explicitly unknown.
+- Refresh limits directly from the card, including an already connected account with no reading yet. Prevent concurrent refreshes and show progress. Opening the widget and its timer continue to read saved local state only.
+- Preserve the existing separately approved native quota session and account binding. The candidate-82 client runtime passed CachyOS offline acceptance with Claude 2.1.319 and Codex 0.167.0; this widget follow-up does not change client execution, registration or OAuth protocols.
+
+## 0.1.0-82: native compatibility and standalone package limits
+
+- Separate Claude print-mode option checks from the signed-out account-status check. Exercise the complete production options with explicit unknown-option controls, including first-error ordering, and reject incidental error text or JSONL as parser proof. Preserve the positive offline status contract and strict runtime reply validation.
+- Raise the shared native payload total from 512 MiB to 768 MiB: the official Codex 0.167.0 standalone bundle exceeds the old cap. Keep 384 MiB per file and all traversal/ownership checks. Analysis and quota services allow 3 GiB for the retained payload, its read-only namespace copy and native-client memory.
+- Keep existing approved Claude registrations and separate account data. A previously refused Codex source can be registered after this application update. New exact-candidate CachyOS acceptance remains required before merge.
+
+## 0.1.0-81: independent clients and explicit registration
+
+- Use independently installed Claude Code or Codex through the existing isolated adapters. Supported system packages work directly; official native/HOME/npm installations use explicit administrator-approved registration and refresh of their native payload. Freeze the selected native executable and client-private resources for one operation, check compatibility offline before account/model access, and refuse changed installations or unsupported protocols.
+- Inspect sources with `clients list`; register, refresh or remove an approved runtime copy explicitly. A source update never silently replaces its registered bytes. Remove vendor-client downloading and embedding from application installation. Claude, Codex, both or local-only setups are independent; upgrades retain the existing separate account data, and uninstalling AI Desktop leaves independent clients and separately retained registrations in place.
+- Keep ordinary `doctor` and panel status metadata-only. Add explicit `doctor --clients` for the selected provider's offline compatibility check, with a distinction between the tested baseline and newer compatible but untested versions.
+- The migrated runtime requires new CachyOS acceptance; acceptance of package 79 is not evidence for these changed boundaries.
+
 ## 0.1.0-80: system-client discovery and a single delivery roadmap
 
 - Add read-only metadata inspection of system Claude Code and Codex to `doctor`, with separate missing, unsafe, unsupported-layout and changed-file outcomes. Inspection does not execute a client, access credentials or certify vendor origin, version or protocol compatibility.

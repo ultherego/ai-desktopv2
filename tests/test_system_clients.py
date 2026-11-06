@@ -2,6 +2,7 @@
 from collections import Counter
 from dataclasses import FrozenInstanceError
 import os
+import json
 from pathlib import Path
 import socket
 import stat
@@ -33,6 +34,11 @@ class SystemClientMetadataTests(unittest.TestCase):
         self.enterContext(patch.object(clients, "_CANDIDATES", MappingProxyType({
             "claude": str(self.path), "codex": str(self.usr / "bin/codex")})))
         self.enterContext(patch.object(clients, "_TRUSTED_ROOTS", (str(self.usr), str(self.opt))))
+        self.alternate = self.opt / "claude-code/bin/claude"
+        self.enterContext(patch.object(clients, "_NATIVE_ALTERNATES", {"claude": str(self.alternate)}))
+        self.cache = self.opt / "registered"
+        self.enterContext(patch.object(clients, "_REGISTERED_ROOTS", {
+            provider: str(self.cache / provider) for provider in ("claude", "codex")}))
         self.original_trusted = clients._trusted
         # Ordinary CI is unprivileged. Only ownership is represented as root;
         # real inode/mode/link/byte checks and the actual validator are retained.
@@ -46,6 +52,14 @@ class SystemClientMetadataTests(unittest.TestCase):
         path = self.path if path is None else path
         path.write_bytes(elf() if data is None else data)
         path.chmod(0o755)
+        return path
+
+    def manifest(self, provider="claude"):
+        path = self.cache / provider / "manifest.json"
+        path.write_text(json.dumps({"schema": 1, "provider": provider, "source_uid": 1001,
+            "source": "/home/synthetic/private-native", "layout": "native-file", "digest": "1" * 64,
+            "bytes": 64, "files_count": 1}))
+        path.chmod(0o644)
         return path
 
     def assert_result(self, status, detail):
@@ -91,6 +105,93 @@ class SystemClientMetadataTests(unittest.TestCase):
                 patch.object(socket, "socket", side_effect=AssertionError("network")):
             self.assert_result("present", "vendor-unverified")
             self.assertEqual(clients.inspect("codex").status, "missing")
+
+    def test_known_native_alternate_bypasses_only_absent_or_trusted_wrapper(self):
+        self.alternate.parent.mkdir(parents=True)
+        self.executable(self.alternate)
+        self.assertEqual(clients.inspect("claude").path, str(self.alternate))
+        self.executable(data=b"#!/usr/bin/sh\nDO_NOT_EXECUTE_ANYTHING\n")
+        result = clients.inspect("claude")
+        self.assertEqual((result.status, result.path), ("present", str(self.alternate)))
+        self.assertTrue(result.recheck())
+        self.path.chmod(0o777)
+        self.assert_result("unsafe", "permissions")
+        self.assertFalse(result.recheck())
+
+    def test_file_capabilities_are_refused_before_native_read(self):
+        self.executable()
+        with patch.object(clients.os, "getxattr", return_value=b"capability"):
+            self.assert_result("unsafe", "file-capabilities")
+
+    def test_registered_root_owned_payload_takes_precedence_without_reading_source_manifest(self):
+        self.executable()
+        registered = self.cache / "claude/payload/bin/claude"
+        registered.parent.mkdir(parents=True)
+        self.executable(registered)
+        self.manifest()
+        result = clients.inspect("claude")
+        self.assertEqual((result.status, result.path), ("present", str(registered)))
+        self.assertEqual(result.source, "registered")
+        self.assertTrue(result.recheck())
+        self.path.chmod(0o777)  # The unselected system executable grants nothing.
+        self.assertTrue(result.recheck())
+        registered.chmod(0o777)
+        self.assertEqual(clients.inspect("claude").status, "unsafe")
+        self.assertFalse(result.recheck())
+
+    def test_missing_malformed_wrong_provider_and_unsafe_manifest_never_fall_back(self):
+        self.executable()
+        registered = self.cache / "claude/payload/bin/claude"
+        registered.parent.mkdir(parents=True)
+        self.executable(registered)
+        result = clients.inspect("claude")
+        self.assertEqual((result.status, result.detail), ("unsupported", "registration-incomplete"))
+        manifest = self.manifest()
+        original = clients.inspect("claude")
+        self.assertEqual(original.status, "present")
+        for data in ("broken", json.dumps({"schema": 1, "provider": "codex", "source_uid": 1001,
+                "source": "/home/synthetic/private-native", "layout": "native-file", "digest": "1" * 64,
+                "bytes": 64, "files_count": 1})):
+            manifest.write_text(data)
+            result = clients.inspect("claude")
+            self.assertEqual((result.status, result.detail, result.source),
+                             ("unsafe", "registration-manifest", "registered"))
+            self.assertFalse(original.recheck())
+        self.manifest().chmod(0o777)
+        self.assertEqual(clients.inspect("claude").status, "unsafe")
+
+    def test_changing_valid_registration_marker_invalidates_existing_inspection(self):
+        registered = self.cache / "claude/payload/bin/claude"
+        registered.parent.mkdir(parents=True)
+        self.executable(registered)
+        manifest = self.manifest()
+        before = clients.inspect("claude")
+        data = json.loads(manifest.read_text())
+        data["digest"] = "2" * 64
+        manifest.write_text(json.dumps(data))
+        self.assertEqual(clients.inspect("claude").status, "present")
+        self.assertFalse(before.recheck())
+
+    def test_incomplete_or_alias_registration_never_falls_back_to_system_client(self):
+        self.executable()
+        registered = self.cache / "claude"
+        registered.mkdir(parents=True)
+        result = clients.inspect("claude")
+        self.assertEqual((result.status, result.detail), ("unsupported", "registration-incomplete"))
+        self.assertEqual(result.source, "registered")
+        registered.rmdir()
+        other = self.opt / "other-registration"
+        other.mkdir()
+        registered.symlink_to(other, target_is_directory=True)
+        result = clients.inspect("claude")
+        self.assertEqual((result.status, result.detail), ("unsafe", "registration-layout"))
+
+    def test_unsafe_registration_parent_blocks_system_fallback_even_when_payload_is_missing(self):
+        self.executable()
+        self.cache.mkdir(mode=0o777)
+        self.cache.chmod(0o777)
+        result = clients.inspect("claude")
+        self.assertEqual((result.status, result.detail), ("unsafe", "permissions"))
 
     def test_missing_and_inaccessible_have_fixed_redacted_details(self):
         self.assert_result("missing", "missing")

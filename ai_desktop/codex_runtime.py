@@ -6,17 +6,19 @@ it never mounts the store, a host home, or a persistent Codex profile. The
 compiled OpenAI egress policy is disjoint from the Claude CONNECT policy.
 """
 import json
+import math
 import os
 from pathlib import Path
 import tempfile
 import threading
+import time
 
-from . import account_runtime
+from . import account_runtime, client_binding, client_compat, system_clients
 from .analysis_contract import (request_effort, request_seconds, AnalysisDenied, MAX_PACKET_LARGE, MAX_RESPONSE_BYTES, ModelText,
                                 canonical, result_text_limit, terminal_text, validate_meta)
 from .analysis_sandbox import (CA, HOME, INSTALL, NAMESPACES, child_failure,
                                cloud_transport_ready, failure_stage, profile_lock, service_identity, trusted_file)
-from .codex_protocol import CLIENT_VERSION, Protocol, TOKEN_ENV
+from .codex_protocol import Protocol, TOKEN_ENV
 from .e2_connect_proxy import ANALYSIS_STREAM_LIMIT, ConnectProxy, OPENAI_HOSTS, open_public
 from .e2_ipc import _unique_pairs
 from .e2_subscription_boundary import base_command
@@ -24,7 +26,7 @@ from .execution import validate as validate_execution
 from .process_io import MAX_PRIVATE_INPUT_BYTES, bounded_process
 from .siwc_auth import AuthClient, AuthError, AuthStore
 
-BINARY = INSTALL / "codex"
+BINARY = Path(client_binding.binary("codex"))
 PROFILE = HOME / "codex"
 INNER_HOME = "/home/client/.codex"
 MAX_TOKEN_BYTES = 16 * 1024
@@ -33,12 +35,9 @@ PRIVATE_PACKET_BYTES = MAX_PRIVATE_INPUT_BYTES
 
 def runtime_ready():
     """Local installed-file checks only; never execute or inspect credentials."""
-    trusted_file(BINARY)
-    if not os.access(BINARY, os.X_OK):
-        raise AnalysisDenied("runtime")
-    with BINARY.open("rb") as source:
-        if source.read(4) != b"\x7fELF":
-            raise AnalysisDenied("runtime")
+    result = system_clients.inspect("codex")
+    if result.status != "present":
+        raise AnalysisDenied(client_binding.reason(result.status))
     trusted_file(INSTALL / "codex-client.py")
     cloud_transport_ready()
 
@@ -68,8 +67,8 @@ def client_environment(token=None):
     return environment
 
 
-def namespace_command(action, directory):
-    if action not in ("version", "analyze", "quota-connect", "quota-read"):
+def namespace_command(action, directory, *, binding):
+    if action not in ("version", "compat-help", "compat-reject", "compat-rpc", "catalog", "analyze", "quota-connect", "quota-read"):
         raise AnalysisDenied("input")
     directory = Path(directory)
     command = base_command() + ["--disable-userns", "--assert-userns-disabled", "--hostname", "ai-desktop",
@@ -83,11 +82,48 @@ def namespace_command(action, directory):
         # A disposable home contains, at most, the selected native credential.
         # Native config, hooks, shell state, logs and databases never cross runs.
         command += ["--bind", str(directory / "native-home"), INNER_HOME]
-    if action != "version":
+    if action in ("analyze", "quota-connect", "quota-read"):
         command += ["--ro-bind", str(directory / "egress.sock"), "/run/egress.sock"]
+    command += binding.mount_args()
     metadata = json.dumps({name: os.readlink("/proc/self/ns/" + name) for name in NAMESPACES})
     return command + ["--chdir", "/work", "/usr/bin/python3", "-I", "-B",
                       str(INSTALL / "codex-client.py"), action, metadata]
+
+
+def compatibility(directory, binding, *, cancelled=None, timeout=20):
+    """Probe the bound system client offline before any credential is provided."""
+    if type(timeout) not in (int, float) or not math.isfinite(timeout) or not 0 < timeout <= 20:
+        raise AnalysisDenied("input")
+    deadline = time.monotonic() + timeout
+    def remaining():
+        value = deadline - time.monotonic()
+        if value <= 0:
+            raise AnalysisDenied("timeout")
+        return value
+    def probe(action):
+        remaining()
+        command = namespace_command(action, directory, binding=binding)
+        result = bounded_process(command,
+            env={"PATH": "/usr/bin", "LANG": "C.UTF-8"}, pass_fds=binding.pass_fds,
+            timeout=remaining(), limit=256 * 1024, cancelled=cancelled)
+        binding.recheck()
+        remaining()
+        return result
+    result = client_compat.check("codex", probe)
+    remaining()
+    return result
+
+
+def probe_client():
+    """Check system-client compatibility without reading auth or opening egress."""
+    from .analysis_sandbox import _identity_files
+    runtime_ready()
+    with client_binding.bind("codex") as binding, tempfile.TemporaryDirectory(prefix="ai-desktop-codex-check-") as temp:
+        directory = Path(temp)
+        _identity_files(directory)
+        result = compatibility(directory, binding)
+        binding.recheck()
+        return result
 
 
 class OpenAIProxy(ConnectProxy):
@@ -162,24 +198,20 @@ def run_client(action, report=b"", *, cancelled=None, mode="analysis"):
         raise AnalysisDenied("cancelled")
     with failure_stage("supervisor"):
         supervisor_ready()
-    with failure_stage("profile"), profile_lock(), tempfile.TemporaryDirectory(prefix="ai-desktop-codex-", dir="/tmp") as temp:
+    with client_binding.bind("codex") as binding, failure_stage("profile"), profile_lock(), \
+            tempfile.TemporaryDirectory(prefix="ai-desktop-codex-", dir="/tmp") as temp:
         directory = Path(temp)
         (directory / "passwd").write_text("client:x:%d:%d::/home/client:/usr/bin/false\n" %
                                           (os.geteuid(), os.getegid()))
         (directory / "group").write_text("client:x:%d:\n" % os.getegid())
         env = {"PATH": "/usr/bin", "LANG": "C.UTF-8"}
-        # This fixed offline version check happens before any credential read
-        # or auth refresh. It has no proxy socket or profile mounted.
+        # The complete compatibility probe has no proxy socket or profile.
         with failure_stage("version"):
-            code, output, errors = bounded_process(namespace_command("version", directory), env=env,
-                                                  timeout=10, limit=4096, cancelled=cancelled)
-            if code != 0:
-                raise child_failure(errors, "version", provider="codex")
-            if output.strip() != ("codex-cli " + CLIENT_VERSION).encode("ascii"):
-                raise AnalysisDenied("version")
+            compatibility(directory, binding, cancelled=cancelled)
         if cancelled is not None and cancelled():
             raise AnalysisDenied("cancelled")
         try:
+            binding.recheck()
             token = checked_token(AuthClient(AuthStore(account_runtime.directory(PROFILE))).access_token())
         except AuthError as error:
             raise _auth_failure(error) from None
@@ -190,9 +222,11 @@ def run_client(action, report=b"", *, cancelled=None, mode="analysis"):
             thread.start()
             try:
                 with failure_stage("analysis"):
-                    code, output, errors = bounded_process(namespace_command("analyze", directory), env=env,
+                    code, output, errors = bounded_process(namespace_command("analyze", directory, binding=binding), env=env,
+                        pass_fds=binding.pass_fds,
                         input_bytes=packet, input_limit=PRIVATE_PACKET_BYTES, private_input=True,
                         timeout=request_seconds(request_effort(report)) + 5, limit=MAX_RESPONSE_BYTES if mode == "workspace" else 131072, cancelled=cancelled)
+                    binding.recheck()
                     if code != 0:
                         raise child_failure(errors, "client", provider="codex")
                     return result_text(output, mode=mode, token=token)

@@ -28,7 +28,7 @@ class AccountAdminTests(unittest.TestCase):
             "/usr/bin/python3", "-I", "-B", "/usr/lib/ai-desktop/analysis-worker.py", "login"]))
         def run(command, **kwargs):
             if command[0] == "/usr/bin/systemd-run":
-                self.assertTrue(ready.called)
+                self.assertEqual(ready.called, command[-1].startswith("worker-login"))
                 return SimpleNamespace(returncode=native_code)
             if command[:2] == ["/usr/bin/systemctl", "stop"]:
                 if cleanup_error:
@@ -108,6 +108,14 @@ class AccountAdminTests(unittest.TestCase):
             self.assertEqual(output.getvalue(), "")
             analysis_admin.login_command.assert_called_once_with(details=False)
             self.assertEqual(process.call_args_list[-1].args[0][1], "show")
+
+    def test_logout_still_runs_when_the_independent_native_client_was_removed(self):
+        with ExitStack() as stack:
+            ready, process = self.admin_patches(stack)
+            ready.side_effect = AnalysisDenied("client-missing")
+            self.assertEqual(codex_admin.main("logout", allow=True), 0)
+            ready.assert_not_called()
+            self.assertEqual(process.call_args_list[0].args[0][-1], "worker-logout")
 
     def test_verbose_uses_only_fixed_worker_action(self):
         with ExitStack() as stack:
@@ -198,6 +206,7 @@ class AuthCallbackTests(unittest.TestCase):
                 patch.object(codex_admin, "HOME", Path(temp)), \
                 patch("ai_desktop.analysis_sandbox.HOME", Path(temp)), \
                 patch("ai_desktop.analysis_sandbox.service_identity"), \
+                patch.object(codex_runtime, "probe_client"), \
                 patch("ai_desktop.e2_socket_activation._worker_identity", return_value=True), \
                 patch.object(codex_admin.os, "isatty", return_value=True), \
                 patch("ai_desktop.siwc_auth.AuthStore"), \
@@ -234,6 +243,21 @@ class AuthCallbackTests(unittest.TestCase):
                 redirect_stdout(io.StringIO()):
             self.assertEqual(codex_admin.auth_worker("login"), 2)
             store.assert_not_called()
+
+    def test_incompatible_client_blocks_new_login_before_any_auth_store_or_network(self):
+        from contextlib import nullcontext
+        with patch("ai_desktop.e2_socket_activation._worker_identity", return_value=True), \
+                patch.object(codex_admin.os, "isatty", return_value=True), \
+                patch("ai_desktop.analysis_sandbox.service_identity"), \
+                patch("ai_desktop.analysis_sandbox.profile_lock", return_value=nullcontext()), \
+                patch.object(codex_runtime, "probe_client", side_effect=AnalysisDenied("client-protocol")) as probe, \
+                patch("ai_desktop.siwc_auth.AuthStore") as store, \
+                patch.object(codex_admin.http.server, "HTTPServer") as server, \
+                redirect_stdout(io.StringIO()):
+            self.assertEqual(codex_admin.auth_worker("login"), 2)
+        probe.assert_called_once_with()
+        store.assert_not_called()
+        server.assert_not_called()
 
 
 class InstalledEntrypointTests(unittest.TestCase):

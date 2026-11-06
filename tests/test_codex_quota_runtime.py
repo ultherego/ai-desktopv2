@@ -5,8 +5,9 @@ import tempfile
 import unittest
 from unittest.mock import Mock, patch
 
-from ai_desktop import account_runtime, codex_quota_runtime as quota_runtime, codex_runtime, siwc_auth
+from ai_desktop import account_runtime, analysis_sandbox, codex_quota_runtime as quota_runtime, codex_runtime, siwc_auth
 from ai_desktop.analysis_contract import AnalysisDenied
+from system_client_fixtures import FakeBinding
 from ai_desktop.e2_connect_proxy import CODEX_ACCOUNT_HOSTS, OPENAI_HOSTS, HOSTS, Denied, connect_host
 
 
@@ -23,8 +24,9 @@ class QuotaRuntimeTests(unittest.TestCase):
         self.home = Path(self.enterContext(tempfile.TemporaryDirectory(dir=Path.home())))
         self.enterContext(patch.object(quota_runtime, "HOME", self.home))
         self.enterContext(patch.object(quota_runtime, "service_identity"))
-        self.enterContext(patch.object(quota_runtime, "profile_lock", side_effect=nullcontext))
+        self.profile_lock = self.enterContext(patch.object(quota_runtime, "profile_lock", side_effect=nullcontext))
         self.enterContext(patch.object(codex_runtime, "runtime_ready"))
+        self.binding = self.enterContext(patch.object(quota_runtime.client_binding, "bind", side_effect=lambda _: FakeBinding()))
         self.version = self.enterContext(patch.object(quota_runtime, "_version"))
         self.native_exchange = quota_runtime._exchange
         self.exchange = self.enterContext(patch.object(quota_runtime, "_exchange", side_effect=self.exchange_ok))
@@ -49,7 +51,7 @@ class QuotaRuntimeTests(unittest.TestCase):
     def connect(self, alias="default", uid=1000):
         return quota_runtime.run("connect", uid, alias, challenge=lambda url, code: None)
 
-    def exchange_ok(self, action, work, challenge):
+    def exchange_ok(self, action, work, challenge, binding):
         stage = work / "native-home"
         self.assertEqual([p.name for p in stage.iterdir()], [] if action == "connect" else ["auth.json"])
         if action == "connect":
@@ -79,9 +81,43 @@ class QuotaRuntimeTests(unittest.TestCase):
         self.assertTrue(self.siwc.status()["accounts"][0]["connected"])
         quota_runtime.run("disconnect", 1001, "default")
 
+    def test_real_profile_and_account_locks_do_not_reenter_during_connect_read_or_disconnect(self):
+        with patch.object(analysis_sandbox, "HOME", self.home):
+            self.profile_lock.side_effect = analysis_sandbox.profile_lock
+            self.assertEqual(self.connect()["plan"], "plus")
+            self.assertEqual(quota_runtime.run("read", 1000, "default"), READING)
+            quota_runtime.run("disconnect", 1000, "default")
+            self.assertFalse(quota_runtime.has_links(1000))
+            # Completed operations leave no held flock. Existing lock files are harmless.
+            with analysis_sandbox.profile_lock(), self.siwc.locked(), \
+                    quota_runtime._locked(self.home / "quota-codex-1000", create=False):
+                pass
+
+    def test_each_real_lock_contender_refuses_before_native_execution_and_recovers_after_release(self):
+        with patch.object(analysis_sandbox, "HOME", self.home):
+            self.profile_lock.side_effect = analysis_sandbox.profile_lock
+            for name, lock in (
+                ("quota", lambda: quota_runtime._locked(self.home / "quota-codex-1000", create=True)),
+                ("profile", analysis_sandbox.profile_lock),
+                ("account", self.siwc.locked),
+            ):
+                with self.subTest(lock=name):
+                    self.version.reset_mock()
+                    self.exchange.reset_mock()
+                    self.binding.reset_mock()
+                    before = (self.home / "codex/accounts.json").read_bytes()
+                    with lock(), self.assertRaises(AnalysisDenied) as refused:
+                        self.connect()
+                    self.assertEqual(refused.exception.reason, "busy")
+                    self.assertEqual((self.home / "codex/accounts.json").read_bytes(), before)
+                    self.version.assert_not_called()
+                    self.exchange.assert_not_called()
+                    self.binding.assert_not_called()
+                    self.assertEqual(self.connect()["plan"], "plus")
+
     def test_failed_or_replaced_grant_does_not_publish_or_change_owner(self):
         self.connect()
-        def fail_rotation(action, work, challenge):
+        def fail_rotation(action, work, challenge, binding):
             credential = quota_runtime._read_json(work / "native-home/auth.json")
             credential["tokens"]["account_id"] = "different"
             quota_runtime._write_json(work / "native-home/auth.json", credential)
@@ -109,7 +145,7 @@ class QuotaRuntimeTests(unittest.TestCase):
 
     def test_provider_failure_after_same_principal_refresh_retains_rotation(self):
         self.connect()
-        def rotate(action, work, challenge):
+        def rotate(action, work, challenge, binding):
             target = work / "native-home/auth.json"
             credential = quota_runtime._read_json(target)
             credential["tokens"]["refresh_token"] = "new-synthetic-token"
@@ -162,7 +198,7 @@ class QuotaRuntimeTests(unittest.TestCase):
             connect_host(header, hosts=CODEX_ACCOUNT_HOSTS)
         work = Path("/tmp/synthetic-host-work")
         for action in ("quota-connect", "quota-read"):
-            cmd = codex_runtime.namespace_command(action, work)
+            cmd = codex_runtime.namespace_command(action, work, binding=FakeBinding())
             self.assertIn("--unshare-net", cmd)
             self.assertIn("--disable-userns", cmd)
             self.assertIn("--clearenv", cmd)
@@ -181,4 +217,20 @@ class QuotaRuntimeTests(unittest.TestCase):
                 return 0, frame, b""
             with patch.object(quota_runtime, "_AccountProxy", return_value=nullcontext(Mock())), \
                     patch.object(quota_runtime, "bounded_process", side_effect=attempt), self.assertRaises(AnalysisDenied):
-                self.native_exchange("connect", self.home, lambda *args: self.fail("unsafe challenge"))
+                self.native_exchange("connect", self.home, lambda *args: self.fail("unsafe challenge"), FakeBinding())
+
+    def test_incompatible_client_never_receives_the_native_credential(self):
+        self.connect()
+        self.exchange.reset_mock()
+        self.version.side_effect = AnalysisDenied("client-protocol")
+        with self.assertRaisesRegex(AnalysisDenied, "client-protocol"):
+            quota_runtime.run("read", 1000, "default")
+        self.exchange.assert_not_called()
+        self.version.side_effect = None
+
+    def test_disconnect_remains_available_without_a_system_client(self):
+        self.connect()
+        self.binding.side_effect = AnalysisDenied("client-missing")
+        self.binding.reset_mock()
+        self.assertIsNone(quota_runtime.run("disconnect", 1000, "default"))
+        self.binding.assert_not_called()
