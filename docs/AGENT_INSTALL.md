@@ -66,6 +66,8 @@ ai-desktop doctor --clients --v
 
 `doctor --clients` explicitly probes the **selected** cloud provider in an offline namespace with a fresh empty home and no account profile, proxy or model request. It reports the shared runtime compatibility result and returns nonzero on refusal. Selecting local inference does not require or probe a cloud CLI.
 
+Candidate 81 currently has a reported native CachyOS `client-protocol` refusal after successful Claude registration. Login uses the same prerequisite, so a repeated login is not a remedy. From the reviewed source checkout, `python3 -B tests/host_client_diagnostic.py --allow-offline-client-check claude` first verifies that the installed application matches the checkout, then diagnoses the same fixed probes in their credential-free namespace. It reports only bounded phase/exit/format summaries, a validated version and closed field/error classifications, never native stdout/stderr or account data. On a protocol refusal it may compare the standalone signed-out status probe within the original deadline and bound installation. Exit 2 preserves the refusal; obtaining diagnostics is not successful compatibility acceptance. The separate Codex source metadata helps distinguish an absent launcher from a missing target without executing Codex. No reinstall, re-registration or credential change is required to collect this evidence. Track the result in [ROADMAP.md](ROADMAP.md) before changing the compatibility contract.
+
 | Adapter | Minimum version | Supported version family | Test baseline |
 |---|---|---|---|
 | Claude Code | 2.1.312 | 2.x | 2.1.312 |
