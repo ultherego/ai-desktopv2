@@ -63,7 +63,7 @@ def require_ci():
     if pwd.getpwnam("ai-desktop").pw_uid == os.geteuid():
         raise ValueError("identity")
     host._installed_matches()
-    for name in ("claude-code", "fixture-client.py", "analysis-worker.py", "analysis-client.py", "analysis-session.py"):
+    for name in ("claude-code", "fixture-client.py", "analysis-worker.py", "analysis-client.py", "analysis-session.py", "codex-auth.py"):
         if os.path.lexists(prior.DEST / name):
             raise ValueError("existing-runtime")
     for name in NAMES:
@@ -73,14 +73,41 @@ def require_ci():
         raise ValueError("existing-endpoint")
 
 
+def install_skills():
+    """Install the same complete bundles used by the package, with root ownership."""
+    from ai_desktop import skills
+    source = ROOT / "skills"
+    directories = sorted(source.iterdir())
+    if not directories:
+        raise ValueError("missing-skills")
+    bundles = []
+    for directory in directories:
+        snapshot = skills.bundle(directory.name, root=source)
+        bundles.append((directory, tuple(snapshot["references"])))
+    # Validate the whole source tree before any privileged installation. The
+    # production loader remains responsible for ownership, modes and links.
+    owner = ("sudo", "-n", "/usr/bin/install", "-o", "root", "-g", "root")
+    destination = prior.DEST / "skills"
+    prior._run(*owner, "-d", "-m755", str(destination))
+    for directory, references in bundles:
+        target = destination / directory.name
+        prior._run(*owner, "-d", "-m755", str(target))
+        prior._run(*owner, "-m644", str(directory / "SKILL.md"), str(target / "SKILL.md"))
+        if references:
+            prior._run(*owner, "-d", "-m755", str(target / "references"))
+            prior._run(*owner, "-m644", *(str(directory / "references" / (name + ".md"))
+                                        for name in references), str(target / "references"))
+
+
 def install(temp, file_home):
+    install_skills()
     source = temp / "shim.c"
     source.write_text(SHIM)
     prior._run("/usr/bin/cc", "-Wall", "-Werror", "-O2", str(source), "-o", str(temp / "client"))
     prior._run("sudo", "-n", "/usr/bin/install", "-m755", str(temp / "client"), str(prior.DEST / "claude-code"))
     prior._run("sudo", "-n", "/usr/bin/install", "-m644", str(ROOT / "tests/analysis_fixture_diagnostic.py"),
                str(prior.DEST / "fixture-diagnostic.py"))
-    for name in ("analysis-worker.py", "analysis-client.py", "analysis-session.py"):
+    for name in ("analysis-worker.py", "analysis-client.py", "analysis-session.py", "codex-auth.py"):
         prior._run("sudo", "-n", "/usr/bin/install", "-m644", str(ROOT / "packaging/systemd" / name), str(prior.DEST))
     for name in NAMES:
         prior._run("sudo", "-n", "/usr/bin/install", "-m644", str(ROOT / "packaging/systemd" / name), str(prior.UNITS / name))
@@ -111,10 +138,21 @@ def install(temp, file_home):
         raise ValueError("home-fixture-template")
     if template.count("WEB_FIXTURE = None\n") != 1:
         raise ValueError("web-fixture-template")
+    if template.count("EXECUTION_FIXTURE = None\n") != 1:
+        raise ValueError("execution-fixture-template")
+    # The native client receives execution controls in argv, not in its JSON
+    # stdin. Freeze this exact default catalog before entering the namespace;
+    # the fixture must not accept arbitrary role text or read host Skills there.
+    from ai_desktop import agent_profiles
+    selected = agent_profiles.defaults().profiles["default"]
+    execution_expected = {"provider": selected.provider, "model": selected.model, "effort": selected.effort,
+                          "instructions": agent_profiles.catalog_for(selected), "profile": "default",
+                          "access": selected.access}
     client.write_text(template.replace("FILE_FIXTURE = None\n", "FILE_FIXTURE = " + repr(expected) + "\n")
                      .replace("EDIT_FIXTURE = None\n", "EDIT_FIXTURE = " + repr(edit_expected) + "\n")
                      .replace("HOME_FIXTURE = None\n", "HOME_FIXTURE = " + repr(home_expected) + "\n")
-                     .replace("WEB_FIXTURE = None\n", "WEB_FIXTURE = " + repr({"question": web_fixture.QUESTION}) + "\n"))
+                     .replace("WEB_FIXTURE = None\n", "WEB_FIXTURE = " + repr({"question": web_fixture.QUESTION}) + "\n")
+                     .replace("EXECUTION_FIXTURE = None\n", "EXECUTION_FIXTURE = " + repr(execution_expected) + "\n"))
     prior._run("sudo", "-n", "/usr/bin/install", "-m644", str(client), str(prior.DEST / "fixture-client.py"))
     ui = temp / "fixture-ui.py"
     ui.write_text("import sys\nfrom pathlib import Path\nsys.path.insert(0, '/usr/lib/ai-desktop')\n"
@@ -155,6 +193,62 @@ def install(temp, file_home):
     return fixture
 
 
+def account_terminal(command, expected, label):
+    # Keep the input side of the PTY open, just like an interactive owner.
+    # Feeding immediate EOF through script(1) can stall systemd-run --pty.
+    print("CI ACCOUNT: " + label, flush=True)
+    master, slave = pty.openpty()
+    try:
+        with subprocess.Popen(command, stdin=slave, stdout=slave, stderr=slave,
+                              close_fds=True, start_new_session=True,
+                              env={"PATH": "/usr/bin", "LANG": "C.UTF-8", "TERM": "dumb"}) as proc:
+            os.close(slave)
+            slave = None
+            try:
+                code = proc.wait(timeout=45)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
+                raise ValueError(label + "-timeout") from None
+        if code != expected:
+            raise ValueError(f"{label}-got-{code}")
+    finally:
+        if slave is not None:
+            os.close(slave)
+        os.close(master)
+
+
+def account_lifecycle_cycle(temp):
+    """Exercise the installed helper, sudo UID, transient service, and result codes on a synthetic slot."""
+    alias = "ci-lifecycle"
+    slot = Path("/var/lib/ai-desktop") / f"account-{os.getuid()}-claude-{alias}"
+    admin = ["sudo", "-n"]
+    for flag in ("-e", "-L"):
+        prior._run(*admin, "/usr/bin/test", "!", flag, str(slot))
+
+    def check(action, expected):
+        argv = [*admin, "/usr/bin/python3", "-I", "-B", str(prior.DEST / "codex-auth.py"),
+                "account-" + action, "claude", alias]
+        account_terminal(argv, expected, f"account-{action}-expected-{expected}")
+
+    check("check", 4)  # Checking an unknown slot must leave it absent.
+    prior._run(*admin, "/usr/bin/test", "!", "-e", str(slot))
+    fixture = temp / "synthetic-local-credential"
+    fixture.write_text("SYNTHETIC-CI-FIXTURE")
+    owner = ["-o", "ai-desktop", "-g", "ai-desktop"]
+    prior._run(*admin, "/usr/bin/install", "-d", "-m700", *owner, str(slot), str(slot / "profile"))
+    prior._run(*admin, "/usr/bin/install", "-m600", *owner, "/dev/null", str(slot / "connected"))
+    credential = slot / "profile/.credentials.json"
+    prior._run(*admin, "/usr/bin/install", "-m600", *owner, str(fixture), str(credential))
+    mode_file = temp / "synthetic-account-mode"
+    mode_file.write_text("account-lifecycle")
+    prior._run(*admin, "/usr/bin/install", "-m600", *owner, str(mode_file), str(slot / "profile/fixture-mode"))
+    check("check", 0)
+    check("logout", 6)  # This named Claude alias stays bound after local sign-out.
+    prior._run(*admin, "/usr/bin/test", "!", "-e", str(credential))
+    check("check", 6)
+
+
 def mode(temp, value):
     (temp / "mode").write_text(value)
     prior._run("sudo", "-n", "/usr/bin/install", "-o", "ai-desktop", "-g", "ai-desktop", "-m600",
@@ -178,7 +272,7 @@ def daily_clean(uid):
 
 
 def daily_pty(action, *, expected=0, refusal=False, interrupt=None, reason=None,
-              write_refusal=False, entrypoint=None):
+              write_refusal=False, entrypoint=None, project_test=False):
     asking = action[:1] == ["ask"] and "--preview" not in action
     analyzing = action[:1] == ["analyze"] and "--preview" not in action
     master, slave = pty.openpty()
@@ -189,7 +283,7 @@ def daily_pty(action, *, expected=0, refusal=False, interrupt=None, reason=None,
                                env={"PATH": "/usr/bin", "LANG": "C.UTF-8", "TERM": "dumb"})
     os.close(slave)
     output, answered, interrupted, wrote = bytearray(), False, False, False
-    transfers = 0
+    transfers, tests = 0, 0
     try:
         deadline = time.monotonic() + 65
         while time.monotonic() < deadline and len(output) <= 65536:
@@ -211,7 +305,15 @@ def daily_pty(action, *, expected=0, refusal=False, interrupt=None, reason=None,
                 transfers += 1
                 os.write(master, b"no\n" if refusal else b"yes\n")
                 answered = True
+            test_prompts = output.count(PROMPTS["project-test"].encode())
+            if test_prompts > tests:
+                if not project_test or tests or test_prompts != 1 or not answered or refusal:
+                    raise ValueError("project-test-consent")
+                os.write(master, b"yes\n")
+                tests += 1
             if any(PROMPTS[action].encode() in output for action in ("write", "rollback")) and not wrote:
+                if project_test and tests != 1:
+                    raise ValueError("project-test-before-write")
                 os.write(master, b"no\n" if write_refusal else b"yes\n")
                 wrote = True
             if interrupt and not interrupted and b"Waiting for " in output:
@@ -230,6 +332,7 @@ def daily_pty(action, *, expected=0, refusal=False, interrupt=None, reason=None,
         process.wait(timeout=3)
         if (process.returncode != expected
                 or ((analyzing or asking) and not answered) or (asking and transfers != 1)
+                or tests != int(project_test)
                 or (interrupt and not interrupted) or b"SYNTHETIC-PRIVATE" in output
                 or (reason and ("reason=" + reason).encode() not in output)):
             # This is synthetic CI output only, and only our fixed diagnostics.
@@ -274,21 +377,24 @@ def compact_task(output, *, rollback=False):
     if rollback:
         required = (b"Changes undone.", PROMPTS["rollback"].encode())
     else:
-        required = (b"=== Changes to save ===", b"```diff\n", b"\n```\n", b"--- a/calc.py",
+        required = (b"Test on a copy: passed (python-unittest); 2 selected file(s).",
+                    b"=== Changes to save ===", b"```diff\n", b"\n```\n", b"--- a/calc.py",
                     b"+++ b/calc.py", b"-    return a - b", b"+    return a + b",
                     b"Changes saved.", PROMPTS["transfer"].encode(), PROMPTS["write"].encode())
     forbidden = (b"APPLICATION INSTRUCTIONS", b"RULES AND RECIPIENT", b"New content as JSON:",
                  b"TASK:", b"TASK TEST:", b"TASK ROLLBACK:", b"SESSION: STOPPED", b"SHA256",
-                 b"Checking the changes", b"Test on a copy: passed", b"The test covers", b"Only the changes shown will be saved")
+                 b"Checking the changes", b"The test covers", b"Only the changes shown will be saved")
     output = output.replace(b"\r\n", b"\n")
     if (any(item not in output for item in required) or any(item in output for item in forbidden)
             or re.search(rb"\b[0-9a-f]{64}\b", output)):
         raise ValueError("compact-task")
+    if output.count(b"Test on a copy:") != (0 if rollback else 1):
+        raise ValueError("compact-task-result")
     prompts = ("rollback",) if rollback else ("transfer", "write")
     if any(output.count(PROMPTS[prompt].encode()) != 1 for prompt in prompts):
         raise ValueError("compact-task-consent")
     if not rollback and not (output.index(PROMPTS["transfer"].encode())
-                            < output.index(b"```diff\n") < output.index(b"--- a/calc.py")
+                            < output.index(b"Test on a copy:") < output.index(b"```diff\n") < output.index(b"--- a/calc.py")
                             < output.index(b"\n```\n") < output.index(PROMPTS["write"].encode())):
         raise ValueError("compact-task-order")
 
@@ -459,7 +565,7 @@ def ask_edit_cycle():
             env={"PATH": "/usr/bin", "LANG": "C.UTF-8", "TERM": "dumb"})
         if checked.returncode or checked.stdout.strip() != edit_fixture.POLICY_MARKER.encode() or checked.stderr:
             raise ValueError("ask-edit-policy")
-        output = daily_pty(["ask"], entrypoint=fixture["script"])
+        output = daily_pty(["ask"], entrypoint=fixture["script"], project_test=True)
         if edit_fixture.NATIVE_MARKER.encode() not in output:
             raise ValueError("ask-edit-proof")
         edit_fixture.check_state(fixture, applied=True)
@@ -467,7 +573,7 @@ def ask_edit_cycle():
         edit_fixture.check_state(fixture)
         if task_workspace.status(str(fixture["project"]))[0][1] != "rolled-back":
             raise ValueError("ask-edit-rollback")
-        print("CI ASK EDIT: PASS real-policy=PASS question-approvals=1 write-approvals=1 "
+        print("CI ASK EDIT: PASS real-policy=PASS question-approvals=1 test-approvals=1 write-approvals=1 "
               "requests=2 read-files=9 request-over32KiB=PASS test=PASS apply=PASS rollback=PASS "
               "cleanup=PASS native=false oauth=false upstream=false")
 
@@ -621,10 +727,10 @@ def login_pty(*, accepted, details=True):
                 break
         process.wait(timeout=2)
         success = (b"LOGIN: PASS auth=claude.ai" if details else
-                   "Logged in. Active service: Claude.".encode("utf-8"))
+                   b"Signed in  Claude / default")
         if (not answered or (details and unit is None) or process.returncode != (0 if accepted else 2)
                 or (accepted and success not in output)
-                or (not accepted and "Logged in.".encode("utf-8") in output)
+                or (not accepted and b"Signed in  Claude / default" in output)
                 or (not accepted and b"LOGIN: REFUSED stage=auth-status reason=auth-method" not in output)):
             # Synthetic fixture only, but still expose only fixed diagnostic lines.
             for match in re.findall(rb"(?:LOGIN|CLIENT): REFUSED stage=[a-z-]+ reason=[a-z-]+", output):
@@ -677,6 +783,11 @@ def main(argv=None):
             stage = "install"
             fixture = install(temp, file_home)
             installed = True
+            stage = "account-credentials"
+            account_lifecycle_cycle(temp)
+            stage = "codex-live-limits"
+            import ci_codex_quota
+            ci_codex_quota.run_cycle(temp, SHIM, account_terminal)
             stage = "login-pty"
             mode(temp, "login")
             login_pty(accepted=True)

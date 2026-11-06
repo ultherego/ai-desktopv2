@@ -13,7 +13,7 @@ from . import materials
 CHUNK = 30 * 1024
 PART_BYTES = 240 * 1024
 STAGE_REQUESTS = 8
-MAX_PARTS = step.MAX_OBSERVATIONS   # the synthesis request carries one note per part: 5 MiB in ~240 KiB parts is 22
+MAX_PARTS = step.MAX_PARTS  # dedicated bounded notes-only synthesis, independent of fragment observations
 
 
 class WholeError(ValueError):
@@ -50,6 +50,8 @@ class WholePlan:
             if current:
                 groups.append(current)
             self.parts = tuple(Part(i, g, material) for i, g in enumerate(groups))
+            if len(groups) > MAX_PARTS:
+                raise WholeError("too many parts")
             if self._fits_one_packet():
                 break
             if part_bytes <= CHUNK:
@@ -169,10 +171,11 @@ class WholePlan:
         return lines
 
     def confirm_sources(self, claimed):
-        have = self.covered_lines()
+        # Source claims are intervals; never allocate a set of every line in a large log.
+        have = self.spans([self.parts[index] for index in sorted(self.notes)])
         confirmed, rejected = [], []
         for first, last in claimed:
-            (confirmed if all(n in have for n in range(first, last + 1)) else rejected).append((first, last))
+            (confirmed if any(lo <= first <= last <= hi for lo, hi in have) else rejected).append((first, last))
         return confirmed, rejected
 
     @staticmethod

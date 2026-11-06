@@ -23,7 +23,7 @@ import time
 import unicodedata
 
 from . import __version__
-from .analysis_contract import (AnalysisDenied, MAX_PACKET_LARGE, REQUEST_SECONDS_LONG, SYSTEM_PROMPT, ModelText, MODEL_ID,
+from .analysis_contract import (AnalysisDenied, MAX_PACKET_LARGE, MAX_RESPONSE_BYTES, REQUEST_SECONDS_LONG, SYSTEM_PROMPT, ModelText, MODEL_ID,
                                 application_input, canonical, parse_request,
                                 result_text_limit, validate_meta)
 from .e2_ipc import _unique_pairs
@@ -49,14 +49,14 @@ class Limits:
     # A maximum-size application JSON string is escaped once more for RPC and
     # echoed by userMessage lifecycle events. These internal limits include that
     # framing overhead; they do not change the application or final-answer caps.
-    wire_bytes: int = 8 * 1024 * 1024
+    wire_bytes: int = 4 * MAX_PACKET_LARGE + 4 * MAX_RESPONSE_BYTES
     line_bytes: int = 2 * MAX_PACKET_LARGE + 65536
     messages: int = 4096
     stderr_bytes: int = 16384
     items: int = 64
 
     def __post_init__(self):
-        for name, maximum in (("wire_bytes", 8 * 1024 * 1024),
+        for name, maximum in (("wire_bytes", 4 * MAX_PACKET_LARGE + 4 * MAX_RESPONSE_BYTES),
                               ("line_bytes", 2 * MAX_PACKET_LARGE + 65536), ("messages", 4096),
                               ("stderr_bytes", 16384), ("items", 64)):
             value = getattr(self, name)
@@ -70,6 +70,44 @@ def _selection(model, effort):
         raise AnalysisDenied("input")
 
 
+LOCKED_APP_SERVER_CONFIG = (
+    'approval_policy="never"', 'sandbox_mode="read-only"',
+    'agents.enabled=false', 'features.multi_agent=false',
+    'features.shell_tool=false', 'features.apps=false',
+    'features.hooks=false', 'features.memories=false',
+    'features.goals=false', 'features.remote_plugin=false',
+    'features.plugins=false', 'features.js_repl=false',
+    'features.browser_use=false', 'features.computer_use=false',
+    'features.image_generation=false',
+    'features.tool_search=false', 'features.tool_suggest=false',
+    'features.apply_patch_freeform=false',
+    'features.skip_host_skill_discovery=true',
+    'features.skill_mcp_dependency_install=false',
+    'features.view_image=false', 'web_search="disabled"',
+    # Pinned 0.166.0 warns about every under-development feature we use on purpose (skip_host_skill_discovery);
+    # suppressing that notice changes no capability. Code mode stays off; the client still sends one exact notice.
+    'suppress_unstable_features_warning=true', 'features.code_mode=false', 'features.code_mode_host=false',
+    'mcp_servers={}', 'plugins={}', 'skills.config=[]',
+    'skills.bundled.enabled=false', 'skills.include_instructions=false',
+    'apps._default.enabled=false', 'project_doc_max_bytes=0',
+    'project_doc_fallback_filenames=[]', 'notify=[]',
+    'history.persistence="none"', 'analytics.enabled=false',
+    'feedback.enabled=false', 'check_for_update_on_startup=false',
+)
+
+
+def app_server_command(binary, config):
+    if (not isinstance(binary, (str, os.PathLike))
+            or not str(binary).startswith("/") or "\x00" in str(binary)
+            or str(PurePosixPath(binary)) != str(binary)
+            or ".." in PurePosixPath(binary).parts):
+        raise AnalysisDenied("input")
+    command = [str(binary), "--strict-config", "app-server", "--listen", "stdio://"]
+    for value in config:
+        command += ["-c", value]
+    return command
+
+
 def fixed_command(binary, *, model="default", effort="default"):
     """Fixed official SIWC provider; the caller checks binary trust/version.
 
@@ -78,11 +116,6 @@ def fixed_command(binary, *, model="default", effort="default"):
     ``default`` deliberately omits a model id rather than inventing entitlement.
     """
     _selection(model, effort)
-    if (not isinstance(binary, (str, os.PathLike))
-            or not str(binary).startswith("/") or "\x00" in str(binary)
-            or str(PurePosixPath(binary)) != str(binary)
-            or ".." in PurePosixPath(binary).parts):
-        raise AnalysisDenied("input")
     config = [
         'model_provider="openai_chatgpt_plan"',
         'model_providers.openai_chatgpt_plan.name="ChatGPT plan"',
@@ -93,38 +126,14 @@ def fixed_command(binary, *, model="default", effort="default"):
         'model_providers.openai_chatgpt_plan.supports_websockets=false',
         'model_providers.openai_chatgpt_plan.request_max_retries=0',
         'model_providers.openai_chatgpt_plan.stream_max_retries=0',
-        'approval_policy="never"', 'sandbox_mode="read-only"',
-        'agents.enabled=false', 'features.multi_agent=false',
-        'features.shell_tool=false', 'features.apps=false',
-        'features.hooks=false', 'features.memories=false',
-        'features.goals=false', 'features.remote_plugin=false',
-        'features.plugins=false', 'features.js_repl=false',
-        'features.browser_use=false', 'features.computer_use=false',
-        'features.image_generation=false',
-        'features.tool_search=false', 'features.tool_suggest=false',
-        'features.apply_patch_freeform=false',
-        'features.skip_host_skill_discovery=true',
-        'features.skill_mcp_dependency_install=false',
-        'features.view_image=false', 'web_search="disabled"',
-        # Pinned 0.166.0 warns about every under-development feature we use on purpose (skip_host_skill_discovery);
-        # suppressing that notice changes no capability. Code mode stays off; the client still sends one exact notice.
-        'suppress_unstable_features_warning=true', 'features.code_mode=false', 'features.code_mode_host=false',
-        'mcp_servers={}', 'plugins={}', 'skills.config=[]',
-        'skills.bundled.enabled=false', 'skills.include_instructions=false',
-        'apps._default.enabled=false', 'project_doc_max_bytes=0',
-        'project_doc_fallback_filenames=[]', 'notify=[]',
-        'history.persistence="none"', 'analytics.enabled=false',
-        'feedback.enabled=false', 'check_for_update_on_startup=false',
+        *LOCKED_APP_SERVER_CONFIG,
         'cli_auth_credentials_store="ephemeral"',
     ]
     if model != "default":
         config.append("model=" + json.dumps(model))
     if effort != "default":
         config.append("model_reasoning_effort=" + json.dumps(effort))
-    command = [str(binary), "--strict-config", "app-server", "--listen", "stdio://"]
-    for value in config:
-        command += ["-c", value]
-    return command
+    return app_server_command(binary, config)
 
 
 def _encode(value):
@@ -229,7 +238,7 @@ def _rate_spend(value):
 
 
 def _rate_limits(params):
-    """Check pinned 0.166.0 quota metadata and discard it entirely.
+    """Check pinned 0.166.0 metadata before selecting numeric windows and a recognized plan.
 
     v2/account.rs defines optional snapshot fields and signed integer windows;
     protocol/account.rs defines emitted plan names. TokenCountEvent may emit
@@ -316,8 +325,12 @@ def _validated_input(raw):
         if memory is not None:
             from .conversation_memory import validate as validate_memory
             memory = validate_memory(memory)
+        from .skill_runtime import validate_knowledge, using_knowledge
+        knowledge = data.get("knowledge")
+        if knowledge is not None:
+            knowledge = validate_knowledge(knowledge)
         mode = data["mode"]
-        allowed = {"mode", "execution", "conversation", "memory"}
+        allowed = {"mode", "execution", "conversation", "memory", "knowledge"}
         if mode == "analysis":
             allowed |= {"report", "question"}
             args, kwargs = (data["report"], data["question"]), {}
@@ -340,7 +353,7 @@ def _validated_input(raw):
             raise ValueError()
         if set(data) - allowed:
             raise ValueError()
-        with using_history(history), using_memory(memory):
+        with using_history(history), using_memory(memory), using_knowledge(knowledge):
             envelope = application_input(*args, **kwargs, execution=selected)
         expected, _ = parse_request(envelope.encode("utf-8"))
         if canonical(data) != expected:
@@ -394,6 +407,8 @@ class Protocol:
         self.completed_items = {}
         self.answer = None
         self.model_used = None
+        self.quota = {}
+        self.plan = None
         self.usage = {"input": None, "output": None, "window": None}
         self.bytes = self.messages = self.delta_bytes = 0
 
@@ -408,9 +423,11 @@ class Protocol:
 
     @property
     def meta(self):
-        if self.model_used is None:
+        if self.model_used is None and not self.quota and self.plan is None:
             return None
-        return validate_meta({"models": [{"model": self.model_used, **self.usage}]})
+        models = [{"model": self.model_used, **self.usage}] if self.model_used else []
+        return validate_meta({"models": models, **({"quota": self.quota} if self.quota else {}),
+                              **({"plan": self.plan} if self.plan else {})})
 
     def start(self):
         if self.state != "new":
@@ -591,6 +608,11 @@ class Protocol:
             if self.state not in ("turn", "done"):
                 raise AnalysisDenied("result")
             _rate_limits(params)
+            from .account_store import PLANS, codex_windows
+            limits = params["rateLimits"]
+            self.quota.update(codex_windows(limits))
+            if limits.get("limitId") in (None, "codex") and limits.get("planType") in PLANS:
+                self.plan = limits["planType"]
             return []
         if self.state != "turn":
             raise AnalysisDenied("result")
@@ -734,7 +756,14 @@ def exchange(argv, protocol, *, env, timeout=110, cancelled=None):
     Neither stderr nor JSON-RPC error prose escapes this function. This function
     does not authenticate or retry, and always kills/reaps its process group.
     """
-    if (type(protocol) is not Protocol or type(timeout) not in (int, float)
+    if type(protocol) is not Protocol:
+        raise AnalysisDenied("input")
+    return _exchange(argv, protocol, env=env, timeout=timeout, cancelled=cancelled)
+
+
+def _exchange(argv, protocol, *, env, timeout, cancelled=None, stop_after_reply=False):
+    """Bounded pipe transport shared by the fixed turn and account RPC state machines."""
+    if (type(timeout) not in (int, float)
             or isinstance(timeout, bool) or not math.isfinite(timeout) or not 0 < timeout <= REQUEST_SECONDS_LONG
             or type(argv) not in (list, tuple) or not argv
             or any(type(arg) is not str or "\x00" in arg for arg in argv)
@@ -754,16 +783,29 @@ def exchange(argv, protocol, *, env, timeout=110, cancelled=None):
         pending, buffered = bytearray(initial), bytearray()
         stderr_bytes = wire_bytes = 0
         deadline = time.monotonic() + timeout
+        stop_at, stopped_by_us = None, False
         with selectors.DefaultSelector() as selector:
             for stream, kind in ((process.stdout, "out"), (process.stderr, "err")):
                 os.set_blocking(stream.fileno(), False)
                 selector.register(stream, selectors.EVENT_READ, kind)
             os.set_blocking(process.stdin.fileno(), False)
             selector.register(process.stdin, selectors.EVENT_WRITE, "in")
-            while selector.get_map():
+            while selector.get_map() or process.poll() is None:
                 if cancelled is not None and cancelled():
                     raise AnalysisDenied("cancelled")
-                remaining = deadline - time.monotonic()
+                now = time.monotonic()
+                if stop_at is not None and now >= stop_at:
+                    # An authenticated account app-server can keep draining background tasks after
+                    # replying and receiving EOF. Its authoritative account operation already finished.
+                    # Terminate only this private process group and still drain/validate the pipes.
+                    if process.poll() is None:
+                        try:
+                            os.killpg(process.pid, signal.SIGKILL)
+                            stopped_by_us = True
+                        except ProcessLookupError:
+                            pass
+                    stop_at = None
+                remaining = deadline - now
                 if remaining <= 0:
                     raise AnalysisDenied("timeout", diagnostic=protocol.failure_check("timeout"))
                 for key, _ in selector.select(min(remaining, .1)):
@@ -817,22 +859,15 @@ def exchange(argv, protocol, *, env, timeout=110, cancelled=None):
                                 except KeyError:
                                     pass
                                 process.stdin.close()
-                                deadline = min(deadline, time.monotonic() + 3)
+                                if stop_after_reply:
+                                    stop_at = time.monotonic() + 1
+                                else:
+                                    deadline = min(deadline, time.monotonic() + 3)
                         if len(buffered) > protocol.limits.line_bytes:
                             raise AnalysisDenied("output-limit")
             if buffered:
                 raise AnalysisDenied("result", diagnostic=protocol.failure_check("result"))
-            while process.poll() is None:
-                if cancelled is not None and cancelled():
-                    raise AnalysisDenied("cancelled")
-                remaining = deadline - time.monotonic()
-                if remaining <= 0:
-                    raise AnalysisDenied("timeout", diagnostic=protocol.failure_check("timeout"))
-                try:
-                    process.wait(timeout=min(.1, remaining))
-                except subprocess.TimeoutExpired:
-                    pass
-            if process.returncode != 0:
+            if process.returncode != 0 and not (stopped_by_us and process.returncode == -signal.SIGKILL):
                 raise AnalysisDenied("client", diagnostic=("codex-native-exit-2" if process.returncode == 2
                                                           else "codex-native-exit"))
             try:

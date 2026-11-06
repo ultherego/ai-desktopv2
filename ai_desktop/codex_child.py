@@ -12,6 +12,7 @@ from .analysis_seccomp import install_mode_filter
 from .codex_protocol import Protocol, run
 from .codex_runtime import BINARY, INNER_HOME, PRIVATE_PACKET_BYTES, checked_token, client_environment
 from .e2_ipc import _unique_pairs
+from .e2_connect_proxy import ANALYSIS_STREAM_LIMIT
 from .execution import validate as validate_execution
 
 
@@ -38,6 +39,9 @@ def private_input(raw):
 
 def main(argv):
     try:
+        if len(argv) == 2 and argv[0] in ("quota-connect", "quota-read"):
+            from .codex_quota_runtime import quota_child
+            return quota_child(argv[0], json.loads(argv[1]))
         if len(argv) != 2 or argv[0] not in ("version", "analyze"):
             raise AnalysisDenied("input")
         with failure_stage("boundary"):
@@ -54,7 +58,8 @@ def main(argv):
                 os.execve(str(BINARY), [str(BINARY), "--version"], client_environment())
         with failure_stage("input"):
             token, request, selected = private_input(sys.stdin.buffer.read(PRIVATE_PACKET_BYTES + 1))
-        with failure_stage("bridge"), _Bridge(request_seconds(selected["effort"]) + 10) as bridge:
+        with failure_stage("bridge"), _Bridge(request_seconds(selected["effort"]) + 10,
+                stream_limit=ANALYSIS_STREAM_LIMIT) as bridge:
             thread = threading.Thread(target=bridge.serve_forever, daemon=True)
             thread.start()
             try:

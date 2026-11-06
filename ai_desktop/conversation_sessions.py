@@ -21,12 +21,13 @@ import time
 import unicodedata
 
 from . import execution
+from .conversation_memory import MAX_TURN
 
-MAX_FILE = 1024 * 1024
+MAX_FILE = 16 * 1024 * 1024
 MAX_SESSIONS = 128
-MAX_HISTORY = 32                # `ask` keeps the last eight turns; records written with up to four still open
-LEGACY_HISTORY = 4              # material/project sessions keep their previous window
-MAX_PATHS = 256
+MAX_HISTORY = execution.MAX_HISTORY  # archive window; the smaller request byte budget is applied on resume
+LEGACY_HISTORY = 16             # material/project use their own request-history validator
+MAX_PATHS = 2048
 _ID = re.compile(r"[a-f0-9]{24}\Z")
 _HASH = re.compile(r"[a-f0-9]{64}\Z")
 _DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -109,7 +110,7 @@ def _record(value):
         if type(item) is not dict or set(item) != {"question", "answer"}:
             raise SessionError("session-history")
         _text(item["question"], execution.HISTORY_QUESTION_BYTES)
-        _text(item["answer"], 8192 + 64)
+        _text(item["answer"], execution.HISTORY_ANSWER_BYTES)
     if "title" in value:
         _text(value["title"], MAX_TITLE * 4)
         if len(value["title"]) > MAX_TITLE or "\n" in value["title"] or "\t" in value["title"]:
@@ -141,7 +142,7 @@ def _extras(value):
 
     for turn in turns:
         if (type(turn) is not dict or set(turn) != {"n", "taint", "redacted"} or type(turn["n"]) is not int
-                or not 1 <= turn["n"] < 10**4 or type(turn["redacted"]) is not bool):
+                or not 1 <= turn["n"] <= MAX_TURN or type(turn["redacted"]) is not bool):
             raise SessionError("session-memory")
         indexes(turn["taint"])
     ids = {entry["id"] for entry in value["memory"]["entries"]}
@@ -325,25 +326,39 @@ class Store:
             if ((value["kind"], value["path"], value["binding"]) != (kind, path, binding)
                     or not same_agent(value["execution"], selected)):
                 raise SessionError("session-binding")
-            if value["execution"] != selected:
-                value["execution"] = selected
-                value["revision"] += 1
-                self._publish(root, value, info)
             lease = self._lease(root, ident)
+            try:
+                if value["execution"] != selected:
+                    value["execution"] = selected
+                    value["revision"] += 1
+                    self._publish(root, value, info)
+            except BaseException:
+                os.close(lease)
+                raise
         return Conversation(self, value, lease)
 
-    def rebind(self, ident, selected, expected_revision):
-        """Record a changed model, effort or instruction set of the same agent; a different recipient stays refused."""
+    def rebind(self, ident, selected, expected_revision, *, transfer_state=None):
+        """A normal rebind preserves the recipient. A confirmed ask transfer publishes its sanitized state atomically."""
         selected = _execution(selected)
         with self._root() as root, self._locked(root):
             value, info = self._read(root, ident)
             if value["revision"] != expected_revision:
                 raise SessionError("session-conflict")
-            if not same_agent(value["execution"], selected):
-                raise SessionError("session-binding")
+            if transfer_state is None:
+                if not same_agent(value["execution"], selected):
+                    raise SessionError("session-binding")
+            else:
+                if (value["kind"] != "ask" or role_key(value["execution"]) != role_key(selected)
+                        or not set(transfer_state) <= {"history", *_OPTIONAL}
+                        or not {"history", "turns", "memory", "paths", "meta"} <= set(transfer_state)):
+                    raise SessionError("session-binding")
+                value.update(transfer_state)
             value["execution"] = selected
             value["revision"] = expected_revision + 1
             value["updated"] = max(value["updated"], int(time.time()))
+            if transfer_state is not None:
+                _fit_ask_record(value)
+                _record(value)
             self._publish(root, value, info)
         return value
 
@@ -383,18 +398,29 @@ class Store:
         """Readable records only: one damaged file must not hide all the others (see damaged)."""
         return self._scan()[0]
 
+    def summaries(self):
+        """Validate records one at a time; do not retain every large conversation in a menu."""
+        return self._scan(summaries=True)[0]
+
     def damaged(self):
         """Ids of records that cannot be read, so the user can see and remove them."""
-        return self._scan()[1]
+        return self._scan(summaries=True)[1]
 
-    def _scan(self):
+    def _scan(self, *, summaries=False):
         good, bad = [], []
         with self._root(optional=True) as root:
             if root is None:
                 return good, bad
             for ident in self._ids(root):
                 try:
-                    good.append(self._read(root, ident)[0])
+                    value = self._read(root, ident)[0]
+                    if summaries:
+                        from .conversation_state import title_of
+                        first = value["history"][0]["question"] if value["history"] else value["id"]
+                        value = {**{key: value[key] for key in ("id", "kind", "execution", "updated")},
+                                 "title": value.get("title") or title_of(first),
+                                 "history_count": len(value["history"])}
+                    good.append(value)
                 except (SessionError, OSError):
                     bad.append(ident)
         return good, bad
@@ -461,15 +487,45 @@ class Store:
         if value["execution"] is not None:
             args.extend(("--agent", value["execution"]["profile"], "--model", value["execution"]["model"],
                          "--effort", value["execution"]["effort"]))
+        if value["kind"] == "ask":
+            args.extend(("--provider", (value["execution"] or {}).get("provider", "claude")))
+            if value["execution"] is None:
+                args.extend(("--agent", "default", "--model", "default", "--effort", "default"))
         return args
+
+
+def role_key(value):
+    value = value or {}
+    return value.get("profile", "default"), value.get("access", "changes")
+
+
+def recipient_key(value):
+    config = value or {}
+    provider = config.get("provider", "claude")
+    if provider == "local":
+        return provider, config.get("local_port", execution.DEFAULT_LOCAL_PORT)
+    return provider, config.get("account", "default")
+
+
+def recipient_label(value):
+    provider, target = recipient_key(value)
+    if provider == "local":
+        return "%s · http://127.0.0.1:%d/v1" % (execution.provider_name(provider), target)
+    return "%s · account: %s" % (execution.provider_name(provider), target)
 
 
 def same_agent(saved, selected):
     """What binds a saved conversation: who receives it (service), the role and its access. Model, effort and Skills may
     change, so editing a Skill or switching a model in a conversation does not strand the conversation."""
-    def key(value):
-        return ("claude", "default", "changes") if value is None else (value["provider"], value["profile"], value["access"])
-    return key(saved) == key(selected)
+    return recipient_key(saved) == recipient_key(selected) and role_key(saved) == role_key(selected)
+
+
+def _fit_ask_record(value):
+    # Keep the task memory and remove the oldest verbatim turns first.
+    while value["history"] and len(json.dumps(value, ensure_ascii=False, separators=(",", ":"),
+                                               sort_keys=True).encode("utf-8")) > MAX_FILE:
+        del value["history"][0]
+        del value["turns"][0]
 
 
 class Conversation:
@@ -491,6 +547,11 @@ class Conversation:
             raise SessionError("session-closed")
         self._record = self.store.rebind(self.session_id, selected, self._record["revision"])
 
+    def transfer(self, selected, exported):
+        if self._lease is None:
+            raise SessionError("session-closed")
+        self._record = self.store.rebind(self.session_id, selected, self._record["revision"], transfer_state=exported)
+
     def save_state(self, exported):
         """Replace history and task memory of an `ask` conversation with the controller's exported state."""
         if self._lease is None:
@@ -499,12 +560,7 @@ class Conversation:
             raise SessionError("session-kind")
         value = self.record
         value.update(exported)
-        # The record limit is fixed: if it would be exceeded the OLDEST verbatim turns leave the file first; the task
-        # memory and the revocation metadata always stay.
-        while len(json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")) > MAX_FILE \
-                and value["history"]:
-            value["history"] = value["history"][1:]
-            value["turns"] = value["turns"][1:]
+        _fit_ask_record(value)
         self._record = self.store.update(value, self._record["revision"])
 
     def state(self):
@@ -522,7 +578,8 @@ class Conversation:
         _text(answer, 1024 * 1024)
         value = self.record
         limit = MAX_HISTORY if value["kind"] == "ask" else LEGACY_HISTORY
-        value["history"] = (value["history"] + [{"question": question, "answer": _cut(answer, 8192)}])[-limit:]
+        answer_limit = execution.HISTORY_ANSWER_BYTES - 64 if value["kind"] == "ask" else 8192
+        value["history"] = (value["history"] + [{"question": question, "answer": _cut(answer, answer_limit)}])[-limit:]
         self._record = self.store.update(value, self._record["revision"])
 
     def close(self):

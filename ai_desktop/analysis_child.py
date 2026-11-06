@@ -14,7 +14,7 @@ from .e2_ipc import _unique_pairs
 from .execution import validate as validate_execution
 from .analysis_seccomp import install_mode_filter
 from .analysis_sandbox import NAMESPACES, client_command, client_environment, failure_stage
-from .e2_connect_proxy import relay
+from .e2_connect_proxy import ANALYSIS_STREAM_LIMIT, STREAM_LIMIT, checked_stream_limit, relay
 from .e2_subscription_boundary import privileges_locked, userns_refused
 
 
@@ -45,7 +45,8 @@ class _BridgeHandler(socketserver.BaseRequestHandler):
             with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as outer:
                 outer.settimeout(3)
                 outer.connect("/run/egress.sock")
-                relay(self.request, outer, seconds=self.server.stream_seconds)
+                relay(self.request, outer, seconds=self.server.stream_seconds,
+                      limit=getattr(self.server, "stream_limit", STREAM_LIMIT))
         except (OSError, ValueError):
             pass
 
@@ -56,8 +57,9 @@ class _Bridge(socketserver.ThreadingMixIn, socketserver.TCPServer):
     allow_reuse_address = False
     request_queue_size = 8
 
-    def __init__(self, stream_seconds=120):
+    def __init__(self, stream_seconds=120, *, stream_limit=STREAM_LIMIT):
         self.stream_seconds = stream_seconds
+        self.stream_limit = checked_stream_limit(stream_limit)
         self.slots = threading.BoundedSemaphore(8)
         super().__init__(("127.0.0.1", 18080), _BridgeHandler)
 
@@ -98,7 +100,7 @@ def native_input(action, raw):
 
 def main(argv):
     try:
-        if len(argv) != 2 or argv[0] not in ("version", "status", "analyze", "web", "login"):
+        if len(argv) != 2 or argv[0] not in ("version", "status", "analyze", "web", "login", "offline-status", "offline-logout"):
             raise AnalysisDenied("input")
         with failure_stage("boundary"):
             check_boundary(json.loads(argv[1]))
@@ -109,10 +111,11 @@ def main(argv):
             with failure_stage("input"):
                 body, selected = native_input(argv[0], sys.stdin.buffer.read(MAX_PACKET_LARGE + 1))
         command = client_command(argv[0], selected)
-        if argv[0] == "version":
+        if argv[0] in ("version", "offline-status", "offline-logout"):
             with failure_stage("native-exec"):
                 os.execve(command[0], command, client_environment(argv[0]))
-        with failure_stage("bridge"), _Bridge(request_seconds(selected["effort"] if selected else None) + 10) as bridge:
+        with failure_stage("bridge"), _Bridge(request_seconds(selected["effort"] if selected else None) + 10,
+                stream_limit=ANALYSIS_STREAM_LIMIT if body is not None else STREAM_LIMIT) as bridge:
             thread = threading.Thread(target=bridge.serve_forever, daemon=True)
             thread.start()
             try:

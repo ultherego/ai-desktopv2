@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=AI Desktop Panel
+Comment=Choose a service or inspect accounts and subscription limits
+TryExec=/usr/bin/ai-desktop
+Exec=/usr/bin/ai-desktop panel
+Terminal=true
+Icon=utilities-terminal
+Categories=System;Utility;

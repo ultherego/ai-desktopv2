@@ -20,7 +20,7 @@ MAX_FILES = 20000
 MAX_SCAN_ENTRIES = 100000
 MAX_DEPTH = 16
 MAX_DIR_ENTRIES = 5000
-FILE_READ_BYTES = 16 * 1024 * 1024        # largest single project file that can be read
+FILE_READ_BYTES = 64 * 1024 * 1024        # largest single project file that can be read
 SEARCH_FILE_BYTES = FILE_READ_BYTES        # larger files are listed but skipped by text search
 SEARCH_BUDGET_BYTES = 64 * 1024 * 1024    # bytes read per search call before returning a cursor
 MAX_HITS = 20
@@ -29,7 +29,7 @@ MAX_PATH_BYTES = 512
 SNIPPET = 200
 
 CODES = frozenset({"PROJECT_ROOT", "PROJECT_PATH", "PROJECT_FILE", "PROJECT_CHANGED",
-                   "PROJECT_NEEDLE", "PROJECT_POLICY"})
+                   "PROJECT_NEEDLE", "PROJECT_POLICY", "TEST_SIZE", "TEST_CHANGED", "TEST_FORMAT"})
 
 
 class ProjectError(ValueError):
@@ -42,11 +42,20 @@ class ProjectError(ValueError):
         self.code = code
 
 
+class TestScopeRefused(ProjectError):
+    """Local-only diagnostics derived from authorized metadata; never includes a filename."""
+
+    def __init__(self, *details):
+        super().__init__("TEST_SIZE")
+        self.details = details
+
+
 @dataclass(frozen=True)
 class Entry:
     path: str          # relative to the root, "/" separated
     size: int
-    ident: tuple       # (st_dev, st_ino, st_mtime_ns) at scan time
+    ident: tuple       # stable format for existing saved project-session manifests
+    identity: tuple    # full fd fingerprint, including mode and ctime, for a test copy
 
 
 @dataclass(frozen=True)
@@ -93,7 +102,7 @@ def _is_key_file(path):
 
 
 class Project:
-    def __init__(self, policy, root):
+    def __init__(self, policy, root, *, scan_limit=None):
         if type(policy) is not permissions.Policy:
             raise ProjectError("PROJECT_POLICY")
         try:
@@ -103,29 +112,33 @@ class Project:
         if canonical == "/" or not policy.allows(canonical + "/_") or policy.excludes(canonical + "/_"):
             raise ProjectError("PROJECT_ROOT")
         self.policy, self.root = policy, canonical
+        self.scan_limit = scan_limit
         self.project_id = secrets.token_hex(8)
         self.files = ()
         self._by_path = {}
         self.stats = {}
         self.complete = False
         self.reason = None
+        self._scan_detail = None
 
     # --- scan -------------------------------------------------------------------
     def scan(self):
         """(Re)build the index. Never raises for hostile content, only for a changed policy/root."""
         policy, uid = self.policy, self.policy.uid
         found, counts = [], {"denied": 0, "links": 0, "special": 0, "unsafe": 0, "vcs": 0, "other": 0}
-        state = {"scanned": 0, "reason": None, "stop": False}
+        state = {"scanned": 0, "reason": None, "detail": None, "stop": False}
+        entry_limit = min(MAX_SCAN_ENTRIES, self.scan_limit or MAX_SCAN_ENTRIES)
 
-        def mark(reason, *, stop=False):
-            state["reason"] = state["reason"] or reason
+        def mark(reason, detail, *, stop=False):
+            if state["reason"] is None:
+                state["reason"], state["detail"] = reason, detail
             state["stop"] = state["stop"] or stop
 
         def visit(absolute, relative, depth):
             if state["stop"]:
                 return
             if depth > MAX_DEPTH:
-                mark("depth")           # this subtree is skipped; siblings are still scanned
+                mark("depth", f"a directory exceeded the maximum depth of {MAX_DEPTH}")
                 return
             try:
                 with permissions.open_directory(absolute, uid) as (directory, recheck):
@@ -134,11 +147,11 @@ class Project:
                         for entry in entries:
                             names.append(entry.name)
                             state["scanned"] += 1
-                            if state["scanned"] > MAX_SCAN_ENTRIES:
-                                mark("entries", stop=True)
+                            if state["scanned"] > entry_limit:
+                                mark("entries", f"the scan exceeded its budget of {entry_limit} directory entries", stop=True)
                                 return
                             if len(names) > MAX_DIR_ENTRIES:
-                                mark("entries")      # only this oversized directory is skipped
+                                mark("entries", f"a single directory exceeded {MAX_DIR_ENTRIES} entries")
                                 return
                     for name in sorted(names):
                         if state["stop"]:
@@ -166,17 +179,17 @@ class Project:
                             elif not policy.allows(target) or not _valid_relative(child):
                                 counts["denied"] += 1
                             elif len(found) >= MAX_FILES:
-                                mark("files", stop=True)
+                                mark("files", f"the index exceeded its limit of {MAX_FILES} files", stop=True)
                                 return
                             else:
                                 found.append(Entry(child, info.st_size,
-                                                   (info.st_dev, info.st_ino, info.st_mtime_ns)))
+                                                   (info.st_dev, info.st_ino, info.st_mtime_ns), permissions._fingerprint(info)))
                         else:
                             counts["special"] += 1
                     recheck()
             except (ValueError, OSError):
                 counts["other"] += 1
-                mark("unreadable")      # a directory we could not read: the index is not total
+                mark("unreadable", "a directory could not be read or changed during the scan")
 
         policy.recheck()
         try:
@@ -192,6 +205,7 @@ class Project:
         self._by_path = {e.path: e for e in self.files}
         self.stats = dict(counts, indexed=len(self.files), scanned=state["scanned"])
         self.reason = state["reason"]
+        self._scan_detail = state["detail"]
         self.complete = state["reason"] is None
         return self
 
@@ -202,6 +216,56 @@ class Project:
         for entry in self.files:
             digest.update(("%s\0%d\0%d\0%d\0%d\n" % ((entry.path, entry.size) + entry.ident)).encode("utf-8", "surrogatepass"))
         return digest.hexdigest()
+
+    def test_selection(self):
+        """All policy-visible entries or a refusal. Never silently narrow the suite to a passing subset."""
+        from . import copy_contract
+        limits = self.policy.limits()
+        if not self.complete:
+            raise TestScopeRefused(f"Incomplete index: {self._scan_detail or 'scan not completed'}. "
+                                   f"{len(self.files)} permitted file(s) indexed so far; full totals are unknown.")
+        if not self.files:
+            raise TestScopeRefused("The complete index contains 0 permitted regular files.")
+        totals = (("Indexed files", len(self.files), "test_copy_files", copy_contract.MAX_FILES),
+                  ("Largest indexed file (bytes)", max(e.size for e in self.files), "test_copy_file_size", copy_contract.MAX_FILE),
+                  ("Total indexed bytes", sum(e.size for e in self.files), "test_copy_total_size", copy_contract.MAX_TOTAL))
+        exceeded = []
+        for label, actual, key, ceiling in totals:
+            configured = getattr(limits, key)
+            if actual > min(configured, ceiling):
+                exceeded.append(f"{label}: {actual} > {min(configured, ceiling)} "
+                                f"(permissions.toml [files] {key} = {configured}; fixed copy ceiling = {ceiling}).")
+        if exceeded:
+            raise TestScopeRefused(*exceeded)
+        for entry in self.files:
+            try:
+                copy_contract.path(entry.path)
+            except ValueError:
+                raise ProjectError("TEST_FORMAT") from None
+        return self.files
+
+    def test_copy(self, approved):
+        from . import copy_contract
+        if self.test_selection() != approved:
+            raise ProjectError("TEST_CHANGED")
+        files = {}
+        for entry in approved:
+            # Compare the *opened* file against the approved object, even if an ancestor is swapped and restored.
+            _, raw = permissions.read_bounded(self.policy, self.root + "/" + entry.path,
+                                              max(1, entry.size), expected_identity=entry.identity)
+            if len(raw) != entry.size:
+                raise ProjectError("TEST_CHANGED")
+            try:
+                text = copy_contract.file_text(raw.decode("utf-8"))
+                if permissions.contains_private_key(text):
+                    raise ValueError("private key")
+            except ValueError:
+                raise ProjectError("TEST_FORMAT") from None
+            files[entry.path] = text
+        self.scan()
+        if self.test_selection() != approved:
+            raise ProjectError("TEST_CHANGED")
+        return files
 
     # --- map --------------------------------------------------------------------
     def listing(self, prefix="", cursor=0, limit=PAGE):

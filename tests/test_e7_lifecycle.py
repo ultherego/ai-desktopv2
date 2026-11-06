@@ -17,7 +17,8 @@ from ai_desktop import install_lifecycle as lifecycle
 
 PAYLOAD = (("ai_desktop/__init__.py", b'"""SYNTHETIC PACKAGE"""\n'),
            ("ai_desktop/__main__.py", b'print("SYNTHETIC OFFLINE")\n'),
-           ("skills/synthetic/SKILL.md", b"# SYNTHETIC SKILL\n"))
+           ("skills/synthetic/SKILL.md", b"# SYNTHETIC SKILL\n"),
+           ("skills/synthetic/references/tool-guide.md", b"SYNTHETIC VERSIONED REFERENCE\n"))
 
 
 class Interrupted(BaseException):

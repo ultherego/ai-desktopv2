@@ -131,7 +131,7 @@ class QuestionConsentTests(unittest.TestCase):
         answer = self.transfer(permit, context=context)
         self.assertNotEqual(planner.sha256, answer.sha256)
         self.assertNotEqual(planner.nonce, answer.nonce)
-        policy.select.assert_called_with((FILE,), limit=64)
+        policy.select.assert_called_with((FILE,), limit=Limits().read_files)
         with self.assertRaises(AnalysisDenied):
             permit.claim(self.gate(context=[]), QUESTION, context=[])
         self.assert_closed(permit)
@@ -362,7 +362,7 @@ class QuestionConsentTests(unittest.TestCase):
         context = [{"kind": "files", "files": [{"path": "/another/file.txt", "content": "synthetic"}]}]
         with self.assertRaises(ValueError):
             permit.claim(self.gate(context=context), QUESTION, context=context)
-        policy.select.assert_called_once_with(("/another/file.txt",), limit=64)
+        policy.select.assert_called_once_with(("/another/file.txt",), limit=Limits().read_files)
         self.assert_closed(permit)
 
     def test_distinct_selectors_share_one_captured_scope_without_expanding_authority(self):
@@ -381,7 +381,7 @@ class QuestionConsentTests(unittest.TestCase):
         selections = [[{"id": "f1", "path": "config.txt"}], [{"id": "f0", "path": "../outside"}],
                       [{"id": "f0", "path": "/outside"}], [{"id": "f0", "path": "x", "write": True}],
                       [{"id": "f0", "path": "config.txt"}] * 2,
-                      [{"id": "f0", "path": f"file{i}.txt"} for i in range(9)]]
+                      [{"id": "f0", "path": f"file{i}.txt"} for i in range(129)]]
         for selected in selections:
             permit, _, policy = self.fixture()
             with self.subTest(selected=selected), self.assertRaises(AnalysisDenied):

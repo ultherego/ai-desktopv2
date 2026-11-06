@@ -191,7 +191,7 @@ class AnalysisSandboxTests(unittest.TestCase):
         self.assertEqual(sandbox.model_text(0, json.dumps(base).encode()), "wynik")
         for key, value in (("is_error", True), ("subtype", "error_max_turns"), ("num_turns", True),
                            ("num_turns", 2), ("permission_denials", ["Bash"]), ("result", ""),
-                           ("result", "x" * 16385), ("result", "\ud800")):
+                           ("result", "x" * (contract.MAX_TEXT + 1)), ("result", "\ud800")):
             with self.subTest(key=key), self.assertRaises(AnalysisDenied):
                 sandbox.model_text(0, json.dumps(dict(base, **{key: value})).encode())
         with self.assertRaises(AnalysisDenied):
@@ -232,8 +232,8 @@ class AnalysisSandboxTests(unittest.TestCase):
     def test_response_text_budget_depends_only_on_validated_request_mode(self):
         base = {"type": "result", "subtype": "success", "is_error": False,
                 "num_turns": 1, "permission_denials": []}
-        for mode, maximum in (("analysis", 16384), ("question", 16384), ("assistant", 16384),
-                              ("workspace", 320 * 1024)):
+        for mode, maximum in (("analysis", contract.MAX_TEXT), ("question", contract.MAX_TEXT), ("assistant", contract.MAX_TEXT),
+                              ("workspace", contract.MAX_PROPOSAL_TEXT)):
             with self.subTest(mode=mode):
                 text = "x" * maximum
                 self.assertEqual(sandbox.model_text(0, json.dumps(dict(base, result=text)).encode(), mode=mode), text)
@@ -248,7 +248,7 @@ class AnalysisSandboxTests(unittest.TestCase):
                 sandbox.model_text(0, json.dumps(dict(base, result="ok")).encode(), mode=mode)
 
     def test_native_pipe_limits_are_explicit_and_data_never_enters_argv(self):
-        for mode, output_limit in (("question", 131072), ("workspace", 768 * 1024)):
+        for mode, output_limit in (("question", 256 * 1024), ("workspace", 3 * contract.MAX_PACKET_LARGE)):
             proxy = Mock()
             proxy.begin_phase.return_value.is_set.return_value = False
             native = json.dumps({"type": "result", "subtype": "success", "is_error": False,

@@ -66,16 +66,16 @@ class ConversationTests(unittest.TestCase):
         self.assertEqual(resumed.history, value.history)
         self.assertEqual(resumed.record["revision"], 1)
 
-    def test_history_retains_four_turns_and_shortens_answers_visibly(self):
+    def test_history_retains_sixteen_material_turns_and_shortens_answers_visibly(self):
         value = self.conversation()
-        for number in range(6):
+        for number in range(18):
             value.append("Pytanie %d" % number, "ą" * 5000)
         record = self.store.read(value.session_id)
-        self.assertEqual(len(record["history"]), 4)
+        self.assertEqual(len(record["history"]), 16)
         self.assertEqual(record["history"][0]["question"], "Pytanie 2")
         self.assertIn("[shortened]", record["history"][0]["answer"])
         self.assertLessEqual(len(record["history"][0]["answer"].encode()), 8192 + 64)
-        self.assertLessEqual(len(value.history[0]["answer"].encode()), 1536 + 64)
+        self.assertLessEqual(len(value.history[0]["answer"].encode()), 8192 + 64)
         altered = value.history
         altered[0]["answer"] = "Podmiana"
         self.assertNotEqual(value.history[0]["answer"], "Podmiana")

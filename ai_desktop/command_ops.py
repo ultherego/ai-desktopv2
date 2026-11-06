@@ -54,7 +54,69 @@ SUBCOMMAND_TOOLS = frozenset(("systemctl", "docker", "nmcli", "btrfs", "snapper"
 _STANDALONE_OPTIONS = frozenset(("--user", "--system", "--global", "--runtime", "--no-pager", "--no-legend",
                                  "--no-ask-password", "--no-block", "--no-reload", "--no-wall", "--now", "--all", "--full",
                                  "--quiet", "-q", "--force", "--failed", "--plain"))
+# These CLIs dispatch through several levels and may add plugins or accept command abbreviations. For a template
+# with placeholders, require a complete, known command path before the first variable argument. Unsupported commands
+# can still be configured verbatim. A pinned verb does not make it read-only: the owner chooses allow or change.
+_COMMAND_PATHS = {
+    "docker": {
+        "": "ps stats logs top inspect images history events pull push start stop restart kill pause unpause rm rmi rename wait",
+        "container": "ls stats logs top inspect start stop restart kill pause unpause rm rename wait",
+        "image": "ls inspect history pull push rm tag",
+        "volume": "ls inspect create rm",
+        "network": "ls inspect connect disconnect create rm",
+        "compose": "ps images logs top start stop restart pause unpause",
+    },
+    "btrfs": {
+        "filesystem": "show usage df du sync resize label defragment",
+        "subvolume": "show list get-default set-default snapshot create delete find-new sync",
+        "device": "stats usage scan ready add remove",
+        "balance": "status start pause resume cancel",
+        "scrub": "status start resume cancel",
+        "property": "get list set",
+        "qgroup": "show limit create destroy assign remove",
+    },
+    "nmcli": {
+        "general": "status hostname permissions logging reload",
+        "connection": "show up down add modify clone delete reload load import export",
+        "device": "status show set connect disconnect reapply modify delete",
+        "device wifi": "list connect rescan hotspot",
+    },
+}
+_GLOBAL_SWITCHES = {"docker": {"--debug", "-D", "--tls", "--tlsverify"},
+                    "btrfs": {"--verbose", "-v", "--quiet", "-q", "--raw", "--human-readable"},
+                    "nmcli": {"-t", "--terse", "-p", "--pretty", "-a", "--ask", "-s", "--show-secrets", "-o", "--overview"}}
+_GLOBAL_VALUES = {"docker": {"-c", "--context", "-H", "--host", "--config", "--log-level", "--tlskey", "--tlscert", "--tlscacert"},
+                  "btrfs": {"--format", "--log"},
+                  "nmcli": {"-f", "--fields", "-g", "--get-values", "-m", "--mode", "-w", "--wait",
+                            "-c", "--colors", "-e", "--escape"}}
 _ANSI = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-_]")
+
+
+def _require_command_path(program, arguments):
+    """Match an exact command path, accounting for global options before it."""
+    words = iter(arguments)
+    for word in words:
+        if word in _GLOBAL_SWITCHES[program]:
+            continue
+        option, equals, value = word.partition("=")
+        if option in _GLOBAL_VALUES[program]:
+            if not equals:
+                value = next(words, "")
+            if not value or value.startswith("-") or value in _PLACEHOLDERS:
+                raise ValueError("command-template")
+            continue
+        break
+    else:
+        raise ValueError("command-template")
+    group = ""
+    paths = _COMMAND_PATHS[program]
+    while word not in paths.get(group, "").split():
+        group = (group + " " + word).lstrip()
+        if group not in paths:
+            raise ValueError("command-template")
+        word = next(words, "")
+        if not word:
+            raise ValueError("command-template")
 
 
 def _require_literal_verb(tokens):
@@ -87,11 +149,9 @@ def parse_template(text, *, strict=False):
             raise ValueError("command-template")
     if len(tokens) > 1 and tokens[1] in _PLACEHOLDERS:
         raise ValueError("command-template")      # the first argument (usually the verb) is always the owner's literal
-    if tokens and os.path.basename(tokens[0]) in SUBCOMMAND_TOOLS and os.path.basename(tokens[0]) != "journalctl":
-        _require_literal_verb(tokens)
-    if strict:
-        # A template with side effects: the verb - the first word that is not an option - must be the owner's literal,
-        # so no placeholder may stand in front of it (`systemctl --user <word> x` would let the model choose it).
+    if program in _COMMAND_PATHS and any(token in _PLACEHOLDERS for token in tokens):
+        _require_command_path(program, tokens[1:])
+    elif strict or (program in SUBCOMMAND_TOOLS and program != "journalctl"):
         _require_literal_verb(tokens)
     return tokens
 

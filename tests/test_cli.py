@@ -9,6 +9,12 @@ from ai_desktop.cli import main
 
 
 class CliTests(unittest.TestCase):
+    def test_default_starts_conversation_in_interactive_terminal(self):
+        with patch("sys.stdin.isatty", return_value=True), patch("sys.stdout.isatty", return_value=True), \
+                patch("ai_desktop.ask_cli.main", return_value=3) as ask:
+            self.assertEqual(main([]), 3)
+        ask.assert_called_once_with([])
+
     def test_settings_routes_to_neutral_configuration_without_account_operations(self):
         for arguments in ([], ["show"], ["set", "--effort", "xhigh"], ["--help"]):
             with self.subTest(arguments=arguments), \
@@ -119,7 +125,7 @@ class CliTests(unittest.TestCase):
                     patch("ai_desktop.analysis_session.administrative") as claude, \
                     patch("ai_desktop.codex_cli.main") as codex, contextlib.redirect_stdout(io.StringIO()) as output:
                 self.assertEqual(main(["login"]), 0)
-            self.assertIn("Login cancelled", output.getvalue())
+            self.assertIn("Sign-in cancelled", output.getvalue())
             claude.assert_not_called()
             codex.assert_not_called()
 
@@ -308,10 +314,10 @@ class CliTests(unittest.TestCase):
 
 
 class HelpTests(unittest.TestCase):
-    DAILY = ("ask", "material", "project", "task", "status", "stop", "settings", "agents", "sessions", "skills", "login", "doctor")
+    DAILY = ("ask", "material", "project", "task", "status", "stop", "settings", "agent", "agents", "panel", "account", "usage", "sessions", "skills", "login", "doctor")
     LEGACY = ("claude", "codex")
     INTERNAL = ("controller", "executor", "handoff-once", "handoff", "worker-once", "workspace", "launcher", "sandbox",
-                "skill-mount", "agent", "diagnose", "validate-report", "compare", "audit")
+                "skill-mount", "diagnose", "validate-report", "compare", "audit")
 
     def text(self, argv):
         out = io.StringIO()
@@ -329,7 +335,7 @@ class HelpTests(unittest.TestCase):
             for command in self.INTERNAL + self.LEGACY:
                 self.assertNotRegex(text, r"(?m)^  %s\s" % command)
             self.assertIn("ai-desktop --help-all", text)
-            self.assertLess(len(text.splitlines()), 22)
+            self.assertLessEqual(len(text.splitlines()), 26)
 
     def test_the_full_help_lists_every_command_and_still_has_no_host_effects(self):
         code, text = self.text(["--help-all"])

@@ -80,6 +80,16 @@ class MinimalMountDependencyTests(unittest.TestCase):
         self.assertEqual(imported.returncode, 0, imported.stderr)
         self.assertEqual(json.loads(imported.stdout), inner_command)
 
+    def test_transport_import_requires_no_controller_modules(self):
+        copied = self.root / "transport"
+        package = copied / "ai_desktop"
+        package.mkdir(parents=True)
+        for filename in ("__init__.py", "e2_connect_proxy.py"):
+            shutil.copyfile(boundary.ROOT / "ai_desktop" / filename, package / filename)
+        imported = self.import_only(copied, "ai_desktop.e2_connect_proxy")
+        self.assertEqual(imported.returncode, 0, imported.stderr)
+        self.assertEqual(imported.stdout, "IMPORT: PASS\n")
+
     def test_missing_dependency_cannot_fall_back_to_full_checkout(self):
         copied = self.root / "missing"
         self.copy_python_mounts(boundary.fixture_command(), copied)

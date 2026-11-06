@@ -1,18 +1,23 @@
 """Closed, bounded shape of the local discovery observations sent to the model during one question.
 
-Discovery is metadata only: names, types, sizes and finite refusal codes. Names are untrusted observations, never source
-authority; every later content read still goes through the normal file-policy boundary. The client and the worker both
+List/find discovery is metadata only; explicit content operations add bounded,
+source-hashed excerpts. Names are untrusted observations, never source
+authority; every content read still goes through the normal file-policy boundary. The client and the worker both
 validate this exact shape against the ceilings below (the owner's budgets in permissions.toml can only be lower or equal).
 """
 import json
 import re
 import unicodedata
 
-MAX_STEPS = 44                 # 8 discovery rounds + 4 corrections + 32 commands at their ceilings
+MAX_SKILL_ROUNDS = 3
+MAX_REUSED_SKILLS = 4
+MAX_STEPS = 8 + 4 + 32 + MAX_SKILL_ROUNDS * 4 + MAX_REUSED_SKILLS
 MAX_DIRECTORIES = 4            # directories in one list step
 CEILING_ENTRIES = 512          # entries of one list/find step
 CEILING_TOTAL_ENTRIES = 1024   # entries of the whole document
-CEILING_BYTES = 262144         # canonical bytes of the whole document
+CEILING_DIAGNOSTIC_BYTES = 256 * 1024
+CEILING_SKILL_BYTES = 192 * 1024
+CEILING_BYTES = CEILING_DIAGNOSTIC_BYTES + CEILING_SKILL_BYTES
 MAX_QUERIES = 4
 MIN_QUERY_CHARS = 2
 MAX_QUERY_BYTES = 64
@@ -28,7 +33,7 @@ CEILING_OUTPUT = 131072
 REFUSAL_CODES = ("discovery-required", "discovery-budget", "files-missing", "files-count", "files-total", "files-size", "files-empty",
                  "files-depth", "files-entries", "files-type", "files-symlink")
 _ID = re.compile(r"f(?:[0-9]|[1-5][0-9]|6[0-3])\Z", re.ASCII)
-_SKILL = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z", re.ASCII)
+_SKILL = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*)?\Z", re.ASCII)
 MAX_SKILL_TEXT = 96 * 1024
 
 
@@ -154,6 +159,9 @@ def _step(value, total):
         if "role" in value:
             step["role"] = role
         return step
+    if op == "content":
+        from .ask_content import validate_step
+        return validate_step(value)
     if op == "skill":
         if (set(value) != {"op", "name", "status", "text"} or type(value["name"]) is not str
                 or not _SKILL.fullmatch(value["name"]) or value["status"] not in ("ok", "missing")
@@ -197,8 +205,12 @@ def validate_discovery(value):
             raise ValueError()
         result = {"steps": steps, "remaining": {"rounds": remaining["rounds"], "corrections": remaining["corrections"],
                                    "commands": remaining["commands"]}}
-        if len(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
-                          allow_nan=False).encode("utf-8")) > CEILING_BYTES:
+        # An unused Skill allocation must never increase diagnostic authority,
+        # nor may a small diagnostic context subsidize oversized procedures.
+        # The worker enforces the same partitions as the controller ledger.
+        if (diagnostic_bytes(result) > CEILING_DIAGNOSTIC_BYTES
+                or skill_bytes(result) > CEILING_SKILL_BYTES
+                or document_bytes(result) > CEILING_BYTES):
             raise ValueError()
         return result
     except (ValueError, TypeError, KeyError, UnicodeError, RecursionError):
@@ -210,13 +222,23 @@ def document_bytes(document):
                           allow_nan=False).encode("utf-8"))
 
 
+def diagnostic_bytes(document):
+    """Diagnostic steps and their complete envelope, excluding Skill steps."""
+    return document_bytes({**document, "steps": [step for step in document["steps"] if step["op"] != "skill"]})
+
+
+def skill_bytes(document):
+    """Procedures/references and their resource-list envelope, independently bounded."""
+    return document_bytes({"resources": [step for step in document["steps"] if step["op"] == "skill"]})
+
+
 def scope_ids(document):
     """Every scope id a validated document mentions (directories, finds, refused selectors)."""
     found = set()
     for step in document["steps"]:
         if step["op"] == "list":
             found.update(item["id"] for item in step["directories"])
-        elif step["op"] == "find":
+        elif step["op"] in ("find", "content"):
             found.add(step["id"])
         elif step["op"] in ("run", "skill"):
             continue

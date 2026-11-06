@@ -22,18 +22,35 @@ def identity(*, terminal=False):
     return uid
 
 
-def installation_ready():
+def _local_selected():
+    from .execution import current
+    selected = current()
+    return selected is not None and selected["provider"] == "local"
+
+
+def installation_ready(provider=None):
+    from .execution import current
+    provider = provider or (current() or {}).get("provider", "claude")
     uid = identity()
+    if provider == "local":
+        return
     if not e2_account.account_ready():
         raise AnalysisDenied("identity")
     if Path("/proc/1/comm").read_text().strip() != "systemd":
         raise AnalysisDenied("endpoint")
+    if provider == "codex":
+        from .codex_runtime import runtime_ready
+    elif provider == "claude":
+        from .analysis_sandbox import runtime_ready
+    else:
+        raise AnalysisDenied("input")
+    runtime_ready()
     unit_policy(uid)
 
 
-def status():
+def status(provider=None):
     try:
-        installation_ready()
+        installation_ready(provider)
         values = properties(manager_unit(identity()))
         active = values.get("ActiveState") not in ("inactive", "failed")
         print("Files and units: ready. Analysis session: " + ("running." if active else "stopped."))
@@ -124,6 +141,10 @@ class Session:
 def managed_session(*, quiet=False):
     if type(quiet) is not bool:
         raise AnalysisDenied("input")
+    if _local_selected():
+        identity(terminal=True)
+        yield
+        return
     authenticate(quiet=True) if quiet else authenticate()
     process = subprocess.Popen(helper_command("open"), env=ENV, stdin=subprocess.PIPE,
                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
@@ -163,6 +184,8 @@ def administrative(action, *, allow=False, details=False):
         print("SESSION: STOPPED")
         return 0
     except (AnalysisDenied, OSError, ValueError, subprocess.SubprocessError, KeyboardInterrupt) as exc:
+        if action == "login" and isinstance(exc, KeyboardInterrupt):
+            raise   # The desktop login flow reports the cancellation for this provider/account.
         reason = exc.reason if isinstance(exc, AnalysisDenied) else "cancelled" if isinstance(exc, KeyboardInterrupt) else "runtime"
         print("SESSION: REFUSED reason=" + reason)
         return 2

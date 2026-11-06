@@ -81,6 +81,21 @@ class AskEditTests(unittest.TestCase):
         self.permit.claim(gate, QUESTION, access=self.snapshot.access)
         self.permit.authorize(gate, QUESTION, access=self.snapshot.access)
 
+    def test_suite_prepares_independent_local_copy_without_adding_it_to_model_source(self):
+        from ai_desktop import project_edit_test
+        helper = Mock()
+        with patch("ai_desktop.project_checks.current_directory", return_value=WORKSPACE), \
+                patch.object(project_edit_test, "PreparedProjectTest", return_value=helper) as prepare:
+            prepared = self.prepare(dict(PLAN, check="pytest"))
+        self.assertIs(prepared.project_test, helper)
+        prepare.assert_called_once_with(self.policy, WORKSPACE, WORKSPACE, prepared.before)
+        self.assertEqual(set(prepared.source), {"instruction", "files"})
+        self.assertEqual({item["path"] for item in prepared.source["files"]},
+                         {"main.py", "tests/info.txt", "result.txt"})
+        with patch.object(task_cli, "finish_task", return_value=0) as finish:
+            ask_edit.finish(prepared, json.dumps(PROPOSAL), self.args, Mock())
+        self.assertIs(finish.call_args.kwargs["project_test"], helper)
+
     def test_read_and_create_are_bound_to_one_workspace_with_readonly_context(self):
         prepared = self.prepare()
         self.assertEqual(prepared.workspace, WORKSPACE)

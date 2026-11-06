@@ -46,7 +46,7 @@ tasks and time, and restricted socket activation. Before use it checks its own i
 **The client** is the official executable from a root-owned directory, in the exact reported version 2.1.312. It gets a clean environment, its own writable login directory, and an empty HOME and working directory. It has no access to the user's
 home directory or desktop sockets. Normal mode: `--tools ""`, an empty MCP configuration, one turn, no session saving. Web mode: `WebSearch` only, at most 4 turns and 2 calls. A seccomp filter forbids setting SUID/SGID bits. There is no general system call filter.
 
-**The proxy** handles only CONNECT to `api.anthropic.com`, `claude.ai`, `platform.claude.com` (with Codex, separately `api.openai.com`). It resolves the name once, checks all addresses, rejects non-public ones (including localhost and metadata addresses) and connects to the checked address. Before connecting it requires
+**The proxy** handles only CONNECT to `api.anthropic.com`, `claude.ai`, `platform.claude.com` (for Codex inference, separately `api.openai.com`; for an explicitly connected native quota session, `auth.openai.com` and `chatgpt.com` on HTTPS). It resolves the name once, checks all addresses, rejects non-public ones (including localhost and metadata addresses) and connects to the checked address. Before connecting it requires
 a ClientHello with SNI equal to the host name, and rejects ECH. It does not use MITM. It does not see TLS content: it does not filter paths or data.
 
 **Login** happens through the client's official flow in the same isolation mode, directly in the terminal, without capture. The program does not read tokens, and before a request it requires the status `authMethod=claude.ai`. There is no API key and no workaround. Codex: login through a trusted component outside the model's space, a short-lived token goes through a private channel to the client process; a separate token store `/var/lib/ai-desktop/codex`.
@@ -90,6 +90,14 @@ A template is in `allow` or in `change`, never in both, and a placeholder cannot
 Typing the whole word `yes` is required after seeing all three commands. The change, test and undo run **on the live system, without a sandbox**, with a cleaned environment (user bus available, no HOME and no secrets), without input, with limits. A failed test shows the undo and requires a second `yes`. The program never undoes on its own. An approved undo may not run if the question's budget runs out.
 
 What this means: after `yes` the command has the user's full permissions. Placeholders in the template (for example `<unit>`) are chosen by the model. The test and undo may not restore the state. Consent applies to the content shown, not to its effects.
+
+### Project suites and scope checks
+
+Python checks run against authorized copies with a private network, no host sockets and a syscall filter. Go and npm can run children. The controller creates a new user scope and reads the effective cgroup v2 PID, CPU, memory and swap ceilings before running Bubblewrap. An unavailable manager or controller aborts the suite. A regular project cannot name its own host command or remove a limit. An npm test can decide to return success without running assertions; the controller reports the script result accordingly.
+
+### Conversation recipients
+
+A provider, account slot and local port, where applicable, are part of the recipient identity. A saved thread can be transferred through the controller after checking its current policy and obtaining a new decision. A local server receives only the approved request. Numeric loopback constrains the connection destination; whoever can serve that port controls how its contents are processed. Account status and desktop widgets consume observations without exporting, interpreting or polling OAuth secrets.
 
 ## 5. Threats
 
@@ -137,3 +145,13 @@ Deletion moves to `.ai-desktop-tasks/trash-*` after consent bound to the exact p
 ## 7. What the evidence does not cover
 
 Synthetic tests use a mock client and do not prove the behavior of the real client or OAuth refresh. There is no test for a hostile process of the same UID or for power loss. There is no independent review. The result of one commit or computer does not attest another. Changing these boundaries requires describing the trade-off here and a test on a real system.
+
+### Larger task data and knowledge (candidate 0.1.0-79)
+
+The model wire ceiling (36 MiB) accounts for up to 16 MiB selected UTF-8 data plus JSON escaping and bounded metadata; it is not a new file grant or proof of provider token capacity. Generated workspace text has a separate 4.25 MiB ceiling; anchored replacements can reconstruct larger results locally. Complete restored bytes, including BOM/CRLF, remain subject to edit and rollback bounds.
+
+Analysis opts into a 96 MiB aggregate TLS tunnel budget, including both directions and protocol overhead. Account/login tunnels retain the 4 MiB default. The limit is compiled into the minimal proxy module so its sandbox does not gain controller dependencies. Existing destination, SNI, timeout and connection checks remain in force.
+
+Local project-test copies have an independent contract: default 2,000 files / 8 MiB per file / 64 MiB combined; hard 20,000 / 32 MiB / 128 MiB. The copy pipe is opt-in and unavailable to ordinary model calls. The sandbox bounds memory to 2 GiB, writable work to 160 MiB and individual files to 32 MiB. This increases resource consumption and needs the real namespace/cgroup fixtures and CachyOS acceptance. Copy membership is never added to model context simply because tests need it.
+
+On-demand procedure and reference selection in all modes is controller-managed. The knowledge envelope is canonically bound to consent and reconstructed without inheriting a worker's ambient catalog. Bundled references have source/version provenance and hashes but remain untrusted evidence. Package-version evidence comes only from a successful, untruncated exact allowed query and is reset with the task. No new command grant, network route, desktop detection/download or shell tool is implied by loading documentation.

@@ -23,6 +23,19 @@ FILE_FIXTURE = None
 EDIT_FIXTURE = None
 HOME_FIXTURE = None
 WEB_FIXTURE = None
+EXECUTION_FIXTURE = None
+
+
+def validate_invocation(args, environment):
+    """Match exact legacy or controller-frozen fixture commands and environment."""
+    for action in ("version", "status", "analyze", "login", "web", "offline-logout"):
+        selections = (None, EXECUTION_FIXTURE) if action in ("analyze", "web") else (None,)
+        for selected in selections:
+            if args == client_command(action, selected):
+                effort = selected["effort"] if selected is not None else None
+                assert environment == client_environment(action, effort)
+                return action
+    raise AssertionError("fixture-command")
 
 
 def validate_web_payload(data):
@@ -81,16 +94,14 @@ def validate_file_payload(data):
     assert set(actual) == set(FILE_FIXTURE["files"]) and total == 12175
     assert actual["notes.txt"].index(FILE_FIXTURE["marker"]) > 4096
     assert actual["notes.txt"].endswith("answer_marker = " + FILE_FIXTURE["marker"] + "\n")
-    assert len(canonical(data["context"]).encode("utf-8")) <= MAX_CONTEXT_BYTES == 384 * 1024
-    assert len(application_input(None, question=data["question"], context=data["context"]).encode("utf-8")) <= MAX_PACKET == 512 * 1024
+    assert len(canonical(data["context"]).encode("utf-8")) <= MAX_CONTEXT_BYTES == 34 * 1024 * 1024
+    assert len(application_input(None, question=data["question"], context=data["context"]).encode("utf-8")) <= MAX_PACKET == 36 * 1024 * 1024
 
 
 def main():
     args = [str(BINARY)] + sys.argv[1:]
-    action = next((name for name in ("version", "status", "analyze", "login", "web") if args == client_command(name)), None)
-    assert action is not None
+    action = validate_invocation(args, dict(os.environ))
     assert os.geteuid() > 0 and privileges_locked(Path("/proc/self/status").read_text())
-    assert dict(os.environ) == client_environment(action)
     assert not Path("/var/lib/ai-desktop").exists() and not Path("/run/user").exists()
     assert not Path("/etc/claude-code").exists()
     assert not Path("/home/runner").exists() and not Path("/root").exists()
@@ -115,6 +126,23 @@ def main():
         return 0
     profile = Path(INNER_PROFILE)
     mode = (profile / "fixture-mode").read_text()
+    if mode == "account-lifecycle":
+        assert action in ("status", "offline-logout")
+        assert not Path("/run/egress.sock").exists()
+        fixture = profile / ".credentials.json"
+        if action == "offline-logout":
+            fixture.unlink()
+            return 0
+        # The offline check must never mount a writable credential profile.
+        try:
+            (profile / "check-wrote-profile").touch()
+        except OSError as exc:
+            assert exc.errno == errno.EROFS
+        else:
+            raise AssertionError("writable-status-profile")
+        present = fixture.is_file()
+        print(json.dumps({"loggedIn": present, "authMethod": "claude.ai", "configDirectory": INNER_PROFILE}))
+        return 0 if present else 1
     # Actual private profile writes/atomic replacement, always synthetic bytes.
     (profile / "fixture-refresh.tmp").write_text("SYNTHETIC")
     (profile / "fixture-refresh.tmp").replace(profile / "fixture-refresh")

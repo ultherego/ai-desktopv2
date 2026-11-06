@@ -14,9 +14,17 @@ import time
 
 HOSTS = frozenset({"api.anthropic.com", "claude.ai", "platform.claude.com"})
 OPENAI_HOSTS = frozenset({"api.openai.com"})
+# Separate native account RPC namespace. Device auth/token renewal and account limits.
+CODEX_ACCOUNT_HOSTS = frozenset({"auth.openai.com", "chatgpt.com"})
 HEADER_LIMIT = 8192
 HELLO_LIMIT = 65536
 STREAM_LIMIT = 4 * 1024 * 1024
+# Analysis carries JSON inside the native client's HTTPS protocol. This
+# standalone transport is also mounted in the minimal namespace fixture: do
+# not import the controller's contract here. A regression checks this ceiling
+# against two request/response envelopes plus TLS overhead. Account operations
+# keep the smaller default; neither limit comes from model data.
+ANALYSIS_STREAM_LIMIT = 96 * 1024 * 1024
 TIME_LIMIT = 20
 CONNECTION_LIMIT = 64
 
@@ -26,10 +34,16 @@ class Denied(ValueError):
         super().__init__("E2 CONNECT: REFUSED")
 
 
+def checked_stream_limit(value):
+    if type(value) is not int or value not in (STREAM_LIMIT, ANALYSIS_STREAM_LIMIT):
+        raise Denied()
+    return value
+
+
 def _fixed_hosts(hosts):
-    # Only two compiled policies are possible. This parameter never comes from
+    # Only these compiled policies are possible. This parameter never comes from
     # a request, profile, environment variable or model output.
-    if type(hosts) is not frozenset or hosts not in (HOSTS, OPENAI_HOSTS):
+    if type(hosts) is not frozenset or hosts not in (HOSTS, OPENAI_HOSTS, CODEX_ACCOUNT_HOSTS):
         raise Denied()
     return hosts
 
@@ -255,7 +269,8 @@ class _Handler(socketserver.BaseRequestHandler):
             # Not even DNS occurs before the authority and SNI are accepted.
             remote = self.server.dial(host)
             remote.sendall(hello)
-            relay(self.request, remote, seconds=self.server.stream_seconds)
+            relay(self.request, remote, seconds=self.server.stream_seconds,
+                  limit=getattr(self.server, "stream_limit", STREAM_LIMIT))
         except (OSError, ValueError):
             # No request, hostname, TLS bytes, credential or exception text logs.
             pass
@@ -268,10 +283,11 @@ class ConnectProxy(socketserver.ThreadingMixIn, socketserver.UnixStreamServer):
     daemon_threads = False
     block_on_close = True
 
-    def __init__(self, path, *, dial, stream_seconds=TIME_LIMIT, hosts=HOSTS):
+    def __init__(self, path, *, dial, stream_seconds=TIME_LIMIT, hosts=HOSTS, stream_limit=STREAM_LIMIT):
         if type(stream_seconds) is not int or not 1 <= stream_seconds <= 1200:
             raise Denied()
         self.stream_seconds = stream_seconds
+        self.stream_limit = checked_stream_limit(stream_limit)
         self.hosts = _fixed_hosts(hosts)
         self.dial = dial  # Trusted policy, never accepted from sandbox data.
         self.remaining = CONNECTION_LIMIT

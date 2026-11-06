@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=AI Desktop — Codex Accounts
+Comment=Sign in or select an AI Desktop account for Codex
+Exec=/usr/bin/ai-desktop account connect codex --from-widget
+Terminal=true
+Icon=utilities-terminal
+Categories=System;Utility;

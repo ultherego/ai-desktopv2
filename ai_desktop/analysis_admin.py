@@ -31,6 +31,16 @@ def login_command(*, details=False):
                       "login-verbose" if details else "login"]
 
 
+def login_unit_stopped(state):
+    """A collected unit may be reported as not-found with rc=1; contradictory state never proves cleanup."""
+    values = dict(line.split("=", 1) for line in state.stdout.splitlines() if "=" in line)
+    if values.get("LoadState") == "not-found":
+        return (state.returncode in (0, 1) and values.get("ActiveState", "inactive") == "inactive"
+                and values.get("MainPID", "0") == "0")
+    return (state.returncode == 0 and values.get("ActiveState") in ("inactive", "failed")
+            and values.get("MainPID") == "0")
+
+
 def main(*, allow=False, details=False):
     # The explicit flag, root and real terminal are required before any command,
     # runtime binary, credential access or network request can be started.
@@ -67,11 +77,7 @@ def main(*, allow=False, details=False):
                 state = subprocess.run(["/usr/bin/systemctl", "show", unit,
                                         "--property=LoadState,ActiveState,MainPID"], env=environment,
                                        check=False, capture_output=True, text=True, timeout=5)
-                values = dict(line.split("=", 1) for line in state.stdout.splitlines() if "=" in line)
-                missing = values.get("LoadState") == "not-found" and state.returncode in (0, 1)
-                stopped = (state.returncode == 0 and values.get("ActiveState") in ("inactive", "failed")
-                           and values.get("MainPID") == "0")
-                if not (missing or stopped):
+                if not login_unit_stopped(state):
                     passed = False
                     print("LOGIN: REFUSED cleanup=incomplete")
             except (OSError, ValueError, subprocess.SubprocessError):

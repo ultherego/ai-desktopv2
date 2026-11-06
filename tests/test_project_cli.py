@@ -604,10 +604,10 @@ class EditTests(Base):
             with self.subTest(decision=decision), self.assertRaises(pcli.EditRefused) as caught:
                 self.plan(**decision)
             self.assertIn(reason, str(caught.exception))
-        (self.proj / "src/big.txt").write_text("x" * (64 * 1024 + 1))
+        (self.proj / "src/big.txt").write_text("x" * (8 * 1024 * 1024 + 1))
         with self.assertRaises(pcli.EditRefused) as caught:
             self.plan(files=["src/big.txt"])
-        self.assertIn("64 KiB", str(caught.exception))
+        self.assertIn("8 MiB", str(caught.exception))
         deep = self.proj / "a/b/c/d/e"
         deep.mkdir(parents=True)
         (deep / "f.py").write_text("x\n")
@@ -723,17 +723,6 @@ class EditTests(Base):
             self.assertEqual(task_cli.main(argv, reader=lambda prompt: "yes"), 0)
         self.assertTrue((self.proj / "docs/readme.txt").exists())
         self.assertIn("Deleted files restored.", out.getvalue())
-
-    def test_delete_is_exclusive_with_other_edit_fields_and_bounded(self):
-        for raw in ('{"action":"edit","files":["a"],"create":[],"delete":["b"],"check":"text"}',
-                    '{"action":"edit","files":[],"create":["a"],"delete":["b"],"check":"text"}',
-                    '{"action":"edit","files":[],"create":[],"delete":["a/../b"],"check":"text"}',
-                    '{"action":"edit","files":[],"create":[],"delete":%s,"check":"text"}' % json.dumps(["f%d" % i for i in range(9)]),
-                    '{"action":"edit","files":[],"create":[],"delete":"a","check":"text"}'):
-            with self.subTest(raw=raw[:60]), self.assertRaises(ValueError):
-                pstep.parse_decision(raw)
-        decision = pstep.parse_decision('{"action":"edit","files":[],"create":[],"delete":["x.py"],"check":"text"}')
-        self.assertEqual(decision["delete"], ["x.py"])
 
     def test_the_pasted_text_itself_travels_in_the_edit_request_not_just_its_marker(self):
         from ai_desktop import question_input as qi
@@ -895,3 +884,23 @@ class ContractTests(Base):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class ProjectEditContractTests(unittest.TestCase):
+    def test_delete_is_exclusive_with_other_edit_fields_and_bounded(self):
+        for raw in ('{"action":"edit","files":["a"],"create":[],"delete":["b"],"check":"text"}',
+                    '{"action":"edit","files":[],"create":["a"],"delete":["b"],"check":"text"}',
+                    '{"action":"edit","files":[],"create":[],"delete":["a/../b"],"check":"text"}',
+                    '{"action":"edit","files":[],"create":[],"delete":%s,"check":"text"}' % json.dumps(["f%d" % i for i in range(9)]),
+                    '{"action":"edit","files":[],"create":[],"delete":"a","check":"text"}'):
+            with self.subTest(raw=raw[:60]), self.assertRaises(ValueError):
+                pstep.parse_decision(raw)
+        decision = pstep.parse_decision('{"action":"edit","files":[],"create":[],"delete":["x.py"],"check":"text"}')
+        self.assertEqual(decision["delete"], ["x.py"])
+        edit = {"action": "edit", "files": ["f%d" % i for i in range(64)], "create": [], "check": "text"}
+        self.assertEqual(len(pstep.parse_decision(json.dumps(edit))["files"]), 64)
+        delete = dict(edit, files=[], delete=["f%d" % i for i in range(8)])
+        self.assertEqual(len(pstep.parse_decision(json.dumps(delete))["delete"]), 8)
+        delete["delete"].append("ninth")
+        with self.assertRaises(ValueError):
+            pstep.parse_decision(json.dumps(delete))

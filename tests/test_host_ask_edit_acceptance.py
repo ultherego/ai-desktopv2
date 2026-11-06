@@ -1,5 +1,5 @@
 """Synthetic-only guards and proof validation for the native ask-edit harness."""
-from contextlib import ExitStack, redirect_stdout
+from contextlib import ExitStack, chdir, redirect_stdout
 import io
 import os
 from pathlib import Path
@@ -173,14 +173,16 @@ class AskEditFixtureTests(unittest.TestCase):
         package.permissions = SimpleNamespace()
         package.ask_cli = SimpleNamespace(request=Mock(return_value="synthetic response"))
         package.terminal_consent = SimpleNamespace(fresh_input=Mock(return_value="yes"),
-                                                   PROMPTS={"ask-question": "QUESTION", "write": "WRITE"})
-        package.task_cli = SimpleNamespace(task_sandbox=SimpleNamespace(run=Mock(return_value={"passed": True})),
+            PROMPTS={"ask-question": "QUESTION", "project-test": "TEST", "write": "WRITE"})
+        package.task_cli = SimpleNamespace(task_sandbox=SimpleNamespace(run=Mock(),
+            run_copy=Mock(return_value={"passed": behavior != "test-failed"})),
                                           show_diff=Mock(), workspace=SimpleNamespace(apply=Mock()))
         contract = ModuleType("ai_desktop.analysis_contract")
         contract.application_input = Mock(return_value="x" * (100 if behavior == "small-request" else 40000))
         plan = SimpleNamespace(data=lambda: {"proposal": {"files": proposed},
                                             "before": {"workspace": str(fixture["project"])}})
         def main(_):
+            self.assertEqual(Path.cwd(), fixture["project"])
             package.terminal_consent.fresh_input("QUESTION")
             if behavior == "extra-approval":
                 package.terminal_consent.fresh_input("QUESTION")
@@ -188,7 +190,21 @@ class AskEditFixtureTests(unittest.TestCase):
             if behavior == "truncated":
                 source["files"] = source["files"][:8]
             package.ask_cli.request(task=source)
-            package.task_cli.task_sandbox.run(source, proposed, "text" if behavior == "wrong-check" else "python-unittest")
+            if behavior != "no-test-consent":
+                package.terminal_consent.fresh_input("TEST")
+            if behavior == "extra-test-consent":
+                package.terminal_consent.fresh_input("TEST")
+            files = {**host.FILES, **{item["path"]: item["content"] for item in proposed}}
+            if behavior == "copy-missing-file":
+                files.pop("tests/test_main.py")
+            elif behavior == "copy-wrong-overlay":
+                files["main.py"] = host.ORIGINAL_MAIN
+            elif behavior == "copy-denied":
+                files["denied.txt"] = host.DENIED
+            if behavior != "no-test":
+                package.task_cli.task_sandbox.run_copy(files,
+                    "text" if behavior == "wrong-check" else "python-unittest",
+                    executable=["main.py"] if behavior == "copy-executable" else [])
             if behavior != "no-diff":
                 package.task_cli.show_diff(plan)
             if behavior != "no-write-consent":
@@ -198,7 +214,7 @@ class AskEditFixtureTests(unittest.TestCase):
         package.cli = SimpleNamespace(main=main)
         with patch.dict(sys.modules, {"ai_desktop": package, "ai_desktop.analysis_contract": contract}), \
                 patch.object(sys, "argv", ["fixture"]), patch.object(sys, "path", list(sys.path)), \
-                redirect_stdout(io.StringIO()) as output:
+                chdir(os.getcwd()), redirect_stdout(io.StringIO()) as output:
             try:
                 exec(compile(fixture["script"].read_text(), "ask-edit-fixture", "exec"), {"__name__": "__main__"})
             except SystemExit as exc:
@@ -207,8 +223,10 @@ class AskEditFixtureTests(unittest.TestCase):
                 code = 2
         return code, output.getvalue()
 
-    def test_native_proof_requires_exact_source_large_request_test_diff_and_two_distinct_consents(self):
-        for behavior in ("full", "small-request", "extra-approval", "truncated", "wrong-check", "no-diff", "no-write-consent"):
+    def test_native_proof_requires_exact_source_full_overlay_and_three_distinct_consents(self):
+        for behavior in ("full", "small-request", "extra-approval", "truncated", "wrong-check", "no-diff",
+                         "no-write-consent", "no-test-consent", "extra-test-consent", "copy-missing-file",
+                         "copy-wrong-overlay", "copy-denied", "copy-executable", "test-failed", "no-test"):
             with self.subTest(behavior=behavior):
                 code, output = self.simulate_wrapper(behavior)
                 self.assertEqual(code, 0 if behavior == "full" else 2)
@@ -217,14 +235,14 @@ class AskEditFixtureTests(unittest.TestCase):
     def test_upfront_refusal_cannot_hide_a_request_or_write(self):
         fixture = self.fixture()
         code = compile(fixture["script"].read_text(), "ask-edit-fixture", "exec")
-        for behavior in ("refuse", "request", "write"):
+        for behavior in ("refuse", "request", "test", "write"):
             with self.subTest(behavior=behavior):
                 package = ModuleType("ai_desktop")
                 package.permissions = SimpleNamespace()
                 package.ask_cli = SimpleNamespace(request=Mock(return_value="unused"))
                 package.terminal_consent = SimpleNamespace(fresh_input=Mock(return_value="no"),
-                    PROMPTS={"ask-question": "QUESTION", "write": "WRITE"})
-                package.task_cli = SimpleNamespace(task_sandbox=SimpleNamespace(run=Mock()),
+                    PROMPTS={"ask-question": "QUESTION", "project-test": "TEST", "write": "WRITE"})
+                package.task_cli = SimpleNamespace(task_sandbox=SimpleNamespace(run=Mock(), run_copy=Mock()),
                     show_diff=Mock(), workspace=SimpleNamespace(apply=Mock()))
                 contract = ModuleType("ai_desktop.analysis_contract")
                 contract.application_input = Mock()
@@ -232,13 +250,15 @@ class AskEditFixtureTests(unittest.TestCase):
                     package.terminal_consent.fresh_input("QUESTION")
                     if behavior == "request":
                         package.ask_cli.request(access={"files": []})
+                    elif behavior == "test":
+                        package.task_cli.task_sandbox.run_copy({}, "python-unittest")
                     elif behavior == "write":
                         package.task_cli.workspace.apply(None, None)
                     return 2
                 package.cli = SimpleNamespace(main=main)
                 with patch.dict(sys.modules, {"ai_desktop": package, "ai_desktop.analysis_contract": contract}), \
                         patch.object(sys, "argv", ["fixture", "refusal"]), \
-                        patch.object(sys, "path", list(sys.path)), redirect_stdout(io.StringIO()) as output:
+                        patch.object(sys, "path", list(sys.path)), chdir(os.getcwd()), redirect_stdout(io.StringIO()) as output:
                     if behavior == "refuse":
                         with self.assertRaises(SystemExit) as stopped:
                             exec(code, {"__name__": "__main__"})

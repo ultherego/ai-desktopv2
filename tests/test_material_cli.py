@@ -132,7 +132,7 @@ class FileAcceptanceTests(Base):
         self.assertEqual((self.sent, self.fake.opens, self.ready), ([], 0, 0))
 
     def test_limit_encoding_controls_and_empty_files_are_refused_with_closed_hints(self):
-        cases = [(b"a" * (5 * 1024 * 1024 + 1), "The file is over 5242880 bytes (5 MiB, file_size limit)"), (b"\xff\xfe\xfa", "UTF-8"),
+        cases = [(b"a" * (32 * 1024 * 1024 + 1), "The file is over 33554432 bytes (32 MiB, file_size limit)"), (b"\xff\xfe\xfa", "UTF-8"),
                  (b"\x1b[31mred\x1b[0m\n", "control or formatting"), (b"", "empty"), ("﻿bom".encode(), "control or formatting")]
         for raw, hint in cases:
             with self.subTest(hint=hint, size=len(raw)):
@@ -195,7 +195,7 @@ class FileAcceptanceTests(Base):
 
 
 class FileSizeSettingTests(Base):
-    """The owner's `file_size` in [files] decides the largest file `material` imports (default 5 MiB, ceiling 16 MiB)."""
+    """The owner's `file_size` in [files] decides the largest file `material` imports (default 32 MiB, ceiling 64 MiB)."""
 
     def policy_with(self, literal):
         self.config.write_text('version = 1\n[files]\nread = ["~/data/*"]\ndeny = []\nfile_size = %s\n[network]\nclaude = true\n' % literal)
@@ -206,19 +206,19 @@ class FileSizeSettingTests(Base):
         self.file.write_bytes(b"x" * (100 * 1024 + 1))
         self.assertEqual(self.run_cli(["/exit"]), 2)
         self.assertIn("The file is over 102400 bytes (100 KiB, file_size limit)", self.output)
-        self.assertIn("raise file_size in [files] in permissions.toml (16 MiB at most)", self.output)
+        self.assertIn("raise file_size in [files] in permissions.toml (64 MiB at most)", self.output)
         self.file.write_bytes(b"x" * (100 * 1024))
         self.assertEqual(self.run_cli(["/exit"]), 0)
 
     def test_a_larger_limit_accepts_a_file_over_the_default_and_the_ceiling_still_holds(self):
-        self.file.write_bytes(b"x" * (6 * 1024 * 1024))
-        self.assertEqual(self.run_cli(["/exit"]), 2)                       # default 5 MiB
-        self.policy_with('"16MiB"')
+        self.file.write_bytes(b"x" * (33 * 1024 * 1024))
+        self.assertEqual(self.run_cli(["/exit"]), 2)                       # default 32 MiB
+        self.policy_with('"64MiB"')
         self.assertEqual(self.run_cli(["/exit"]), 0)
-        self.assertIn("%d B" % (6 * 1024 * 1024), self.output)
-        self.file.write_bytes(b"x" * (16 * 1024 * 1024 + 1))
+        self.assertIn("%d B" % (33 * 1024 * 1024), self.output)
+        self.file.write_bytes(b"x" * (64 * 1024 * 1024 + 1))
         self.assertEqual(self.run_cli(["/exit"]), 2)
-        self.assertIn("16 MiB", self.output)
+        self.assertIn("64 MiB", self.output)
 
     def test_the_request_schema_accepts_sizes_up_to_the_hard_ceiling_only(self):
         from ai_desktop import material_step as ms, materials
@@ -500,7 +500,7 @@ class NaturalTests(Base):
 
     # --- conversation memory (LC3, bounded) -------------------------------------------------
     def test_earlier_answers_travel_with_later_questions_bounded_and_shortened(self):
-        long_answer = "Pierwsza odpowiedź. " + "dłuższy tekst " * 400
+        long_answer = "Pierwsza odpowiedź. " + "dłuższy tekst " * 700
         self.model = script({"action": "answer", "text": long_answer, "sources": []},
                             {"action": "answer", "text": "Druga.", "sources": []},
                             {"action": "answer", "text": "Trzecia.", "sources": []})
@@ -512,15 +512,19 @@ class NaturalTests(Base):
         self.assertEqual(turn["question"], "Pierwsze pytanie?")
         self.assertTrue(turn["answer"].startswith("Pierwsza odpowiedź."))
         self.assertTrue(turn["answer"].endswith("…[shortened]"))
-        self.assertLess(len(turn["answer"].encode()), 1700)
+        from ai_desktop.material_step import HISTORY_TEXT
+        self.assertLessEqual(len(turn["answer"].encode()), HISTORY_TEXT + 64)
         self.assertEqual([t["question"] for t in third["material"]["history"]],
                          ["Pierwsze pytanie?", "Wyjaśnij pierwszy punkt poprzedniej odpowiedzi"])
 
-    def test_history_is_limited_to_the_last_four_turns(self):
-        self.model = script(*[{"action": "answer", "text": "odp %d" % i, "sources": []} for i in range(7)])
-        self.run_cli(["pytanie %d?" % i for i in range(7)] + ["/exit"], ["yes"] * 7)
+    def test_history_retains_the_latest_sixteen_turns_and_drops_the_oldest(self):
+        count = mcli.MAX_HISTORY + 3
+        self.model = script(*[{"action": "answer", "text": "odp %d" % i, "sources": []} for i in range(count)])
+        self.run_cli(["pytanie %d?" % i for i in range(count)] + ["/exit"], ["yes"] * count)
         last = self.payloads()[-1]["material"]["history"]
-        self.assertEqual([t["question"] for t in last], ["pytanie 2?", "pytanie 3?", "pytanie 4?", "pytanie 5?"])
+        self.assertEqual(len(last), mcli.MAX_HISTORY)
+        self.assertEqual([t["question"] for t in last],
+                         ["pytanie %d?" % i for i in range(count - 1 - mcli.MAX_HISTORY, count - 1)])
 
     def test_a_declined_or_failed_question_leaves_no_phantom_answer_in_the_history(self):
         self.model = script({"action": "answer", "text": "ok", "sources": []})
@@ -709,7 +713,7 @@ class WholeTests(Base):
         seen = self.run_whole(["yes", "yes"], whole_model())
         maps = [a for a in self.sent if json.loads(a.payload)["material"]["task"].get("phase") == "map"]
         sizes = [len(a.payload.encode()) for a in maps]
-        self.assertTrue(all(ac.MAX_PACKET < n <= ac.MAX_PACKET_LARGE for n in sizes[:-1]), sizes)    # bigger parts than the default packet
+        self.assertTrue(all(512 * 1024 < n <= ac.MAX_PACKET_LARGE for n in sizes[:-1]), sizes)    # payload exceeds the former 512 KiB transport limit
         for approval in maps:
             ac.parse_request(approval.payload.encode())                        # the real parser accepts every one
         text = "".join("".join(o["text"] for o in p["material"]["observations"])

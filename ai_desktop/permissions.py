@@ -17,13 +17,13 @@ import stat
 import tomllib
 import unicodedata
 
-from .file_context_contract import (plain_text, MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES,
+from .file_context_contract import (plain_text, MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES, CEILING_FILES,
                                     contains_private_key, validate_context)
 
 MAX_POLICY_BYTES = 16384
-DEFAULT_FILE_SIZE = 5 * 1024 * 1024       # largest file `material` imports unless `file_size` says otherwise
+DEFAULT_FILE_SIZE = 32 * 1024 * 1024       # largest file `material` imports unless `file_size` says otherwise
 MIN_FILE_SIZE = 4 * 1024
-MAX_FILE_SIZE = 16 * 1024 * 1024          # hard ceiling in code (also the ceiling of the request schema)
+MAX_FILE_SIZE = 64 * 1024 * 1024          # hard ceiling in code (also the ceiling of the request schema)
 MAX_ACCESS_BYTES = 8192
 MAX_RULES = 64
 MAX_DIRECTORY_ENTRIES = 1024
@@ -107,12 +107,15 @@ def parse_part_size(value):
 class Limits:
     """Resource budgets of ONE question, set by the owner in `[files]`; never permissions.
 
-    Defaults equal the former constants. Ceilings are hard limits in code that the request schema (client AND worker)
+    Read budgets bound model data; test-copy budgets only bound local test input. Ceilings are hard limits in code that the request schema (client AND worker)
     also enforces, so a policy can lower a budget or raise it only up to the ceiling.
     """
-    read_files: int = 64              # files read into one context
-    read_file_size: int = 65536       # bytes per file
-    read_total_size: int = 131072     # bytes of all file contents of one context
+    read_files: int = MAX_FILES              # files read into one context
+    read_file_size: int = MAX_FILE_BYTES       # bytes per file
+    read_total_size: int = MAX_TOTAL_BYTES     # bytes of all file contents of one context
+    test_copy_files: int = 2000       # local test copy, never added to the model context
+    test_copy_file_size: int = 8 * 1024 * 1024
+    test_copy_total_size: int = 64 * 1024 * 1024
     listing_entries: int = 128        # entries per list/find step
     discovery_bytes: int = 131072     # bytes of all discovery steps sent to the model during one question
     search_results: int = 40          # matches per find step
@@ -126,9 +129,12 @@ class Limits:
 
 # name -> (kind, minimum, maximum); kind "count" is an integer, "size" accepts "24KiB"-style strings too
 LIMIT_SPECS = {
-    "read_files": ("count", 1, 128),
-    "read_file_size": ("size", 1024, 131072),
-    "read_total_size": ("size", 1024, 262144),
+    "read_files": ("count", 1, 512),
+    "read_file_size": ("size", 1024, 8 * 1024 * 1024),
+    "read_total_size": ("size", 1024, 16 * 1024 * 1024),
+    "test_copy_files": ("count", 1, 20000),
+    "test_copy_file_size": ("size", 1024, 32 * 1024 * 1024),
+    "test_copy_total_size": ("size", 1024, 128 * 1024 * 1024),
     "listing_entries": ("count", 16, 512),
     "discovery_bytes": ("size", 2048, 262144),
     "search_results": ("count", 5, 200),
@@ -160,6 +166,8 @@ def parse_limits(files):
     limits = Limits(**values)
     if limits.read_file_size > limits.read_total_size:
         raise _SettingError("read_file_size")
+    if limits.test_copy_file_size > limits.test_copy_total_size:
+        raise _SettingError("test_copy_file_size")
     return limits
 
 
@@ -625,12 +633,16 @@ class Policy:
     _commands: tuple = ()
     _changes: tuple = ()
     _share_processes: bool = False
+    _local: bool = False
+    local_port: int = 8080
 
     def fingerprint(self):
         """Identifies the exact permissions.toml this policy came from, including what `access()` does not list."""
         return hashlib.sha256(self._raw).hexdigest()
 
     def provider_allowed(self, provider):
+        if provider == "local":
+            return self._local
         if provider not in ("claude", "codex"):
             raise ValueError("provider")
         return self._claude if provider == "claude" else self._codex
@@ -644,7 +656,7 @@ class Policy:
         return self._part_size
 
     def file_size(self):
-        """Largest single file `material` may import (owner's `file_size`, default 5 MiB, ceiling 16 MiB)."""
+        """Largest single file `material` may import (owner's `file_size`, default 32 MiB, ceiling 64 MiB)."""
         return self._file_size
 
     def sources(self):
@@ -791,7 +803,7 @@ class Policy:
         Each pair is (scope index, relative exact path or terminal /* or /**).
         None and the empty string select the complete configured scope.
         """
-        if type(selections) not in (list, tuple) or not 1 <= len(selections) <= MAX_RULES:
+        if type(selections) not in (list, tuple) or not 1 <= len(selections) <= CEILING_FILES:
             raise ValueError("files-scope")
         rules, seen, roots = [], set(), []
         for selection in selections:
@@ -911,7 +923,7 @@ def load_policy(*, optional=False):
         missing = [key for key in ("version", "files") if key not in value]
         if missing:
             raise _Problem("Missing required top-level key: " + ", ".join(missing) + ".")
-        unknown = sorted(set(value) - {"version", "files", "network", "system", "commands"})
+        unknown = sorted(set(value) - {"version", "files", "network", "system", "commands", "local"})
         if unknown:
             raise _Problem("Unknown section: " + ", ".join(_shown(key) for key in unknown) + ".")
         if type(value["version"]) is not int or value["version"] not in (1, 2):
@@ -951,9 +963,13 @@ def load_policy(*, optional=False):
                 validate_write_path(rule.base, home, managed=value["version"] == 2)
             except ValueError:
                 raise _Problem("A files.write rule is not allowed: " + _shown(rule.original)) from None
+        from .execution import valid_local_port, DEFAULT_LOCAL_PORT
+        local = value.get("local", {})
+        if type(local) is not dict or set(local) - {"port"} or not valid_local_port(local.get("port", DEFAULT_LOCAL_PORT)):
+            raise _Problem("[local] accepts only a numeric loopback port between 1024 and 65535.")
         network, system = value.get("network", {}), value.get("system", {})
-        if type(network) is not dict or set(network) - {"claude", "codex", "weather", "web"}:
-            raise _Problem("[network] only accepts the keys claude, codex, weather, web.")
+        if type(network) is not dict or set(network) - {"claude", "codex", "local", "weather", "web"}:
+            raise _Problem("[network] only accepts the keys claude, codex, local, weather, web.")
         if any(type(flag) is not bool for flag in network.values()):
             raise _Problem("Values in [network] must be true or false.")
         if type(system) is not dict or set(system) - {"systemd"}:
@@ -1001,7 +1017,8 @@ def load_policy(*, optional=False):
             raise _Problem("commands.share_processes must be true or false.")
         policy = Policy(uid, home, raw, identity, *rules,
                         network.get("claude", False), network.get("weather", False), tuple(systemd), value["version"],
-                        network.get("web", False), file_size, part_size, network.get("codex", False), limits, commands, changes, share)
+                        network.get("web", False), file_size, part_size, network.get("codex", False), limits, commands, changes, share,
+                        network.get("local", False), local.get("port", DEFAULT_LOCAL_PORT))
         for template in (*commands, *changes):
             for token in template[1:]:
                 if token[:1] == "/":        # templates carry absolute literal paths only (`~` is refused by the parser)
@@ -1052,19 +1069,21 @@ def read_selected(policy, paths):
     return validate_context({"kind": "files", "files": files})
 
 
-def read_bounded(policy, path, limit, *, recheck=True):
+def read_bounded(policy, path, limit, *, recheck=True, expected_identity=None):
     """Read ONE exact file allowed by the policy, up to `limit` bytes (caller supplies consent).
 
     Same ownership, link, type, mode and race checks as read_selected, but without
     its per-file budget so a deliberately attached material can be larger. Content
     validation (encoding, control characters) is the caller's job.
     """
-    if type(policy) is not Policy or type(limit) is not int or not 1 <= limit <= 16 * 1024 * 1024:
+    if type(policy) is not Policy or type(limit) is not int or not 1 <= limit <= MAX_FILE_SIZE:
         raise ValueError("policy-type")
     (selected,) = policy.select([path])
     if recheck:
         policy.recheck()
-    raw, _ = _read(selected, policy.uid, limit, system=policy._version == 2)
+    raw, identity = _read(selected, policy.uid, limit, system=policy._version == 2)
+    if expected_identity is not None and expected_identity != identity:
+        raise ValueError("files-changed")
     if recheck:
         policy.recheck()
     return selected, raw

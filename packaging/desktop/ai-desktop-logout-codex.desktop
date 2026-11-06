@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=AI Desktop — Sign out of Codex
+Comment=Confirm sign-out of the specified AI Desktop account
+Exec=/usr/bin/ai-desktop account logout codex --from-widget
+Terminal=true
+NoDisplay=true
+Icon=utilities-terminal
+Categories=System;Utility;

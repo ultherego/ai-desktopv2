@@ -14,6 +14,20 @@ A public issue is visible to everyone, so **do not put sensitive details in it**
 the content of private files, `--v` output, a working exploit or data about your computer. Describe the package version, the general symptom and the
 fixed error message.
 
+## Changing recipients
+
+A transfer through `/provider` names the new recipient and requires an explicit decision about the bounded conversation history and task notes. File access is re-evaluated for the request. Old saved answers whose source permissions cannot be verified are withheld. Named cloud account slots use a validated local alias and the authenticated desktop UID; the panel reads account metadata and quota observations, never tokens.
+
+Local inference uses an approved HTTP request to numeric IPv4 loopback and a bounded port from the policy. Trust the process listening there. A stopped server can leave its port available to another local process. A local server configured to forward traffic can transmit requests off the machine. The controller does not follow HTTP redirects or use proxy environment variables.
+
+The optional desktop widget displays locally available metadata. The controller's private runtime entries contain the chat identifier, working directory, settings and exchange count. They are visible to the same desktop user. No conversation text is stored in those entries.
+
+The widget passes a validated provider and local alias to a fixed installed launcher for an explicit credential check or logout. The target is confirmed in a terminal before logout. The default slot is shared across desktop users. Named slots are isolated by desktop UID and provider, with a binding that prevents a disconnected name from silently designating another identity. The service owns credential operations under its profile lock. The Claude check runs the pinned native client with read-only access to its profile in an offline namespace. Claude logout has writable access to the chosen profile in an offline namespace. Codex checks the protected local SIWC registration and attempts provider revocation only on explicit logout. The desktop receives a bounded outcome. Its local sign-in record is for display; the execution path checks the service-side credentials separately.
+
+The optional native Codex quota session is a distinct credential. The owner selects its workspace during device-code login. The quota client runs in Bubblewrap with a disposable Codex home and a dedicated CONNECT allowlist for the official auth and ChatGPT backend hosts. The regular model client continues to use its separate SIWC grant. The quota protocol speaks only initialization, device login, account inspection, cancellation and rate-limit reads. Its desktop reply contains validated numerical windows and an allowlisted plan. The service keeps the renewable local quota credential behind its service UID, bound to the desktop UID, local alias and current SIWC registration generation. A matching email is insufficient to establish a matching workspace.
+
+Explicit setup enables the systemd quota socket for that UID. Its path is controlled by root, its mode is 0600, and the service authenticates the kernel peer UID. Any process running as that same desktop UID can request an enrolled slot’s limits. The desktop command checks its local network policy; network enforcement in the worker is the fixed native operation and compiled egress allowlist. Disconnecting removes the local credential. When no native links remain for that UID the administrative action removes the socket activation.
+
 ## Trust boundaries
 
 | Element | Runs as | What it sees and can do |
@@ -23,6 +37,7 @@ fixed error message.
 | Analysis service | system account `ai-desktop`, with no login and no privileges | A restricted systemd unit, holds the proxy and starts the client. |
 | Claude Code 2.1.312 client | the same account, in Bubblewrap | Its own login directory `/var/lib/ai-desktop/claude`, empty HOME and working directory, no tools (except `WebSearch` in web mode), no direct network. |
 | Proxy | service, outside the client sandbox | Passes only TLS on port 443 to `api.anthropic.com`, `claude.ai`, `platform.claude.com`, to public addresses. |
+| Local model server | your configured loopback service | Receives the approved prompt, history and authorized material. The user who operates the service controls its logging. |
 | Model | at the provider | Returns text and proposals. This is untrusted data. |
 | Commands from `allow` | your user, in a separate sandbox | Read-only file system, hidden `/home`, `/root`, `/run/user`, no network. Host Unix sockets are not isolated. |
 | Commands from `change` | your user, **without a sandbox** | Run on the live system after you type `yes`. |
@@ -118,3 +133,11 @@ Data that was sent cannot be withdrawn.
 
 Do not add secrets, login files, client binaries or data about a specific computer to the repository. Changes to isolation, permissions, the file system, the network or
 login require a test on real CachyOS or Arch and a description of the trade-off in [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md). The test gate is `scripts/verify.py`.
+
+## Large files and shared knowledge
+
+File read, excerpt, generated edit, history and local test-copy budgets are separate. A larger local copy does not authorize sending its files to a provider. Only selected model inputs cross the model transport; copy-only source and test output stay local. The copy worker has a separate bounded input pipe, filesystem size and memory ceiling. These defaults can consume materially more memory than the earlier small-copy implementation; refusal must happen before a partial copy is tested as complete.
+
+A large-file content search or range read returns only bounded excerpts with source identities, hashes and coverage. Each following handoff rechecks the policy and source state. An anchored edit must uniquely match non-overlapping fragments of the approved original. The controller reconstructs the result, checks file and total byte budgets after restoring line endings, then uses the existing diff, copy test, consent, source-state check and rollback. A model proposal cannot authorize its own write.
+
+Skills and their local references are frozen before task consent and rechecked before sending. Selected knowledge has its own bounded, hash-bound envelope for material/project/task, and a separate budget within ask discovery. It cannot grant tools or permissions. Reference version claims come only from strict results of an already-authorized package query; free text or model-supplied versions are not trusted observations. Rolling references are dated snapshots, not version compatibility proof. Public web requests do not inherit this local knowledge envelope. This implementation does not add automatic remote documentation downloads or native client Skill tools.

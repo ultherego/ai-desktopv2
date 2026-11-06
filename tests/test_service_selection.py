@@ -93,7 +93,7 @@ class ServiceSelectionTests(unittest.TestCase):
                 execution = profiles.resolve(profile=name, store=self.store)
                 self.assertEqual(execution["provider"], "codex")
                 self.assertEqual(execution["profile"], name)
-                self.assertEqual(execution["instructions"], config.profiles[name].instructions)
+                self.assertEqual(execution["instructions"], profiles.catalog_for(config.profiles[name]))
                 self.assertEqual(execution["access"], config.profiles[name].access)
         reviewer = profiles.resolve(profile="reviewer", store=self.store)
         self.assertEqual((reviewer["model"], reviewer["effort"]), ("default", "default"))
@@ -168,7 +168,7 @@ class ServiceSelectionTests(unittest.TestCase):
             prepared = profiles.prepared(config)
         self.assertEqual({profile.provider for profile in prepared.profiles.values()}, {"codex"})
         self.assertEqual(prepared.profiles["analyst"].access, "read-only")
-        self.assertEqual(prepared.profiles["diagnostic"].skills, ("cachyos-diagnostics",))
+        self.assertEqual(prepared.profiles["diagnostic"].skills, profiles.PRESET_SKILLS["diagnostic"])
         self.assertEqual(prepared.with_provider("claude").profiles["default"].model, "opus")
         self.assertEqual(prepared.provider_settings, config.provider_settings)
 

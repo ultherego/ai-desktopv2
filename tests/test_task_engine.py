@@ -41,7 +41,8 @@ class TaskCopyTests(unittest.TestCase):
         payload = process.call_args.kwargs["input_bytes"]
         self.assertGreater(len(payload), 512 * 1024)
         self.assertLessEqual(len(payload), 640 * 1024)
-        self.assertEqual(process.call_args.kwargs["input_limit"], 640 * 1024)
+        self.assertEqual(process.call_args.kwargs["input_limit"], task_sandbox.MAX_PAYLOAD)
+        self.assertIs(process.call_args.kwargs["copy_input"], True)
         self.assertEqual(sum(len(item["content"].encode()) for item in json.loads(payload)["files"]), 256 * 1024)
 
     def test_text_copy_preserves_utf8_backslashes_and_missing_final_newline(self):

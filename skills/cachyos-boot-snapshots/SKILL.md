@@ -1,6 +1,6 @@
 ---
 name: cachyos-boot-snapshots
-description: Identifies the boot failure stage and the conditions for restoring a CachyOS snapshot. Use for problems with the bootloader, initramfs, kernel parameters or recovery through a Live ISO.
+description: Diagnoses CachyOS boot failures and snapshot recovery with Btrfs Assistant, Snapper or cachy-chroot. Use for bootloaders, initramfs, kernel parameters and Live ISO recovery.
 ---
 
 # Boot and snapshots
@@ -41,3 +41,10 @@ Give the failure stage, the evidence, the scope of the proposed change and the c
 
 - [Boot manager configuration](https://wiki.cachyos.org/configuration/boot_manager_configuration/).
 - [Snapshots and restoring](https://wiki.cachyos.org/configuration/btrfs_snapshots/#restoring-from-a-snapshot).
+
+## Tool references
+
+Load the matching reference when the task concerns these tools. Verify the installed version and help; a rolling source is not a verified version match.
+
+- [Btrfs Assistant and Snapper](references/snapshot-tools.md).
+- [Live ISO recovery with cachy-chroot](references/cachy-chroot.md).

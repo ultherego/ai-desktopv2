@@ -1,6 +1,55 @@
 # Changelog
 
-## Unreleased
+## 0.1.0-79: large-project workflow and shared knowledge
+
+- Separate larger file/context budgets from local test-copy budgets. Inspect large text by search and line ranges in ordinary conversation, and use checked anchored replacements for larger files. Preserve the complete diff, copy test, apply consent and rollback checks.
+- Keep a larger bounded conversation window and task memory, with a separate larger saved-record budget. The continuation shortcut and full transcript/compaction work remain follow-up items.
+- Load assigned Skills and their needed reference sections on demand in ask, material, project and task. Extend practical Arch/CachyOS procedures using official sources and explicit version applicability.
+- This candidate changes file and worker contracts and requires the existing offline CI and real CachyOS acceptance before merge.
+
+## 0.1.0-78: quota card layout and service selection
+
+- Give the account list more vertical space when the screen allows it. Codex usage and connection buttons wrap inside the account card. The extra heading above the Codex card was removed.
+- Click a usage card or focus it and press Enter to choose that service for new conversations. Its buttons keep their own actions. Claude and Codex both expose **Manage accounts…** in the accounts tab, including before sign-in.
+
+## 0.1.0-77: live Codex limits in DankBar
+
+- Connect a separate native Codex account from the widget. The upper-right refresh button and `ai-desktop usage --refresh --provider codex` fetch its current quota windows and reset times without sending a model request.
+- The native session is isolated per desktop UID and slot. Connecting is opt-in, opening the widget reads local status, and a terminal action can disconnect the native grant.
+
+## 0.1.0-76: account actions and status in DankBar
+
+- Select Claude or Codex by clicking its card in **Accounts & login**. The refresh icon on both tabs reloads local status and saved quota readings.
+- A successful login records the account for the widget. Connected accounts offer sign-out. Accounts from earlier installations can be checked locally. Terminal sign-in results identify the provider and account and use color when supported.
+- Preserve the timestamp of each reported quota window across partial updates. When Codex has no readings, open ChatGPT usage settings from the widget.
+
+## 0.1.0-75: open the widget on released DMS 2.x versions
+
+- Use the button colors supported by DMS 2.0 and 2.1 to mark the selected tab. Opening the usage and account tabs works with the released button API.
+
+## 0.1.0-74: load the quota card after a running DMS upgrade
+
+- Move the quota card and its status script into a dedicated directory. When DMS reloads the widget after an upgrade, Qt can discover both files and show the current percentages and reset times.
+
+## 0.1.0-73: graphical subscription usage and login
+
+- The DMS bar can show the current five-hour percentage. The popout shows proportional usage bars with local resets for each reported window.
+- Its **Accounts & login** tab can switch the service or account for new tasks and launch the native Claude/Codex sign-in picker. Authentication stays in the approved client flow.
+
+## 0.1.0-72: subscription display and project test feedback
+
+- The terminal panel and `usage` show separate five-hour and seven-day windows, utilization bars and local reset times. Current usage is colored by percentage. Expired readings are labelled with their last recorded value.
+- The interactive panel keeps subscription details on a separate page. Returning to the menu restores the dashboard in place; leaving the panel restores the shell.
+- An oversized project test reports which copy limits the authorized index exceeded before any tests run.
+
+## 0.1.0-71: shared agent sessions and project checks
+
+- Start a conversation with `ai-desktop`. Choose Claude, Codex or an explicitly allowed loopback model and review what will travel when changing provider in the same conversation.
+- List named subscription accounts, inspect their last reported limits and open the offline agent panel or optional Niri/DMS launchers.
+- Bind history filtering, Skill selection and delivery to current permissions. Saved answers with unverifiable sources are withheld on resume.
+- Preserve agreed context for project edits, show which validation ran and offer fixed test recipes on an isolated copy.
+- Require fixed nested command verbs, and verify downloaded clients before an optional private Arch package build.
+
 
 - `permissions.toml`: the template `systemctl -H host <word>` is rejected, because `<word>` could become a command. After an option outside the list of options without a value, the next word is treated as its value. The `change` list can have 128 templates also in the request to the model (it was 24).
 - Rebuilt procedures of 21 Skills: interpreting results, conditions for further steps, recognizing access restrictions and verifying changes. Removed overly broad recipes, among others a full balance as default cleanup and `systemctl revert` as the undo of a single edit.

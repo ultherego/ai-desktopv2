@@ -47,7 +47,8 @@ class TaskCliTests(unittest.TestCase):
         send.assert_called_once(); check.assert_called_once(); runtime.assert_called_once()
         runtime.assert_called_once_with(quiet=True)
         self.assertIn("=== Changes to save ===\n```diff\n", output)
-        self.assertNotIn("Test on a copy: passed", output)
+        self.assertIn("Test on a copy: passed (python-syntax); 1 selected file(s).", output)
+        self.assertIn("This checks syntax only; project tests were not run.", output)
         self.assertIn("Changes saved.", output)
         self.assertEqual(self.prompts, [PROMPTS["transfer"], PROMPTS["write"]])
         self.assertNotRegex(output, r"[a-f0-9]{64}")
@@ -317,8 +318,10 @@ class TaskPresentationTests(unittest.TestCase):
         self.assertTrue(previews[1].endswith("\n```\n\n"))
         self.assertIn("Changes saved.", output)
         self.assertIn("ai-desktop task rollback --workspace /tmp/project", output)
+        self.assertIn("Test on a copy: passed (python-syntax); 3 selected file(s).", previews[1])
+        self.assertIn("This checks syntax only; project tests were not run.", previews[1])
         for technical in ("TASK:", "TASK TEST:", "SESSION:", "New content as JSON", "SYNTHETIC TEST LOG",
-                          "Checking the changes on an isolated copy", "Test on a copy:",
+                          "Checking the changes on an isolated copy",
                           "The test covers only the selected files", "Only the changes shown will be saved"):
             self.assertNotIn(technical, output)
         self.assertNotRegex(output, r"[a-f0-9]{64}")
@@ -326,7 +329,36 @@ class TaskPresentationTests(unittest.TestCase):
         send.assert_called_once()
         test.assert_called_once()
         apply.assert_called_once()
-        self.assertEqual(unchanged.call_count, 4)
+        self.assertEqual(unchanged.call_count, 5)
+
+    def test_suite_edit_uses_full_project_handler_and_failed_suite_blocks_the_write(self):
+        before, source, proposed = self.fixture()
+        args = cli.build_parser().parse_args(["run", "fix", "--workspace", "/tmp/project",
+            "--file", "calc.py", "--test", "pytest"])
+        for passed in (False, True):
+            with self.subTest(passed=passed):
+                project_test = Mock()
+                project_test.run.return_value = {"passed": passed, "output": "local test result"}
+                guard = Mock()
+                with contextlib.redirect_stdout(io.StringIO()), \
+                        patch.object(cli.sys.stdin, "isatty", return_value=True), \
+                        patch.object(cli.sys.stdout, "isatty", return_value=True), \
+                        patch.object(cli.workspace, "unchanged"), \
+                        patch.object(cli.task_sandbox, "run") as selected_test, \
+                        patch.object(cli.workspace, "apply") as apply:
+                    result = cli.finish_task(before, source, json.dumps(proposed), args, lambda _: "yes",
+                                             write_guard=guard, project_test=project_test)
+                self.assertEqual(result, 0 if passed else 2)
+                selected_test.assert_not_called()
+                self.assertEqual(project_test.run.call_args.args[:3], (source, proposed["files"], "pytest"))
+                self.assertIs(project_test.run.call_args.args[4], guard)
+                if passed:
+                    apply.assert_called_once()
+                    checks = project_test.check.call_count
+                    apply.call_args.kwargs["write_guard"]()
+                    self.assertEqual(project_test.check.call_count, checks + 1)
+                else:
+                    apply.assert_not_called()
 
     def test_text_integrity_does_not_claim_syntax_or_functional_test(self):
         before, source, proposed = self.fixture()

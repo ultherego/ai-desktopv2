@@ -12,7 +12,7 @@ from . import __version__
 from . import agent, audit, compare, controller, diagnose, doctor, e2_handoff_cli, executor, launcher, sandbox, skill_mount, skills, validate_snapshot, workspace_cli
 
 PUBLIC_COMMANDS = ("ask", "material", "project", "task", "status", "stop", "settings",
-                   "agents", "sessions", "skills", "login", "doctor")
+                   "agents", "agent", "account", "usage", "local", "panel", "sessions", "skills", "login", "doctor")
 
 
 def build_parser():
@@ -36,9 +36,14 @@ def build_parser():
     diagnostic_status = commands.add_parser("doctor", help="Check requirements without starting AI")
     diagnostic_status.add_argument("--v", "--verbose", "-v", "--details", dest="details", action="store_true",
                                    help="Full requirements report as JSON")
-    commands.add_parser("status", help="Offline analysis readiness, without the client or OAuth")
+    status = commands.add_parser("status", help="Show offline agent, policy and conversation status")
+    status.add_argument("--json", action="store_true", help="Output machine-readable local status")
+    commands.add_parser("panel", help="Open the interactive agent panel")
+    commands.add_parser("account", help="Manage isolated subscription accounts", add_help=False)
+    commands.add_parser("local", help="Query the local model catalog or server status", add_help=False)
+    commands.add_parser("usage", help="Show cached subscription usage", add_help=False)
     commands.add_parser("stop", help="Stop or recover your own temporary analysis session")
-    analysis = commands.add_parser("analyze", help="Approve a report and get an analysis from your Claude subscription")
+    analysis = commands.add_parser("analyze", help="Approve a report and get an analysis from the selected provider")
     analysis.add_argument("--preview", action="store_true", help="Offline preview only, without the client or OAuth")
     analysis.add_argument("--v", "--verbose", "-v", "--details", dest="details", action="store_true",
                           help="Full preview of the rules and analysis diagnostics")
@@ -50,7 +55,7 @@ def build_parser():
                           help="Reply: terminal formatting, no colors, or raw Markdown")
     from .run_controls import add_arguments
     add_arguments(analysis)
-    login = commands.add_parser("login", help="Log in and choose the active service: Claude or Codex")
+    login = commands.add_parser("login", help="Log in to a provider's default account; named accounts use account login")
     target = login.add_mutually_exclusive_group()
     target.add_argument("--provider", choices=("claude", "codex"), help="Skip the menu; log in and choose the service")
     target.add_argument("--claude", "--allow-claude-login", dest="provider", action="store_const", const="claude",
@@ -98,7 +103,7 @@ def build_parser():
     skill.add_argument("name", nargs="?")
 
     for name, description, choices in (
-        ("agent", "Offline Claude with an isolated Skill", ("version", "help")),
+        ("agent", "List or choose a service, or check the isolated Claude client", ("list", "use", "version", "help")),
         ("launcher", "Offline Claude in Bubblewrap", ("version", "help")),
         ("sandbox", "Check Bubblewrap isolation", ("self-test",)),
         ("skill-mount", "Check the isolated Skills mount", ("self-test",)),
@@ -112,20 +117,23 @@ def build_parser():
 
 SHORT_HELP = """AI Desktop: controlled tools for CachyOS
 
-Everyday work:
+Run ai-desktop in a terminal to start a conversation.
   ask        Ask a question; optionally attach chosen context
   material   Analyze one local text file (up to 5 MiB)
   project    Work with a project directory: read-only analysis; changes and deletions only after your approval
   task       Change chosen files with a test and a full diff; undo and restore
-  status     Offline analysis readiness, without the client or OAuth
+  status     Agent, permissions and live conversations (--json for widgets)
+  panel      Interactive agent and account panel
   stop       Stop or recover your own temporary analysis session
 
-Setup and diagnostics:
   settings   Service, agent, model, reasoning and Skills
-  agents     Create, copy and choose agent profiles
+  agent      List or choose a service (agent list / agent use NAME)
+  agents     Create, copy and choose agent roles
+  account    Manage subscription accounts
+  usage      Show subscription limits and reset times when available
   sessions   Saved conversations: preview, resume and delete
   skills     List and preview the available Skills
-  login      Log in and choose Claude or ChatGPT / Codex
+  login      Log in to the default Claude or Codex account
   doctor     Check requirements without starting AI
 
 Full command list, including internal and developer tools: ai-desktop --help-all
@@ -135,33 +143,46 @@ Help for a command: ai-desktop COMMAND --help
 
 def login_menu(*, details=False):
     from .terminal_menu import choose, MenuInputError
+    from .login_flow import login_status
     try:
         selected = choose("Log in and choose the active service",
                           ("Claude — subscription", "ChatGPT / Codex — subscription", "Cancel"))
     except MenuInputError:
-        print("Could not read your choice. Run this in an interactive terminal: ai-desktop login")
+        login_status("Sign-in failed", "red")
+        print("  Run ai-desktop login in an interactive terminal.")
         return 2
     if selected is None or type(selected) is int and selected == 2:
-        print("Login cancelled.")
+        login_status("Sign-in cancelled", "yellow")
         return 0
     if type(selected) is not int or selected not in (0, 1):
         print("No login method was chosen.")
         return 2
     provider = "claude" if selected == 0 else "codex"
-    print("Logging in: " + ("Claude" if selected == 0 else "ChatGPT / Codex"))
     return main(["login", "--provider", provider] + (["--v"] if details else []))
 
 
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else list(argv)
     if not argv:
-        argv = ["status"]
+        argv = ["ask"] if sys.stdin.isatty() and sys.stdout.isatty() else ["status"]
     if argv in (["--help"], ["-h"]):                  # the short, task-oriented help; every command still works
         print(SHORT_HELP, end="")
         return 0
     if argv == ["--help-all"]:                        # the complete listing; text only, no host effects
         print(build_parser().format_help(), end="")
         return 0
+    if argv[0] == "agent" and (len(argv) == 1 or argv[1] in ("list", "use", "-h", "--help")):
+        from . import agent_panel
+        return agent_panel.services(argv[1:] or ["list"])
+    if argv[0] == "account":
+        from . import account_cli
+        return account_cli.main(argv[1:])
+    if argv[0] == "local":
+        from . import local_provider
+        return local_provider.main(argv[1:])
+    if argv[0] == "usage":
+        from . import account_cli
+        return account_cli.usage_main(argv[1:])
     if argv[:1] == ["workspace"]:
         return workspace_cli.main(argv[1:])
     if argv[:1] == ["settings"]:
@@ -210,7 +231,8 @@ def main(argv=None):
         from .agent_profiles import resolve
         from .execution import using
         try:
-            selected = resolve(args.agent, args.model, args.effort)
+            selected = resolve(args.agent, args.model, args.effort,
+                               **({"provider": args.provider} if args.provider is not None else {}))
             vanilla = (selected == {"provider": "claude", "model": "default", "effort": "default",
                                     "instructions": "", "profile": "default", "access": "changes"})
             with using(None if vanilla else selected):
@@ -231,13 +253,18 @@ def main(argv=None):
             from .login_flow import login
             return login("claude", lambda: administrative("login", allow=True, **options))
         from . import analysis_admin
-        result = analysis_admin.main(allow=True, **options)
+        from .login_flow import authenticate_account, login_status
+        result = authenticate_account("claude", "default", lambda: analysis_admin.main(allow=True, **options))
         if result == 0:
-            print("Logged in: Claude. Choose the service in your regular user's settings.")
+            login_status("Signed in", "green", "claude", "default")
+            print("  Choose the active service from your regular user account.")
         return result
     if args.command == "status":
-        from .analysis_session import status
-        return status()
+        from . import agent_panel
+        return agent_panel.status(args.json)
+    if args.command == "panel":
+        from . import agent_panel
+        return agent_panel.panel(main)
     if args.command == "stop":
         from .analysis_session import administrative
         return administrative("stop")

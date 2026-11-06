@@ -17,14 +17,14 @@ class Authorization:
 
 class TaskPlan:
     def __init__(self, before, source, proposal, check, *, clock=time.monotonic):
-        contract.proposal(canonical(proposal), source)
+        proposal = contract.proposal(canonical(proposal), source)
         if set(before["files"]) != {f["path"] for f in source["files"]}:
             raise ValueError("selection")
         for item in source["files"]:
             old = before["files"][item["path"]]["file"]
             if item["content"] != (contract.plain_text(old["content"]) if old else None):
                 raise ValueError("source changed")
-        if check not in ("text", "toml", "python-unittest", "python-syntax", "json", "bash-syntax", "fish-syntax"):
+        if check not in contract.CHECKS:
             raise ValueError("check")
         self._clock = clock
         self._nonce = secrets.token_hex(24)

@@ -1,6 +1,6 @@
 ---
 name: cachyos-kernel
-description: Diagnoses regressions after a CachyOS kernel change and the compatibility of its modules. Use for choosing a variant, initramfs or DKMS errors, or when comparing with a working kernel.
+description: Diagnoses CachyOS kernel regressions, Kernel Manager, initramfs and DKMS compatibility. Use for kernel selection, booted-versus-installed versions and comparison with a working kernel.
 ---
 
 # CachyOS kernel and modules
@@ -40,3 +40,9 @@ Give the running and installed kernels, the state of the relevant module, the ev
 
 - [Variants and precompiled modules](https://wiki.cachyos.org/features/kernel/#variants).
 - [Scope of snapshot restoring](https://wiki.cachyos.org/configuration/btrfs_snapshots/).
+
+## Tool references
+
+Load the matching reference when the task concerns these tools. Verify the installed version and help; a rolling source is not a verified version match.
+
+- [Kernel Manager and its scheduler controls](references/kernel-manager.md).

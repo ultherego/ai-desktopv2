@@ -25,6 +25,7 @@ import time
 
 from .run_controls import recipient, failure_hint, network_hint
 from .execution import UNSET
+from .skill_runtime import task_skills, accept_skill_response, recheck_with, has_catalog
 from . import materials, permissions
 from .analysis_cli import HINTS
 from .analysis_contract import (AnalysisConsent, AnalysisDenied, MAX_QUESTION_BYTES, terminal_text,
@@ -243,7 +244,7 @@ def _positive(value):
 def build_parser():
     from .run_controls import add_arguments
     parser = argparse.ArgumentParser(prog="ai-desktop material",
-                                     description="Work with one local text file (up to 5 MiB)")
+                                     description="Work with one local text file (32 MiB default, up to 64 MiB)")
     parser.add_argument("path", help="UTF-8 file within files.read in permissions.toml")
     add_arguments(parser, session=True)
     parser.add_argument("--format", choices=("auto", "plain", "markdown"), default="auto")
@@ -294,7 +295,7 @@ def limit_hint(limit):
     human = "%.1f MiB" % (limit / 1048576) if limit >= 1048576 else "%d KiB" % (limit // 1024)
     human = human.replace(".0 MiB", " MiB")
     return ("The file is over %d bytes (%s, file_size limit). Pick a smaller file or raise file_size in [files] "
-            "in permissions.toml (16 MiB at most). Nothing was sent." % (limit, human))
+            "in permissions.toml (64 MiB at most). Nothing was sent." % (limit, human))
 
 
 def load_material(path, policy):
@@ -407,6 +408,7 @@ class Session:
         print("This log covers the hand-off to the A+ client, not network traffic or receipt by the provider.")
 
     # --- a question in plain words ---------------------------------------------------
+    @task_skills
     def question(self, text, span=None):
         if not self.can_send:
             print(network_hint())
@@ -417,7 +419,7 @@ class Session:
             print("The question must be one line of plain text, up to %d bytes." % MAX_QUESTION_BYTES)
             return
         if span is not None:
-            loop = Loop(self.material, max_steps=1, history=self.history)
+            loop = Loop(self.material, max_steps=MAX_STEPS if has_catalog() else 1, history=self.history)
             if not loop.preload_range(*span):
                 print("The range is invalid or too large for one request (limit about %d KiB)." % (MAX_DATA_BYTES // 1024 - 16))
                 return
@@ -488,6 +490,15 @@ class Session:
                 return
             self._timing(delivery)
             try:
+                if accept_skill_response(delivery.answer):
+                    if number == loop.max_steps:
+                        print("The task request budget is exhausted after loading Skills.")
+                        return self._stopped(loop)
+                    continue
+            except ValueError:
+                print("The Skill request was refused; the task stopped.")
+                return self._stopped(loop)
+            try:
                 decision = parse_decision(delivery.answer, loop.lines)
             except ValueError:
                 decision = plain_answer(delivery.answer)          # prose instead of an action: shown, but without sources
@@ -497,6 +508,9 @@ class Session:
                     return self._stopped(loop)
                 loop.format_note = True
             action = decision["action"]
+            if whole == "range" and action not in ("answer", "ask_user"):
+                print("Only the selected line range was approved. Additional material reads were refused.")
+                return self._stopped(loop)
             if getattr(self.args, "only_whole", False) and action != "whole":
                 self._close_section()
                 self._log_result("not-whole")
@@ -662,6 +676,14 @@ class Session:
             if delivery is None:
                 return "failed"
             self._timing(delivery)
+            try:
+                if accept_skill_response(delivery.answer):
+                    print("Whole-file analysis stopped: required Skills must be selected before its fixed part budget. "
+                          "This part was not counted as analyzed. Ask again with the required procedure named.")
+                    return "failed"
+            except ValueError:
+                print("The Skill request was refused; whole-file analysis stopped.")
+                return "failed"
             try:
                 decision = parse_decision(delivery.answer, plan.lines)
             except ValueError:
@@ -933,7 +955,7 @@ class Session:
             if not self._access_unchanged(session, packet):
                 return None
             kwargs = self._gate_kwargs(packet)
-            gate = AnalysisConsent(None, **kwargs)
+            gate = AnalysisConsent(None, source_check=recheck_with(self.policy.recheck), **kwargs)
             selected = json.loads(gate.payload).get("execution")
             if gate.payload != packet.payload:
                 session.cancel(packet)

@@ -1,6 +1,6 @@
 """LC0: bounded local text materials. Pure functions, no I/O, no model, no network.
 
-A material is one immutable block of UTF-8 bytes (max 5 MiB; raised from 1 MiB by the owner, D-LC-4) that stays local.
+A material is one immutable block of UTF-8 bytes (default 32 MiB, configurable up to 64 MiB) that stays local.
 Everything the model may later see is derived from it by byte ranges that are
 verified against the original bytes: deterministic chunks, exact range reads,
 literal search with a cursor, and a coverage tracker that only the controller
@@ -10,14 +10,15 @@ that an interpretation is true. Text is never truncated or transformed:
 anything that does not fit or is not plain text is refused with a closed code.
 """
 from dataclasses import dataclass
+from array import array
 import bisect
 import hashlib
 import re
 import secrets
 import unicodedata
 
-MAX_MATERIAL_BYTES = 5 * 1_048_576      # D-LC-4 (1 MiB until the owner raised it to 5 MiB)
-MAX_PROJECT_FILE_BYTES = 16 * 1_048_576 # largest single project file (LC4)
+MAX_MATERIAL_BYTES = 32 * 1_048_576     # local import; the provider gets bounded fragments
+MAX_PROJECT_FILE_BYTES = 64 * 1_048_576 # largest single project file (LC4)
 CHUNK_BYTES = 32 * 1024                 # one fragment/observation
 MAX_NEEDLE_BYTES = 256
 MAX_HITS_PER_PAGE = 20
@@ -69,7 +70,7 @@ class Material:
     origin: str
     raw: bytes
     sha256: str
-    line_starts: tuple
+    line_starts: memoryview  # read-only packed uint32 offsets; at most four bytes per source byte
 
     @property
     def size(self):
@@ -86,7 +87,7 @@ class Material:
 def import_bytes(raw, origin, limit=MAX_MATERIAL_BYTES):
     """Accept one complete material or refuse; the bytes are kept exactly as given.
 
-    `limit` may only be raised for project files (LC4), never above 16 MiB."""
+    `limit` may be raised by the owner, never above 64 MiB."""
     if type(raw) is not bytes or origin not in ("file", "paste"):
         raise MaterialError("IMPORT_ENCODING")
     if type(limit) is not int or not 1 <= limit <= MAX_PROJECT_FILE_BYTES:
@@ -100,11 +101,11 @@ def import_bytes(raw, origin, limit=MAX_MATERIAL_BYTES):
     except UnicodeDecodeError:
         raise MaterialError("IMPORT_ENCODING") from None
     _validate_text(text)
-    starts, position = [0], raw.find(b"\n")
+    starts, position = array("I", [0]), raw.find(b"\n")
     while position != -1:
         starts.append(position + 1)
         position = raw.find(b"\n", position + 1)
-    return Material(secrets.token_hex(8), origin, raw, sha256(raw), tuple(starts))
+    return Material(secrets.token_hex(8), origin, raw, sha256(raw), memoryview(starts.tobytes()).cast("I"))
 
 
 @dataclass(frozen=True)

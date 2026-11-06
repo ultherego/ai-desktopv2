@@ -165,6 +165,21 @@ assert sys.stdin.read() == ""
             self.assertTrue(all(stream.closed for stream in (
                 processes[0].stdin, processes[0].stdout, processes[0].stderr)))
 
+    def test_native_signed_out_check_rejects_unrelated_process_rpc_and_network_failures(self):
+        from ai_desktop.analysis_contract import AnalysisDenied
+        def signed_out(_argv, protocol, **kwargs):
+            protocol.start()
+            protocol.feed(b'{"id":0,"result":{"userAgent":"synthetic"}}')
+            protocol.feed(b'{"id":2,"result":{"account":null,"requiresOpenaiAuth":true}}')
+        with patch.object(check.codex_protocol, "_exchange", side_effect=signed_out):
+            check.offline_native_account(["fixture"])
+        for reason in ("result", "network", "timeout", "auth-method", "auth-required"):
+            with self.subTest(reason=reason), patch.object(check.codex_protocol, "_exchange",
+                    side_effect=AnalysisDenied(reason)), self.assertRaises(check.StartupDenied):
+                check.offline_native_account(["fixture"])
+        with patch.object(check.codex_protocol, "_exchange", return_value={}), self.assertRaises(check.StartupDenied):
+            check.offline_native_account(["fixture"])
+
     def test_the_offline_turn_stage_passes_only_when_the_exchange_reaches_the_network_layer(self):
         from ai_desktop.analysis_contract import AnalysisDenied
         with patch.object(check, "exchange", side_effect=AnalysisDenied("network", diagnostic="codex-stream-disconnected")):
@@ -190,6 +205,33 @@ assert sys.stdin.read() == ""
         self.assertIn("synthetic", check.FAKE_TOKEN)
         self.assertIn("--unshare-net", turn)                                         # still no network
 
+    def test_native_quota_backend_runs_in_an_isolated_namespace_and_requires_real_numeric_output(self):
+        directory, binary = Path("/fixture"), Path("/fixture/pinned-codex")
+        answer = {"plan": "plus", "windows": {"five_hour": {"percent": 31, "reset": 2000000000},
+                                              "seven_day": {"percent": 47, "reset": 2000500000}}}
+        fixture = subprocess.CompletedProcess([], 0, stdout=json.dumps(answer).encode())
+        with patch.object(check.subprocess, "run", return_value=fixture) as run:
+            check.fixture_native_quota(binary, directory)
+        command, = run.call_args.args
+        self.assertIn("--unshare-net", command)
+        self.assertNotIn("--share-net", command)
+        self.assertNotIn("/run/egress.sock", command)
+        self.assertNotIn("ACCESS_TOKEN", command)
+        self.assertIn("/opt/ai_desktop", command)
+        self.assertEqual(command[command.index("--chdir") + 2:],
+                         ["/usr/bin/python3", "-I", "-B", "/opt/quota-backend.py"])
+        fixture.stdout = b"{}"
+        with patch.object(check.subprocess, "run", return_value=fixture), self.assertRaises(check.StartupDenied):
+            check.fixture_native_quota(binary, directory)
+        fixture.returncode, fixture.stdout = 2, b"done/timeout"
+        with patch.object(check.subprocess, "run", return_value=fixture), self.assertRaisesRegex(
+                check.StartupDenied, "check=done/timeout"):
+            check.fixture_native_quota(binary, directory)
+        fixture.stdout = b"sensitive"
+        with patch.object(check.subprocess, "run", return_value=fixture), self.assertRaisesRegex(
+                check.StartupDenied, "check=fixture-exit"):
+            check.fixture_native_quota(binary, directory)
+
     def test_clean_exit_without_initialize_is_not_success(self):
         with self.assertRaises(check.StartupDenied):
             check.initialize_only(self.fixture("pass"), timeout=2)
@@ -203,9 +245,16 @@ assert sys.stdin.read() == ""
             self.assertTrue((root / "packaging" / "arch").is_dir())
             return root / "packaging" / "arch" / "codex"
         with patch.object(check, "require_ci"), patch.object(check.asset, "prepare", side_effect=prepare), \
-                patch.object(check, "initialize_only") as initialize, patch.object(check, "offline_turn") as turn:
+                patch.object(check, "initialize_only") as initialize, patch.object(check, "offline_turn") as turn, \
+                patch.object(check, "offline_native_account") as native, \
+                patch.object(check, "fixture_native_quota") as quota:
             check.run()
         initialize.assert_called_once()
+        quota.assert_called_once_with(seen[0] / "packaging/arch/codex", seen[0])
+        native.assert_called_once()
+        self.assertIn('cli_auth_credentials_store="file"', native.call_args.args[0])
+        self.assertIn("--unshare-net", native.call_args.args[0])
+        self.assertNotIn("ACCESS_TOKEN", native.call_args.args[0])
         turn.assert_called_once()                                                    # the stage that catches turn-time notices
         self.assertFalse(seen[0].exists())
         argv = initialize.call_args.args[0]

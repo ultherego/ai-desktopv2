@@ -25,9 +25,6 @@ STATUS = ["systemctl", "status", "foo.service", "--no-pager"]
 REVERT = ["systemctl", "enable", "foo.service"]
 
 
-flow_refusal = (__import__("ai_desktop.file_context", fromlist=["FileReadDenied"]).FileReadDenied,)
-
-
 class ChangeBase(ops.OperationsBase):
     commands = ALLOW
     real_sandbox = True                       # no default executor patch: this class installs its own fake
@@ -434,11 +431,23 @@ class ApprovedUndoTests(ChangeBase):
     def test_an_approved_undo_runs_even_when_the_byte_budget_is_gone(self):
         self.write_policy('discovery_bytes = 8192\n')
         self.results = {tuple(RESTART): (0, "y\n" * 4000), tuple(STATUS): (3, "x\n" * 4000)}
-        try:
-            self.facts([change(RESTART, STATUS, REVERT), ANSWER_PLAN])
-        except flow_refusal:
-            pass                          # the question may end afterwards; what counts is that the undo ran
+        result, _ = self.facts([change(RESTART, STATUS, REVERT), ANSWER_PLAN])
+        self.assertEqual(result, ANSWER)
         self.assertEqual([call[2] for call in self.calls], ["change", "test", "undo"])
+        steps = self.steps()
+        self.assertEqual([step["exit"] for step in steps], [0, 3, 0])
+        self.assertTrue(steps[0]["truncated"] and steps[1]["truncated"])
+        self.assertLessEqual(dc.document_bytes(self.wire[1]["discovery"]), 8192)
+
+    def test_when_command_metadata_alone_exceeds_the_limit_it_cannot_be_transferred(self):
+        from ai_desktop.ask_discovery import DiscoveryLedger
+        self.write_policy('discovery_bytes = 2048\n')
+        ledger = DiscoveryLedger(permissions.load_policy(), "diagnose")
+        for _ in range(20):
+            ledger.add_run({"op": "run", "role": "read", "argv": ["uname", "-s"], "exit": 0,
+                            "status": "ok", "output": "", "truncated": False})
+        with self.assertRaisesRegex(ValueError, "discovery_bytes"):
+            ledger.snapshot()
 
 
 class MissingProgramTests(ChangeBase):

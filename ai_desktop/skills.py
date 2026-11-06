@@ -1,13 +1,21 @@
 import argparse
+import datetime
+import hashlib
+import json
 import os
 from pathlib import Path
 import pwd
 import re
 import stat
+import unicodedata
+from urllib.parse import urlsplit
 
 ROOT = Path(__file__).resolve().parent.parent / "skills"
 SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 MAX_SKILL_BYTES = 96 * 1024           # one Skill plus its label and a role text always fits the combined ceiling
+MAX_REFERENCE_BYTES = 16 * 1024
+MAX_REFERENCES = 8
+RESOURCE = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*)?\Z")
 
 
 TEMPLATE = """---
@@ -129,6 +137,146 @@ def inspect_skill(root: Path, name: str, *, secure=False) -> tuple[str, str]:
         os.close(root_fd)
 
 
+def _reference_files(root, name, *, secure=True):
+    """Read optional one-level references through descriptors, never following links."""
+    if type(name) is not str or not SLUG.fullmatch(name):
+        raise ValueError("Invalid Skill name")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    descriptors = []
+    try:
+        descriptors.append(os.open(root, flags))
+        descriptors.append(os.open(name, flags, dir_fd=descriptors[-1]))
+        try:
+            descriptors.append(os.open("references", flags, dir_fd=descriptors[-1]))
+        except FileNotFoundError:
+            return {}
+        if secure and any(os.fstat(fd).st_uid not in (0, os.getuid()) or os.fstat(fd).st_mode & 0o022
+                          for fd in descriptors):
+            raise ValueError("Unsafe reference directory")
+        directory = descriptors[-1]
+        files = sorted(os.listdir(directory))
+        if len(files) > MAX_REFERENCES or any(not n.endswith(".md") or not SLUG.fullmatch(n[:-3]) for n in files):
+            raise ValueError("Invalid reference catalog")
+        result = {}
+        for filename in files:
+            fd = os.open(filename, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, dir_fd=directory)
+            try:
+                before = os.fstat(fd)
+                if (not stat.S_ISREG(before.st_mode) or before.st_nlink != 1 or before.st_size > MAX_REFERENCE_BYTES
+                        or secure and (before.st_uid not in (0, os.getuid()) or before.st_mode & 0o022)):
+                    raise ValueError("Unsafe reference file")
+                raw = os.read(fd, MAX_REFERENCE_BYTES + 1)
+                fingerprint = lambda s: (s.st_dev, s.st_ino, s.st_mode, s.st_uid, s.st_gid, s.st_nlink,
+                                          s.st_size, s.st_mtime_ns, s.st_ctime_ns)
+                if (len(raw) > MAX_REFERENCE_BYTES or fingerprint(before) != fingerprint(os.fstat(fd))
+                        or fingerprint(before) != fingerprint(os.stat(filename, dir_fd=directory, follow_symlinks=False))):
+                    raise ValueError("Reference changed")
+                result[filename[:-3]] = parse_reference(raw.decode("utf-8"), filename[:-3])
+            finally:
+                os.close(fd)
+        if files != sorted(os.listdir(directory)):
+            raise ValueError("Reference catalog changed")
+        return result
+    except OSError:
+        raise ValueError("Unsafe reference path") from None
+    finally:
+        for fd in reversed(descriptors):
+            os.close(fd)
+
+
+def parse_reference(data, name):
+    """Source provenance is data, never a claim that rolling documentation matches this host."""
+    if type(data) is not str or len(data.encode()) > MAX_REFERENCE_BYTES:
+        raise ValueError("Invalid reference")
+    if any(c not in "\n\t" and unicodedata.category(c) in ("Cc", "Cf", "Cs") for c in data):
+        raise ValueError("Invalid reference")
+    lines = data.splitlines()
+    if not lines or lines[0] != "---":
+        raise ValueError("Missing reference metadata")
+    try:
+        end = lines.index("---", 1)
+    except ValueError:
+        raise ValueError("Missing reference metadata") from None
+    fields = {}
+    for line in lines[1:end]:
+        key, separator, value = line.partition(":")
+        key, value = key.strip(), value.strip()
+        if not separator or not value or key in fields or len(value.encode()) > 1024:
+            raise ValueError("Invalid reference metadata")
+        fields[key] = value
+    if set(fields) != {"name", "description", "tools", "source", "section", "checked", "version"} or fields["name"] != name:
+        raise ValueError("Invalid reference metadata")
+    if not SLUG.fullmatch(name):
+        raise ValueError("Invalid reference name")
+    source = urlsplit(fields["source"])
+    if source.scheme != "https" or not source.hostname or source.username or source.password or source.port not in (None, 443):
+        raise ValueError("Invalid reference source")
+    datetime.date.fromisoformat(fields["checked"])
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9.+:_-]{0,63}", fields["version"]):
+        raise ValueError("Invalid reference version")
+    tools = [tool.strip() for tool in fields["tools"].split(",")]
+    if not 1 <= len(tools) <= 16 or any(not re.fullmatch(r"[a-zA-Z0-9][a-zA-Z0-9+_.-]{0,63}", tool) for tool in tools):
+        raise ValueError("Invalid reference tools")
+    content = "\n".join(lines[end + 1:]).strip()
+    if not content:
+        raise ValueError("Empty reference")
+    return {**fields, "tools": tools, "content": content, "sha256": hashlib.sha256(data.encode()).hexdigest()}
+
+
+def bundle(name, *, root=None):
+    """One shared bounded snapshot for every CLI; the private override replaces the entire package."""
+    root = locate(name) if root is None else root
+    description, text = inspect_skill(root, name, secure=True)
+    references = _reference_files(root, name)
+    # Re-read the main file after the references so mixed revisions cannot pass unnoticed.
+    if inspect_skill(root, name, secure=True) != (description, text):
+        raise ValueError("Skill changed")
+    fingerprint = hashlib.sha256(json.dumps({"text": text, "references": references}, sort_keys=True,
+                                           ensure_ascii=False).encode()).hexdigest()
+    return {"name": name, "description": description, "text": text, "references": references,
+            "sha256": fingerprint}
+
+
+def resource_text(snapshot, identifier, *, versions=None):
+    """Select a frozen procedure/reference using only broker-provided version facts."""
+    if type(identifier) is not str or not RESOURCE.fullmatch(identifier):
+        return None
+    skill, separator, reference = identifier.partition("/")
+    if skill != snapshot["name"]:
+        return None
+    if not separator:
+        return snapshot["text"]
+    item = snapshot["references"].get(reference)
+    if item is None:
+        return None
+    from .skill_versions import reference_compatibility
+    versions = versions if type(versions) is dict else {}
+    state = reference_compatibility(item, versions)
+    observed = ", ".join(tool + " " + versions[tool] for tool in item["tools"]
+                         if type(versions.get(tool)) is str) or "unknown"
+    header = ("Reference: " + identifier + "\nSource: " + item["source"] + "\nSection: " + item["section"]
+              + "\nChecked: " + item["checked"] + "\nDocument version: " + item["version"]
+              + "\nPackaged reference SHA256: " + item["sha256"]
+              + "\nTools: " + ", ".join(item["tools"])
+              + "\nObserved package upstream versions: " + observed)
+    if state in ("unknown", "mismatch"):
+        alternatives = [snapshot["name"] + "/" + name for name, candidate in snapshot["references"].items()
+                        if candidate["version"] == "rolling" and set(candidate["tools"]) & set(item["tools"])]
+        return (header + "\nCompatibility: " + state + ". Version-specific content withheld. "
+                "Obtain the installed package version through an allowed pacman -Q PACKAGE command in this task. "
+                "Do not infer a version from user prose, a previous session or a document title."
+                + ("\nGeneral references available: " + ", ".join(alternatives) if alternatives else ""))
+    if state == "matched":
+        compatibility = ("matched: the document version equals the upstream version observed by an allowed "
+                         "package query in this task. Package patches and individual flags still need the installed help.")
+    else:
+        compatibility = ("rolling: not verified for the installed tool version. A rolling source is general guidance, "
+                         "not an exact version match. Obtain version/capability evidence through allowed commands "
+                         "before applying version-dependent flags.")
+    return header + "\nCompatibility: " + compatibility + "\n\n" + item["content"]
+
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description="AI Desktop Skills")
     parser.add_argument("action", choices=["list", "validate", "show", "menu", "new"], nargs="?", default="list")
@@ -177,7 +325,8 @@ def main(argv=None):
         root = locate(name)
         mark = " (your own)" if root != ROOT else ""
         try:
-            desc, _ = inspect_skill(root, name)
+            inspected = bundle(name, root=root)
+            desc = inspected["description"]
             print(f"{name}{mark}: {desc}")
         except (ValueError, OSError) as exc:
             print(f"{name}{mark}: FAIL: {exc}")

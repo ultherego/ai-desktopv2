@@ -32,12 +32,16 @@ NATIVE_MARKER = ("WEB NATIVE: PASS question-approvals=1 requests=2 modes=assista
 
 BOOTSTRAP = '''import json, sys
 from contextlib import contextmanager
+from pathlib import Path
 from urllib.parse import urlsplit
 sys.path.insert(0, '/usr/lib/ai-desktop')
-from ai_desktop import cli, permissions, ask_cli, assistant_flow, ask_context, file_context, ask_edit, terminal_consent
+from ai_desktop import cli, permissions, ask_cli, assistant_flow, ask_context, file_context, ask_edit, terminal_consent, agent_profiles
 from ai_desktop.analysis_contract import parse_request
 permissions._home = lambda uid: __HOME__
 home = __HOME__
+profile_store = agent_profiles.Store
+agent_profiles.Store = lambda: profile_store(home=Path(home))
+expected_execution = agent_profiles.resolve()
 expected_access = {'files': [], 'systemd': [], 'weather': False, 'web': True}
 original_read = permissions._read
 def only_policy(path, *args, **kwargs):
@@ -84,10 +88,11 @@ def send(approval):
     data = json.loads(payload)
     assert data['question'] == __QUESTION__
     if data['mode'] == 'assistant':
-        assert data == {'mode': 'assistant', 'question': __QUESTION__, 'access': expected_access}
+        assert data == {'mode': 'assistant', 'question': __QUESTION__, 'access': expected_access,
+                        'execution': expected_execution}
         assert not sent and requests == ['assistant']
     else:
-        assert data == {'mode': 'web', 'question': __QUESTION__}
+        assert data == {'mode': 'web', 'question': __QUESTION__, 'execution': expected_execution}
         assert sent == ['assistant'] and requests == ['assistant', 'web']
     assert approvals == [terminal_consent.PROMPTS['ask-question']]
     sent.append(data['mode'])

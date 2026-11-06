@@ -4,6 +4,7 @@ The UI approves the captured permissions once. Individual immutable wire
 payloads still require their own AnalysisConsent, without additional prompts.
 """
 from contextlib import contextmanager
+import hashlib
 import json
 import time
 
@@ -11,6 +12,7 @@ from .analysis_contract import (MAX_MESSAGE_BYTES, AnalysisConsent, AnalysisDeni
                                 validate_context, validate_question)
 from .assistant_contract import validate_access, file_selections, selected_file_ids
 from .execution import current as current_execution, current_history
+from .discovery_contract import MAX_SKILL_ROUNDS, MAX_REUSED_SKILLS
 from .permissions import Policy
 
 
@@ -24,6 +26,25 @@ class ConversationConsent:
 
     def __init__(self):
         self._binding = None
+        self._skill_hashes = {}
+
+    def remember_skills(self, steps):
+        """Keep only fingerprints of procedures accepted in this live conversation, most recent first on reuse."""
+        for step in steps:
+            if step["op"] == "skill" and step["status"] == "ok":
+                name = step["name"]
+                self._skill_hashes.pop(name, None)
+                self._skill_hashes[name] = hashlib.sha256(step["text"].encode()).digest()
+        while len(self._skill_hashes) > MAX_REUSED_SKILLS:
+            del self._skill_hashes[next(iter(self._skill_hashes))]
+
+    def reusable_skills(self, loader):
+        for name, digest in reversed(tuple(self._skill_hashes.items())):
+            body = loader(name)
+            if body is not None and hashlib.sha256(body.encode()).digest() == digest:
+                yield name, body
+            else:
+                del self._skill_hashes[name]
 
     @staticmethod
     def _state(snapshot):
@@ -38,6 +59,7 @@ class ConversationConsent:
 
     def grant(self, snapshot):
         self._binding = self._state(snapshot)
+        self._skill_hashes.clear()
 
 
 class QuestionConsent:
@@ -69,7 +91,12 @@ class QuestionConsent:
         self._discovery_snapshot = None
         self._discovery_bytes = None
         self._discovery_sent = 0
+        self._skill_sent = 0
+        self._skill_batch = False
         self._planner_sent = False
+        self._seeded_skills = False
+        self._skill_loader = None
+        self._reused_bodies = {}
 
     @property
     def question(self):
@@ -107,6 +134,10 @@ class QuestionConsent:
                 if canonical(validate_discovery(self._discovery_snapshot.document)) != self._discovery_bytes:
                     raise ValueError()
                 recheck_discovery(self._discovery_snapshot)
+                checker = getattr(getattr(self._skill_loader, "__self__", None), "check_skill", None)
+                if any((not checker(name, text) if checker is not None else self._skill_loader(name) != text)
+                       for name, text in self._reused_bodies.items()):
+                    raise ValueError()
             if (self._clock() > self._expires or self._snapshot.policy is not self._policy
                     or self._current_binding() != self._binding):
                 raise ValueError()
@@ -186,7 +217,7 @@ class QuestionConsent:
             self.close()
             raise AnalysisDenied("consent") from None
 
-    def bind_discovery(self, policy, snapshot):
+    def bind_discovery(self, policy, snapshot, *, reuse_loader=None, resource_loader=None):
         """Bind the cumulative local metadata document before one more planner round.
 
         Each round extends the previous document (earlier steps are an exact prefix) and the number of rounds can never
@@ -197,21 +228,43 @@ class QuestionConsent:
         try:
             from .directory_context import DiscoverySnapshot, recheck_discovery
             from .discovery_contract import validate_discovery
-            if (policy is not self._policy or policy is None
-                    or type(snapshot) is not DiscoverySnapshot or snapshot.policy is not policy
-                    or self._phase != "context" or self._pending is not None or not self._planner_sent):
-                raise ValueError()
-            limits = policy.limits()
-            if self._discovery_sent >= limits.discovery_rounds + limits.plan_corrections + limits.command_rounds:
+            if (policy is not self._policy or type(snapshot) is not DiscoverySnapshot
+                    or snapshot.policy is not policy or self._pending is not None):
                 raise ValueError()
             document = validate_discovery(snapshot.document)
-            if self._discovery_snapshot is not None:
-                before = validate_discovery(self._discovery_snapshot.document)["steps"]
-                if document["steps"][:len(before)] != before or len(document["steps"]) <= len(before):
+            seed_skills = reuse_loader is not None
+            if seed_skills:
+                if (self._phase != "first" or self._planner_sent or snapshot.guards
+                        or any(step["op"] != "skill" or step["status"] != "ok" for step in document["steps"])):
                     raise ValueError()
+            elif self._phase != "context" or not self._planner_sent:
+                raise ValueError()
+            if policy is not None:
+                limits = policy.limits()
+                rounds = limits.discovery_rounds + limits.plan_corrections + limits.command_rounds
+            else:
+                rounds = 0
+            before = [] if self._discovery_snapshot is None else self._discovery_snapshot.document["steps"]
+            if document["steps"][:len(before)] != before or len(document["steps"]) <= len(before):
+                raise ValueError()
+            added = document["steps"][len(before):]
+            self._skill_batch = all(step["op"] == "skill" for step in added)
+            if self._skill_batch:
+                if len(added) > MAX_REUSED_SKILLS or (not seed_skills and self._skill_sent >= MAX_SKILL_ROUNDS):
+                    raise ValueError()
+            elif self._discovery_sent >= rounds:
+                raise ValueError()
             recheck_discovery(snapshot)
             self._discovery_bytes = canonical(document)
             self._discovery_snapshot = snapshot
+            self._seeded_skills = seed_skills
+            if seed_skills:
+                self._skill_loader = reuse_loader
+                self._reused_bodies = {step["name"]: step["text"] for step in document["steps"]}
+            elif resource_loader is not None:
+                self._skill_loader = resource_loader
+                self._reused_bodies = {step["name"]: step["text"] for step in document["steps"]
+                                      if step["op"] == "skill" and step["status"] == "ok"}
             self._phase = "discovery"
             self.check()
             return document
@@ -306,7 +359,7 @@ class QuestionConsent:
                 raise AnalysisDenied("consent")
             # Web stays a separate request with nothing local. A workspace payload may follow discovery: it carries only
             # the question and the selected files, and the discovery snapshot is still rechecked by _validate.
-            if self._discovery_snapshot is not None and mode == "web":
+            if self._discovery_snapshot is not None and not self._seeded_skills and mode == "web":
                 raise AnalysisDenied("consent")
             gate.check(None, question="" if task is not None else question, task=task, context=context, access=access,
                        sha256=gate.sha256, nonce=gate.nonce, web=web,
@@ -329,7 +382,12 @@ class QuestionConsent:
             if mode == "planner":
                 self._planner_sent = True
             elif mode == "discovery":
-                self._discovery_sent += 1
+                if self._seeded_skills:
+                    self._planner_sent = True
+                elif self._skill_batch:
+                    self._skill_sent += 1
+                else:
+                    self._discovery_sent += 1
             self._phase = "context" if mode in ("planner", "discovery") else "complete"
             return gate.authorize(None, question="" if task is not None else question, task=task, context=context, access=access,
                                   sha256=gate.sha256, nonce=gate.nonce, web=web,

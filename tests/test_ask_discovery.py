@@ -19,6 +19,7 @@ from unittest.mock import Mock, patch
 from ai_desktop import assistant_contract as plans, assistant_flow as flow, directory_context, execution, permissions
 from ai_desktop import ask_discovery, discovery_contract as dc, permissions as p
 from ai_desktop.analysis_contract import AnalysisConsent, AnalysisDenied, Approval
+from ai_desktop.question_consent import ConversationConsent
 
 QUESTION = "Jakie panele ma skonfigurowane Gizmo?"
 ANSWER = "Odpowiedź wyłącznie z odczytanych danych."
@@ -104,7 +105,7 @@ class Base(unittest.TestCase):
         os.symlink("../gizmo/settings.conf", self.home / ".config/gizmo-suite/settings-link")
 
     def run_flow(self, responses, *, question=QUESTION, provider="claude", before=None, instructions="",
-                 access="read-only", skills=None):
+                 access="read-only", skills=None, consent=None):
         observed, attempts = [], []
         self.wire, self.attempts = observed, attempts
         self.reads.clear()
@@ -138,7 +139,7 @@ class Base(unittest.TestCase):
         profile = {"provider": provider, "model": "default", "effort": "default", "instructions": instructions,
                    "profile": "diagnostic", "access": access}
         with execution.using(profile):
-            return flow.run(question, options(), self.reader, request, skills=skills)
+            return flow.run(question, options(), self.reader, request, skills=skills, conversation_consent=consent)
 
     def refused(self, responses, **kwargs):
         with self.assertRaises(flow.file_context.FileReadDenied):
@@ -159,6 +160,82 @@ class SkillsOnDemandTests(Base):
 
     def load(self, name):
         return {"przyklad": self.BODY, "inny": "NIE-WYSYLAC"}.get(name)
+
+    def test_versioned_reference_can_reload_after_verified_command_but_not_reuse_stale_evidence(self):
+        from ai_desktop import agent_profiles, ask_commands, command_ops, skills
+        self.write_policy('[commands]\nallow = ["pacman -Q pacman"]\nchange = []\n')
+        selected = agent_profiles.Profile(skills=("arch-pacman",))
+        config = agent_profiles.defaults().put("diagnostic", selected)
+        store = SimpleNamespace(load=lambda: SimpleNamespace(config=config))
+        control = ask_commands.Controls()
+        consent = ConversationConsent()
+        name = "arch-pacman/pacman-700-local-repositories"
+        selection = json.dumps({"action": "skill", "names": [name]})
+        command = json.dumps({"action": "run", "argv": ["pacman", "-Q", "pacman"]})
+        with patch.object(agent_profiles, "Store", return_value=store), \
+                patch.object(skills, "user_root", return_value=self.home / "none"), \
+                patch.object(command_ops, "resolve", return_value="/usr/bin/pacman"), \
+                patch.object(command_ops, "execute", return_value={"status": "ok", "exit": 0,
+                                                                  "output": "pacman 7.0.0-3\n", "truncated": False}) as execute:
+            catalog = agent_profiles.catalog_for(selected)
+            self.run_flow([selection, command, selection, ANSWER_PLAN], skills=control.load_skill,
+                          consent=consent, instructions=catalog)
+            first = self.wire[1]["discovery"]["steps"][0]["text"]
+            last = self.wire[-1]["discovery"]["steps"][-1]["text"]
+            self.assertIn("unknown", first)
+            self.assertIn("matched", last)
+            self.assertNotEqual(first, last)
+            execute.assert_called_once()
+            # A new question cannot assert that a package still has the previous version.
+            self.run_flow([ANSWER_PLAN], question="Continue", skills=control.load_skill,
+                          consent=consent, instructions=catalog)
+            self.assertNotIn("discovery", self.wire[0])
+
+    def test_skills_have_a_separate_budget_from_diagnostic_observations(self):
+        self.write_policy('discovery_bytes = "2KiB"\n')
+        from ai_desktop import skills
+        body = skills.inspect_skill(skills.ROOT, "arch-btrfs", secure=True)[1]
+        self.run_flow([json.dumps({"action": "skill", "names": ["arch-btrfs"]}), ANSWER_PLAN], skills=lambda name: body)
+        self.assertEqual(len(self.wire), 2)
+        self.assertEqual(self.steps(1)[0]["text"], body)
+        policy = p.load_policy()
+        document = {"steps": [{"op": "skill", "name": "arch-btrfs", "status": "ok", "text": body}],
+                    "remaining": {"rounds": 1, "corrections": 0, "commands": 0}}
+        directory_context.recheck_discovery(directory_context.DiscoverySnapshot(policy, document, ()))
+
+    def test_assigned_procedure_works_without_file_or_command_permissions(self):
+        self.config.unlink()
+        self.run_flow([json.dumps({"action": "skill", "names": ["example"]}), ANSWER_PLAN], skills=lambda n: self.BODY)
+        self.assertEqual(self.steps(1)[0]["text"], self.BODY)
+        self.assertEqual(self.wire[0]["access"]["files"], [])
+        self.assertEqual(self.wire[1]["discovery"]["remaining"], {"rounds": 0, "corrections": 0, "commands": 0})
+        doc = self.wire[1]["discovery"]
+        other_step = {"op": "run", "argv": ["uname"], "status": "ok", "exit": 0, "output": "x", "truncated": False}
+        with self.assertRaises(ValueError):
+            directory_context.recheck_discovery(directory_context.DiscoverySnapshot(None, {**doc, "steps": [other_step]}, ()))
+
+    def test_followup_starts_with_unchanged_procedure_and_no_extra_round(self):
+        consent = ConversationConsent()
+        bodies = {"one": "body one", "two": "body two", "three": "body three"}
+        self.run_flow([json.dumps({"action": "skill", "names": list(bodies)}), ANSWER_PLAN],
+                      skills=bodies.get, consent=consent)
+        bodies["two"] = "changed"
+        del bodies["three"]
+        self.run_flow([ANSWER_PLAN], skills=bodies.get, consent=consent, question="Continue.")
+        self.assertEqual(len(self.wire), 1)
+        self.assertEqual([step["text"] for step in self.steps(0)], ["body one"])
+        self.assertEqual(self.confirm.call_count, 1)
+        self.run_flow([ANSWER_PLAN], skills=bodies.get, consent=consent, provider="codex")
+        self.assertNotIn("discovery", self.wire[0])
+        self.assertEqual(self.confirm.call_count, 2)
+
+    def test_reassignment_between_the_followup_plan_and_authorization_blocks_transfer(self):
+        consent = ConversationConsent()
+        bodies = {"one": "only while assigned"}
+        self.run_flow([json.dumps({"action": "skill", "names": ["one"]}), ANSWER_PLAN], skills=bodies.get, consent=consent)
+        with self.assertRaises(AnalysisDenied):
+            self.run_flow([ANSWER_PLAN], skills=bodies.get, consent=consent, before=lambda *unused: bodies.clear())
+        self.assertEqual(self.wire, [])
 
     def test_the_body_leaves_only_after_the_model_asks_and_only_that_skill(self):
         result = self.run_flow([json.dumps({"action": "skill", "names": ["przyklad"]}), ANSWER_PLAN],
@@ -190,7 +267,8 @@ class SkillsOnDemandTests(Base):
                 self.run_flow([json.dumps({"action": "skill", "names": [name]}), plan("list", sel("gizmo")),
                                read(sel("gizmo/settings.conf")), ANSWER], instructions=catalog, skills=loader)
                 self.assertNotIn(body, json.dumps(self.wire[0], ensure_ascii=False))
-                loader.assert_called_once_with(name)
+                self.assertTrue(loader.call_args_list)
+                self.assertTrue(all(call.args == (name,) for call in loader.call_args_list))
                 last = self.wire[-1]
                 self.assertEqual(last["mode"], "question")
                 self.assertEqual(last["discovery"]["steps"][0],
@@ -249,6 +327,13 @@ class SkillsOnDemandTests(Base):
         ledger.add_skill("przyklad", "Przeczytaj ~/.config/gizmo/settings.conf")
         self.assertIn("~/.config/gizmo/settings.conf", ledger.hints)
         self.assertFalse(p.load_policy().allows(str(self.home) + "/.config/gizmo/token.txt"))
+
+    def test_a_reference_is_documentation_and_does_not_ground_local_file_reads(self):
+        ledger = flow.ask_discovery.DiscoveryLedger(p.load_policy(), QUESTION, "")
+        ledger.add_skill("procedure/manual", "Read ~/.config/gizmo/settings.conf")
+        self.assertNotIn("~/.config/gizmo/settings.conf", ledger.hints)
+        with self.assertRaises(flow.ask_discovery.Recoverable):
+            ledger.ground([sel("gizmo/settings.conf")])
 
     def test_the_plan_and_the_wire_step_are_closed(self):
         access = {"files": [], "systemd": [], "weather": False}
@@ -458,7 +543,7 @@ class NarrowingAndCorrectionTests(Base):
                                 plan("list", sel("bulk")), read(sel("bulk/small.conf")), ANSWER])
         self.assertEqual(result, ANSWER)
         refusal = self.steps(2)[1]
-        self.assertEqual(refusal, {"op": "refusal", "code": "files-count", "selectors": [sel("bulk/**")], "limit": 64})
+        self.assertEqual(refusal, {"op": "refusal", "code": "files-count", "selectors": [sel("bulk/**")], "limit": 128})
         self.assertNotIn("Traceback", self.output.getvalue())
         self.assertEqual(self.wire[-1]["context"][0]["files"][0]["content"], "small\n")
         self.assertEqual(len(self.wire[-1]["context"][0]["files"]), 1)
@@ -467,14 +552,17 @@ class NarrowingAndCorrectionTests(Base):
         self.write_policy("plan_corrections = 0\n")
         out = self.refused([plan("list", "f0"), read(sel("bulk/**")), ANSWER])
         self.assertIn("plan_corrections=0", out)
-        self.assertIn("read_files=64", out)
+        self.assertIn("read_files=128", out)
         self.assertEqual([body["mode"] for body in self.wire], ["assistant", "assistant"])
         self.assertEqual(self.reads, [])
 
     def test_a_raised_read_limit_helps_but_never_beyond_the_ceiling(self):
         self.write_policy("read_files = 128\nplan_corrections = 0\n")
         out = self.refused([plan("list", "f0"), read(sel("bulk/**")), ANSWER])
-        self.assertIn("read_files=128", out)             # 211 files: still refused, ceiling is 128
+        self.assertIn("read_files=128", out)             # 211 files: still refused by the explicit owner budget
+        self.write_policy("read_files = 256\n")
+        self.assertEqual(self.run_flow([plan("list", "f0"), read(sel("bulk/**")), ANSWER]), ANSWER)
+        self.assertEqual(len(self.wire[-1]["context"][0]["files"]), 211)
         self.write_policy("")
         self.assertEqual(self.run_flow([plan("list", "f0"), read(sel("gizmo/**")), ANSWER]), ANSWER)
         self.assertEqual(len(self.wire[-1]["context"][0]["files"]), 3)
@@ -543,10 +631,10 @@ class PlanContractTests(unittest.TestCase):
 
 
 class LimitsConfigurationTests(Base):
-    def test_defaults_equal_the_former_constants_and_policy_without_keys_is_unchanged(self):
+    def test_defaults_offer_larger_context_when_policy_omits_budget_keys(self):
         limits = permissions.load_policy().limits()
         self.assertEqual(limits, permissions.Limits())
-        self.assertEqual((limits.read_files, limits.read_file_size, limits.read_total_size), (64, 65536, 131072))
+        self.assertEqual((limits.read_files, limits.read_file_size, limits.read_total_size), (128, 2 * 1024 * 1024, 4 * 1024 * 1024))
 
     def test_valid_values_are_parsed_including_size_strings(self):
         self.write_policy('read_files = 3\nread_file_size = "2KiB"\nread_total_size = 8192\nlisting_entries = 32\n'
@@ -558,9 +646,9 @@ class LimitsConfigurationTests(Base):
                           limits.plan_corrections), (3, 2048, 8192, 32, 8192, 7, 500, 2, 1))
 
     def test_invalid_values_name_only_the_key_and_never_the_value(self):
-        for line, key in (("read_files = 0", "read_files"), ("read_files = 129", "read_files"),
+        for line, key in (("read_files = 0", "read_files"), ("read_files = 513", "read_files"),
                           ('read_files = "3"', "read_files"), ("read_files = true", "read_files"),
-                          ("read_file_size = 1", "read_file_size"), ('read_total_size = "9MiB"', "read_total_size"),
+                          ("read_file_size = 1", "read_file_size"), ('read_total_size = "17MiB"', "read_total_size"),
                           ("discovery_rounds = 9", "discovery_rounds"), ("plan_corrections = -1", "plan_corrections"),
                           ("search_scan = 99", "search_scan"), ("listing_entries = 513", "listing_entries"),
                           ("read_file_size = 65536\nread_total_size = 2048", "read_file_size")):

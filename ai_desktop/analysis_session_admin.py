@@ -16,7 +16,7 @@ import subprocess
 import sys
 
 from .analysis_contract import AnalysisDenied, SESSION_SECONDS
-from .analysis_sandbox import INSTALL, runtime_ready, trusted_file
+from .analysis_sandbox import INSTALL, cloud_transport_ready, trusted_file
 from .analysis_service import endpoint, socket_path, UID
 from .process_io import bounded_process
 
@@ -76,7 +76,7 @@ def properties(unit):
 
 def unit_policy(uid, *, inactive=False):
     """Read-only metadata, also used by the unprivileged status command."""
-    runtime_ready()
+    cloud_transport_ready()
     trusted_file(BOOTSTRAP)
     for unit in units(uid):
         suffix = unit.rsplit(".", 1)[1]

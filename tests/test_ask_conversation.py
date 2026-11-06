@@ -75,6 +75,17 @@ class ConversationLoopTests(unittest.TestCase):
         self.assertEqual(queue, [], "unused replies")
         return SimpleNamespace(code=code, out=out.getvalue(), sent=sent, histories=histories, prompts=prompts)
 
+    def test_local_project_test_before_the_first_question_keeps_the_same_thread(self):
+        from ai_desktop import project_checks
+        outcome = project_checks.Result(0, "pytest passed on tested snapshot abc123.")
+        stored = FakeConversation()
+        with patch.object(project_checks, "current", return_value=outcome) as runner:
+            result = self.run_ui(["--session", "new"], ["/test pytest", "What passed?", "yes", ""], conversation=stored)
+        runner.assert_called_once()
+        self.assertEqual(result.sent.call_count, 1)
+        self.assertEqual(result.histories[0], [{"question": "/test pytest", "answer": outcome.summary}])
+        self.assertIn(outcome.summary, str(stored.saved["memory"]["entries"]))
+
     def test_prompt_returns_and_history_is_carried_under_one_consent_for_the_conversation(self):
         r = self.run_ui([], ["Chce undervolt do gry, uzywam LACT", "yes", "Jakie sa ustawienia?",
                              "Sprawdz wynik", ""])
@@ -155,13 +166,13 @@ class ConversationLoopTests(unittest.TestCase):
         r = self.run_ui([], ["Jeden", "yes", "Dwa", "no", ""], accesses=[EMPTY, widened])
         self.assertEqual(r.sent.call_count, 1)
 
-    def test_history_window_stays_at_thirty_two_turns_and_the_conversation_does_not_end(self):
+    def test_history_window_stays_at_sixty_four_turns_and_the_conversation_does_not_end(self):
         replies = []
-        for i in range(35):
+        for i in range(67):
             replies += ["Pytanie %d" % i] + ([] if i else ["yes"])
         r = self.run_ui([], replies + [""])
-        self.assertEqual(r.sent.call_count, 35)
-        self.assertEqual([t["question"] for t in r.histories[34]], ["Pytanie %d" % i for i in range(2, 34)])
+        self.assertEqual(r.sent.call_count, 67)
+        self.assertEqual([t["question"] for t in r.histories[66]], ["Pytanie %d" % i for i in range(2, 66)])
 
     def test_a_change_made_before_a_service_failure_stays_in_the_conversation(self):
         seen = []
@@ -172,7 +183,7 @@ class ConversationLoopTests(unittest.TestCase):
                 raise ask.AnalysisDenied("network")
             seen.append(execution.current_memory())
             return "Odpowiedź"
-        with patch.object(ask.assistant_flow, "run", side_effect=flow):
+        with patch.object(ask.assistant_flow, "_run_once", side_effect=flow):
             self.run_ui([], ["Zmień", "Co zrobiłeś?", ""])
         self.assertTrue(any("systemctl restart foo.service" in entry["text"] for entry in seen[0]["entries"]))
 
@@ -184,7 +195,7 @@ class ConversationLoopTests(unittest.TestCase):
                 raise ask.AnalysisDenied("network")
             seen.append(execution.current_history())
             return "Odpowiedź"
-        with patch.object(ask.assistant_flow, "run", side_effect=flow):
+        with patch.object(ask.assistant_flow, "_run_once", side_effect=flow):
             self.run_ui([], ["Pierwsze", "Drugie", ""])
         self.assertEqual(seen[0], [])
 

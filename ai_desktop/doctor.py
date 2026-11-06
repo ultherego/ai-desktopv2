@@ -86,6 +86,30 @@ def main(argv=None):
     if hasattr(os, "geteuid") and os.geteuid() == 0:
         print("DOCTOR: REFUSED (root)")
         return 2
+    from .agent_profiles import Store
+    try:
+        provider = Store().load().config.selected_provider
+    except (OSError, ValueError, KeyError):
+        provider = None
+    if provider == "local":
+        from .permissions import load_policy
+        from .local_provider import endpoint
+        from .execution import DEFAULT_LOCAL_PORT
+        try:
+            policy = load_policy(optional=True)
+        except (OSError, ValueError):
+            print("DOCTOR: invalid permissions.toml; local inference is blocked.")
+            return 2
+        details = {"provider": "local", "endpoint": endpoint(policy.local_port if policy else DEFAULT_LOCAL_PORT),
+                   "authorized": bool(policy and policy.provider_allowed("local")), "server_checked": False,
+                   "python_supported": sys.version_info >= MINIMUM_PYTHON, "platform_linux": sys.platform == "linux"}
+        if argv:
+            print(json.dumps(details, indent=2))
+        else:
+            print("Local inference endpoint: " + details["endpoint"])
+            print("Policy: " + ("allowed." if details["authorized"] else "blocked. Set network.local=true to enable."))
+            print("Server availability is checked when you approve an inference request.")
+        return 0
     data = inspect()
     if argv:
         print("=== AI DESKTOP READINESS (READ-ONLY) ===")

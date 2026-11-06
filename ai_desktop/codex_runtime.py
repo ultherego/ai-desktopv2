@@ -8,19 +8,18 @@ compiled OpenAI egress policy is disjoint from the Claude CONNECT policy.
 import json
 import os
 from pathlib import Path
-import stat
 import tempfile
 import threading
 
-from .analysis_contract import (request_effort, request_seconds, AnalysisDenied, MAX_PACKET_LARGE, ModelText,
+from . import account_runtime
+from .analysis_contract import (request_effort, request_seconds, AnalysisDenied, MAX_PACKET_LARGE, MAX_RESPONSE_BYTES, ModelText,
                                 canonical, result_text_limit, terminal_text, validate_meta)
 from .analysis_sandbox import (CA, HOME, INSTALL, NAMESPACES, child_failure,
-                               failure_stage, profile_lock, trusted_file)
+                               cloud_transport_ready, failure_stage, profile_lock, service_identity, trusted_file)
 from .codex_protocol import CLIENT_VERSION, Protocol, TOKEN_ENV
-from .e2_connect_proxy import ConnectProxy, OPENAI_HOSTS, open_public
+from .e2_connect_proxy import ANALYSIS_STREAM_LIMIT, ConnectProxy, OPENAI_HOSTS, open_public
 from .e2_ipc import _unique_pairs
-from .e2_socket_activation import _worker_identity
-from .e2_subscription_boundary import base_command, privileges_locked
+from .e2_subscription_boundary import base_command
 from .execution import validate as validate_execution
 from .process_io import MAX_PRIVATE_INPUT_BYTES, bounded_process
 from .siwc_auth import AuthClient, AuthError, AuthStore
@@ -41,29 +40,11 @@ def runtime_ready():
         if source.read(4) != b"\x7fELF":
             raise AnalysisDenied("runtime")
     trusted_file(INSTALL / "codex-client.py")
-    trusted_file(Path("/usr/bin/bwrap"))
-    for path in (*reversed(CA.parents), CA):
-        info = path.lstat()
-        if info.st_uid != 0 or (not stat.S_ISLNK(info.st_mode) and info.st_mode & 0o022):
-            raise AnalysisDenied("runtime")
-    trusted_file(CA.resolve(strict=True))
+    cloud_transport_ready()
 
 
 def supervisor_ready():
-    if not _worker_identity() or not privileges_locked(Path("/proc/self/status").read_text()):
-        raise AnalysisDenied("identity")
-    for path in reversed(HOME.parents):
-        info = path.lstat()
-        if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
-            raise AnalysisDenied("identity")
-    descriptor = os.open(HOME, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
-    try:
-        info = os.fstat(descriptor)
-        if (info.st_uid != os.geteuid() or info.st_gid != os.getegid()
-                or stat.S_IMODE(info.st_mode) != 0o700):
-            raise AnalysisDenied("identity")
-    finally:
-        os.close(descriptor)
+    service_identity()
     runtime_ready()
 
 
@@ -88,7 +69,7 @@ def client_environment(token=None):
 
 
 def namespace_command(action, directory):
-    if action not in ("version", "analyze"):
+    if action not in ("version", "analyze", "quota-connect", "quota-read"):
         raise AnalysisDenied("input")
     directory = Path(directory)
     command = base_command() + ["--disable-userns", "--assert-userns-disabled", "--hostname", "ai-desktop",
@@ -98,7 +79,11 @@ def namespace_command(action, directory):
     command += ["--ro-bind", str(directory / "passwd"), "/etc/passwd",
                 "--ro-bind", str(directory / "group"), "/etc/group",
                 "--ro-bind", str(CA.resolve(strict=True)), "/etc/ssl/certs/ca-certificates.crt"]
-    if action == "analyze":
+    if action in ("quota-connect", "quota-read"):
+        # A disposable home contains, at most, the selected native credential.
+        # Native config, hooks, shell state, logs and databases never cross runs.
+        command += ["--bind", str(directory / "native-home"), INNER_HOME]
+    if action != "version":
         command += ["--ro-bind", str(directory / "egress.sock"), "/run/egress.sock"]
     metadata = json.dumps({name: os.readlink("/proc/self/ns/" + name) for name in NAMESPACES})
     return command + ["--chdir", "/work", "/usr/bin/python3", "-I", "-B",
@@ -112,7 +97,8 @@ class OpenAIProxy(ConnectProxy):
     def __init__(self, path, stream_seconds=120):
         def fixed_dial(host):
             return open_public(host, hosts=OPENAI_HOSTS)
-        super().__init__(path, dial=fixed_dial, stream_seconds=stream_seconds, hosts=OPENAI_HOSTS)
+        super().__init__(path, dial=fixed_dial, stream_seconds=stream_seconds, hosts=OPENAI_HOSTS,
+                         stream_limit=ANALYSIS_STREAM_LIMIT)
 
 
 def private_packet(token, request):
@@ -194,7 +180,7 @@ def run_client(action, report=b"", *, cancelled=None, mode="analysis"):
         if cancelled is not None and cancelled():
             raise AnalysisDenied("cancelled")
         try:
-            token = checked_token(AuthClient(AuthStore(PROFILE)).access_token())
+            token = checked_token(AuthClient(AuthStore(account_runtime.directory(PROFILE))).access_token())
         except AuthError as error:
             raise _auth_failure(error) from None
         packet = private_packet(token, report)
@@ -206,7 +192,7 @@ def run_client(action, report=b"", *, cancelled=None, mode="analysis"):
                 with failure_stage("analysis"):
                     code, output, errors = bounded_process(namespace_command("analyze", directory), env=env,
                         input_bytes=packet, input_limit=PRIVATE_PACKET_BYTES, private_input=True,
-                        timeout=request_seconds(request_effort(report)) + 5, limit=768 * 1024 if mode == "workspace" else 131072, cancelled=cancelled)
+                        timeout=request_seconds(request_effort(report)) + 5, limit=MAX_RESPONSE_BYTES if mode == "workspace" else 131072, cancelled=cancelled)
                     if code != 0:
                         raise child_failure(errors, "client", provider="codex")
                     return result_text(output, mode=mode, token=token)

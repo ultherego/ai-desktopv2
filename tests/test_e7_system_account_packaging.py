@@ -88,6 +88,23 @@ class SystemAccountPackagingTests(unittest.TestCase):
                 env=environment, check=False, capture_output=True, text=True, timeout=12,
             )
             self.assertEqual(staged.returncode, 0, staged.stderr[-1000:])
+            references = list((ROOT / "skills").glob("*/references/*.md"))
+            self.assertTrue(references)
+            for reference in references:
+                installed = package_root / "usr/lib/ai-desktop" / reference.relative_to(ROOT)
+                self.assertEqual(installed.read_bytes(), reference.read_bytes())
+                self.assertEqual(stat.S_IMODE(installed.stat().st_mode), 0o644)
+            desktop = ROOT / "packaging/desktop"
+            for name in ("ai-desktop.desktop", "ai-desktop-panel.desktop", "ai-desktop-login-claude.desktop",
+                         "ai-desktop-login-codex.desktop", "ai-desktop-logout-claude.desktop",
+                         "ai-desktop-logout-codex.desktop", "ai-desktop-check-sign-in.desktop",
+                         "ai-desktop-codex-limits.desktop", "ai-desktop-codex-limits-disconnect.desktop", "niri-bindings.kdl",
+                         "dms/AiDesktop/plugin.json", "dms/AiDesktop/Widget.qml", "dms/AiDesktop/Settings.qml",
+                         "dms/AiDesktop/usage/QuotaCard.qml", "dms/AiDesktop/usage/Status.js"):
+                base = "usr/share/applications" if name.endswith(".desktop") else "usr/share/ai-desktop"
+                installed = package_root / base / name
+                self.assertEqual(installed.read_bytes(), (desktop / name).read_bytes())
+                self.assertEqual(stat.S_IMODE(installed.stat().st_mode), 0o644)
             self.assertEqual(
                 (package_root / "usr/lib/ai-desktop/provisioning/sysusers.conf").read_bytes(),
                 SYSUSERS.read_bytes(),
@@ -108,6 +125,11 @@ class SystemAccountPackagingTests(unittest.TestCase):
             self.assertEqual(
                 (package_root / "usr/lib/ai-desktop/activated-worker.py").read_bytes(),
                 (ROOT / "packaging/systemd/activated-worker.py").read_bytes())
+            for name in ("ai-desktop-codex-limits@.socket", "ai-desktop-codex-limits@.service"):
+                self.assertEqual((package_root / "usr/lib/systemd/system" / name).read_bytes(),
+                                 (ROOT / "packaging/systemd" / name).read_bytes())
+            self.assertEqual((package_root / "usr/lib/ai-desktop/codex-quota.py").read_bytes(),
+                             (ROOT / "packaging/systemd/codex-quota.py").read_bytes())
             self.assertFalse((package_root / "etc/systemd").exists())
             exe = package_root / "usr/bin/ai-desktop"
             self.assertTrue(exe.is_file())
@@ -205,6 +227,8 @@ class SystemAccountPackagingTests(unittest.TestCase):
             "/usr/bin/systemd-analyze", "verify",
             str(units / "ai-desktop-handoff@.socket"),
             str(units / "ai-desktop-handoff@.service"),
+            str(units / "ai-desktop-codex-limits@.service"),
+            str(units / "ai-desktop-codex-limits@.socket"),
         ], check=False, capture_output=True, text=True, timeout=15)
         self.assertEqual(result.returncode, 0, result.stderr[:2000])
         # Unknown settings are sometimes warnings even with exit 0.

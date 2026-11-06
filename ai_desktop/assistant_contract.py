@@ -3,21 +3,24 @@ import json
 import re
 import unicodedata
 
+from .task_contract import CHECKS, TEST_SUITES
+
 
 MAX_ACCESS_BYTES = 8192
-MAX_PLAN_BYTES = 16384
+MAX_PLAN_BYTES = 256 * 1024
+MAX_ANSWER_BYTES = 32 * 1024
 MAX_COMMANDS_IN_PLAN = 16
 MAX_DELETE_FILES = 8           # workspace_trash.MAX_DELETE
 MAX_FILE_SCOPES = 64
-MAX_SELECTED_FILES = 8
+MAX_SELECTED_FILES = 128
 MAX_LISTED_SCOPES = 4
-MAX_CREATE_FILES = 32
+MAX_CREATE_FILES = 64
 MAX_PATTERN_BYTES = 512
 SYSTEMD_SCOPES = frozenset({"system", "user"})
 SYSTEMD_VIEWS = frozenset({"enabled", "active", "inactive", "failed", "all", "installed"})
 _FILE_ID = re.compile(r"f(?:[0-9]|[1-5][0-9]|6[0-3])\Z", re.ASCII)
 _WRITE_ID = re.compile(r"w(?:[0-9]|[1-5][0-9]|6[0-3])\Z", re.ASCII)
-EDIT_CHECKS = frozenset({"python-unittest", "python-syntax", "json", "bash-syntax", "fish-syntax", "text", "toml"})
+EDIT_CHECKS = frozenset(CHECKS)
 PLAN_CHECKS = frozenset({"access", "type", "size", "json", "shape", "action", "files", "systemd",
                          "weather", "write", "check", "create", "text", "empty", "command", "invalid"})
 
@@ -41,7 +44,7 @@ def _text(value, limit, *, multiline=False):
 def validate_access(value):
     """Copy only configured labels and finite source capabilities, without I/O."""
     if (type(value) is not dict or not {"files", "systemd", "weather"} <= set(value)
-            or set(value) - {"files", "systemd", "weather", "write", "web", "commands", "change_commands"}
+            or set(value) - {"files", "systemd", "weather", "write", "web", "commands", "change_commands", "project_test"}
             or type(value["files"]) is not list or len(value["files"]) > MAX_FILE_SCOPES
             or type(value["systemd"]) is not list or len(value["systemd"]) > 2
             or type(value["weather"]) is not bool
@@ -63,6 +66,10 @@ def validate_access(value):
     result = {"files": files, "systemd": scopes, "weather": value["weather"]}
     if "web" in value:
         result["web"] = value["web"]
+    if "project_test" in value:
+        if value["project_test"] is not True or not result["files"]:
+            raise ValueError("assistant-access")
+        result["project_test"] = True
     if "commands" in value:
         if (type(value["commands"]) is not list or not 1 <= len(value["commands"]) <= 128
                 or any(type(item) is not str for item in value["commands"])
@@ -147,7 +154,7 @@ def selected_file_ids(value):
                                for item in file_selections(value)))
 
 
-_SKILL_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
+_SKILL_NAME = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*)?\Z")
 
 
 def parse_plan(raw, access):
@@ -188,7 +195,15 @@ def parse_plan(raw, access):
             if set(value) != {"action", "text"}:
                 raise ValueError("assistant-plan")
             check = "text"
-            return {"action": "answer", "text": _text(value["text"], MAX_PLAN_BYTES, multiline=True)}
+            return {"action": "answer", "text": _text(value["text"], MAX_ANSWER_BYTES, multiline=True)}
+        if value.get("action") == "project-test":
+            check = "access"
+            if access.get("project_test") is not True:
+                raise ValueError("assistant-plan")
+            check = "shape"
+            if set(value) != {"action", "recipe"} or value["recipe"] not in TEST_SUITES:
+                raise ValueError("assistant-plan")
+            return {"action": "project-test", "recipe": value["recipe"]}
         if value.get("action") == "run":
             from .command_ops import clean_argv
             check = "shape"
@@ -208,6 +223,28 @@ def parse_plan(raw, access):
                     raise ValueError("assistant-plan")       # test and undo exist only for a change command
                 plan["test"], plan["undo"] = clean_argv(value["test"]), clean_argv(value["undo"])
             return plan
+        if value.get("action") in ("read-range", "search-content"):
+            from .ask_content import query
+            check = "shape"
+            searching = value["action"] == "search-content"
+            expected = {"action", "file", "needle", "cursor"} if searching else {"action", "file", "first", "last"}
+            if set(value) != expected:
+                raise ValueError("assistant-plan")
+            check = "files"
+            (selection,) = file_selections([value["file"]], access)
+            patterns = {item["id"]: item["pattern"] for item in access["files"]}
+            if (type(selection) is str and patterns[selection].endswith(("/", "/*", "/**"))
+                    or type(selection) is dict and "*" in selection["path"]):
+                raise ValueError("assistant-plan")
+            if searching:
+                if type(value["cursor"]) is not int or not 0 <= value["cursor"] <= 64 * 1024 * 1024:
+                    raise ValueError("assistant-plan")
+                return {"action": value["action"], "file": selection,
+                        "needle": query(value["needle"]), "cursor": value["cursor"]}
+            if (any(type(value[key]) is not int for key in ("first", "last"))
+                    or not 1 <= value["first"] <= value["last"] <= 64 * 1024 * 1024 + 1):
+                raise ValueError("assistant-plan")
+            return {"action": value["action"], "file": selection, "first": value["first"], "last": value["last"]}
         if value.get("action") in ("list", "find"):
             from .discovery_contract import KINDS, MAX_QUERIES, clean_path, clean_query
             finding = value["action"] == "find"

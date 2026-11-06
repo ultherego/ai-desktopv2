@@ -34,6 +34,7 @@ class ControlsTests(unittest.TestCase):
         self.enterContext(patch.object(profiles, "Store", return_value=FakeStore(config)))
         self.enterContext(patch.object(profiles, "_skill", side_effect=lambda name: "tresc " + name))
         self.enterContext(patch("ai_desktop.skills.inspect_skill", side_effect=lambda root, name, **_: ("opis " + name, "tresc " + name)))
+        self.enterContext(patch("ai_desktop.skills._reference_files", return_value={}))
         self.enterContext(patch("ai_desktop.skills.names", return_value=("a", "b")))
         self.enterContext(execution.using(BASE))
         self.controls = commands.Controls()
@@ -108,6 +109,12 @@ class ControlsTests(unittest.TestCase):
         self.assertIsNone(self.controls.load_skill("b"))                   # exists on disk, not assigned to this agent
         self.assertIsNone(self.controls.load_skill("../sekret"))
 
+    def test_catalog_failure_stops_the_question_before_a_full_prompt_can_be_sent(self):
+        full = dict(BASE, instructions="private skill body")
+        with execution.using(full), patch.object(profiles, "catalog_for", side_effect=profiles.ProfileError("size")):
+            with self.assertRaises(profiles.ProfileError):
+                self.controls.activate()
+
     def test_a_menu_starts_on_the_current_value_and_choosing_it_changes_nothing(self):
         before = execution.current()
         offered = []
@@ -174,9 +181,10 @@ class LongConversationTests(unittest.TestCase):
         talk.finish(pasted, "odpowiedź", None, ())
         self.assertEqual(talk.history()[-1]["question"], pasted)
         self.assertEqual(execution.validate_history(talk.history()), talk.history())
-        talk.finish(pasted, "odpowiedź", None, ())
+        for unused in range(6):
+            talk.finish(pasted, "odpowiedź", None, ())
         kept = talk.history()
-        self.assertEqual(len(kept), 1)                                            # the newest stays, the older left
+        self.assertEqual(len(kept), 5)                                            # the newest stays, the older left
         self.assertLessEqual(sum(len(t["question"].encode()) for t in kept), execution.HISTORY_TOTAL_BYTES)
 
     def test_the_wire_accepts_a_long_ask_message_and_material_keeps_its_short_limit(self):

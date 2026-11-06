@@ -37,7 +37,7 @@ def _hex(value):
 
 def _source_path(value):
     return type(value) is str and re.fullmatch(
-        r"(?:ai_desktop/[A-Za-z_][A-Za-z0-9_]*\.py|skills/[a-z0-9][a-z0-9-]*/SKILL\.md)", value) is not None
+        r"(?:ai_desktop/[A-Za-z_][A-Za-z0-9_]*\.py|skills/[a-z0-9][a-z0-9-]*/(?:SKILL\.md|references/[a-z0-9][a-z0-9-]*\.md))", value) is not None
 
 
 def _unique(pairs):

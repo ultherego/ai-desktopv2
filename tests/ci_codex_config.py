@@ -2,7 +2,9 @@
 
 The trusted parent downloads a digest-pinned asset into a private temporary
 directory. The native process sees an empty home/work and no network, token,
-profile or proxy. Only initialize is sent; no thread or model turn is started.
+profile or proxy. The offline SIWC turn must stop at the network boundary,
+and native account/read must report the empty profile as signed out. A separate
+private namespace provides fake native credentials and a fixture usage response.
 Normal verification never executes this opt-in driver.
 """
 import json
@@ -20,6 +22,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+from ai_desktop import codex_account_protocol as native, codex_protocol
 from ai_desktop.analysis_contract import AnalysisDenied, application_input
 from ai_desktop.codex_protocol import (CLIENT_VERSION, Protocol, exchange, fixed_command,
                                       notification_fields, startup_notification)
@@ -33,9 +36,11 @@ MAX_LINE = 65536
 
 class StartupDenied(ValueError):
     def __init__(self, reason, *, check=None, shape=None):
-        self.reason = reason if reason in {"preflight", "pin", "initialize", "protocol", "exit", "timeout", "limit", "turn"} else "preflight"
+        self.reason = reason if reason in {"preflight", "pin", "initialize", "protocol", "exit", "timeout", "limit", "turn", "native-account"} else "preflight"
         message = "CI CODEX CONFIG: FAIL reason=" + self.reason
         if type(check) is str and (check in ("empty-line", "non-json", "unexpected-record", "extra-startup-notification")
+                                   or self.reason == "native-account" and (check in {"unexpected-result", "request-verification", "fixture-exit"}
+                                       or re.fullmatch(r"(?:new|initialize|account|limits|signed-out|done)/(?:network|timeout|result|client|auth-required|authorization|auth-method)", check))
                                    or self.reason == "turn" and re.fullmatch(r"(?:refusal=[a-z-]{1,24} )?codex-[a-z-]{1,40}", check)):
             message += " check=" + check
         # Only closed structural categories/counts can cross this boundary.
@@ -85,7 +90,7 @@ def require_ci():
         raise StartupDenied("pin")
 
 
-def command(binary, directory):
+def command(binary, directory, *, native_account=False):
     directory = Path(directory)
     return base_command() + [
         "--disable-userns", "--assert-userns-disabled", "--remount-ro", "/proc",
@@ -94,7 +99,7 @@ def command(binary, directory):
         "--ro-bind", str(directory / "passwd"), "/etc/passwd",
         "--ro-bind", str(directory / "group"), "/etc/group",
         "--ro-bind", str(binary), "/opt/codex", "--chdir", "/work",
-        *fixed_command("/opt/codex"),
+        *(native.fixed_command("/opt/codex") if native_account else fixed_command("/opt/codex")),
     ]
 
 
@@ -239,6 +244,46 @@ def offline_turn(argv, *, timeout=60):
     raise StartupDenied("turn")
 
 
+def offline_native_account(argv):
+    """The real pinned build must accept the account config and report its empty native store."""
+    protocol = native.AccountProtocol("read")
+    try:
+        codex_protocol._exchange(argv, protocol, env={"PATH": "/usr/bin", "LANG": "C.UTF-8"}, timeout=20)
+    except AnalysisDenied as exc:
+        if exc.reason == "auth-required" and protocol.state == "signed-out":
+            return
+        raise StartupDenied("native-account") from None
+    raise StartupDenied("native-account")
+
+
+def fixture_native_quota(binary, directory):
+    """Exercise genuine v0.166.0 account and quota RPCs against a synthetic, loopback-only backend."""
+    argv = command(binary, directory, native_account=True)
+    pos = argv.index("--chdir")
+    argv[pos:] = ["--ro-bind", str(ROOT / "tests/ci_codex_quota_backend.py"), "/opt/quota-backend.py",
+                  "--ro-bind", str(ROOT / "ai_desktop"), "/opt/ai_desktop",
+                  "--chdir", "/work", "/usr/bin/python3", "-I", "-B", "/opt/quota-backend.py"]
+    fixture = subprocess.run(argv, stdin=subprocess.DEVNULL, capture_output=True, timeout=25,
+                             env={"PATH": "/usr/bin", "LANG": "C.UTF-8"})
+    if fixture.returncode:
+        # The helper prints only a fixed protocol stage and reason. Discard everything else
+        # (including native/host stderr) rather than let account data into a CI log.
+        clue = fixture.stdout.strip()
+        if re.fullmatch(rb"(?:new|initialize|account|limits|signed-out|done)/(?:network|timeout|result|client|auth-required|authorization|auth-method)", clue):
+            raise StartupDenied("native-account", check=clue.decode())
+        if clue == b"request-verification":
+            raise StartupDenied("native-account", check="request-verification")
+        raise StartupDenied("native-account", check="fixture-exit")
+    expected = {"plan": "plus", "windows": {"five_hour": {"percent": 31, "reset": 2000000000},
+                                             "seven_day": {"percent": 47, "reset": 2000500000}}}
+    try:
+        result = json.loads(fixture.stdout, object_pairs_hook=_unique_pairs)
+    except (ValueError, UnicodeError, RecursionError):
+        raise StartupDenied("native-account", check="unexpected-result") from None
+    if result != expected:
+        raise StartupDenied("native-account", check="unexpected-result")
+
+
 def run():
     require_ci()
     with tempfile.TemporaryDirectory(prefix="aid-codex-config-") as temporary:
@@ -250,6 +295,8 @@ def run():
             (os.getuid(), os.getgid()))
         (directory / "group").write_text("client:x:%d:\n" % os.getgid())
         initialize_only(command(binary, directory))
+        offline_native_account(command(binary, directory, native_account=True))
+        fixture_native_quota(binary, directory)
         offline_turn(turn_command(binary, directory))
 
 
@@ -265,7 +312,7 @@ def main(argv=None):
     except (asset.AssetDenied, OSError, ValueError, subprocess.SubprocessError):
         print("CI CODEX CONFIG: FAIL reason=preflight")
         return 2
-    print("CI CODEX CONFIG: PASS pinned=0.166.0 strict-config=PASS initialize=PASS network=OFF auth=NONE turn=PASS(offline, stops at network) inference=NOT_RUN")
+    print("CI CODEX CONFIG: PASS pinned=0.166.0 strict-config=PASS initialize=PASS network=OFF auth=NONE native-account=signed-out native-quota=31%/47%(loopback-fixture) turn=PASS(offline, stops at network) inference=NOT_RUN")
     return 0
 
 

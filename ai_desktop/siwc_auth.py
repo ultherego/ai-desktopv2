@@ -294,6 +294,19 @@ class AuthStore:
                     os.close(lock)
                 os.close(directory)
 
+    def quota_binding(self, *, enroll=False):
+        """Service-private ID for this SIWC login. Never returned to a desktop client."""
+        with self.locked() as (state, save):
+            entry = state["accounts"].get(state["active"])
+            if entry is None or not entry["access_token"] or not PLAN_SCOPES.issubset(entry["scopes"]):
+                raise AuthError("auth-required")
+            if "quota_generation" not in entry:
+                if not enroll:
+                    raise AuthError("auth-required")
+                entry["quota_generation"] = secrets.token_hex(16)
+                save(state)
+            return entry["quota_generation"]
+
     def status(self):
         try:
             descriptor = self._directory()
@@ -326,7 +339,9 @@ def _account_fingerprint(account):
 
 def _validate_account(account):
     fields = {"client_id", "subject", "email", "id_token", "access_token", "refresh_token", "expires_at", "scopes"}
-    if type(account) is not dict or set(account) != fields:
+    if (type(account) is not dict or set(account) - {"quota_generation"} != fields
+            or "quota_generation" in account and (type(account["quota_generation"]) is not str
+                or not re.fullmatch(r"[0-9a-f]{32}", account["quota_generation"]))):
         raise AuthError("storage")
     if type(account["client_id"]) is not str or not _CLIENT_ID.fullmatch(account["client_id"]):
         raise AuthError("storage")
@@ -610,19 +625,20 @@ class AuthClient:
         """Stop local usage even if remote revocation cannot be confirmed."""
         with self.store.locked() as (state, save):
             account = state["accounts"].get(state["active"])
-            if account is None:
+            if account is None or not any(account[k] for k in ("access_token", "refresh_token", "id_token")):
                 return True
             confirmed = not account["refresh_token"]
-            try:
-                endpoint = self._discovery().get("revocation_endpoint")
-                if account["refresh_token"]:
+            if account["refresh_token"]:
+                try:
+                    endpoint = self._discovery().get("revocation_endpoint")
                     self._request("POST", _metadata_url(endpoint), {"client_id": account["client_id"],
                         "token": account["refresh_token"], "token_type_hint": "refresh_token"}, empty=True)
                     confirmed = True
-            except AuthError:
-                confirmed = False
+                except AuthError:
+                    confirmed = False
             for name in ("access_token", "refresh_token", "id_token"):
                 account[name] = ""
             account["expires_at"] = 0
+            account.pop("quota_generation", None)
             save(state)
             return confirmed

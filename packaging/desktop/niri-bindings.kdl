@@ -1,0 +1,5 @@
+// Optional example for kitty. Pick free shortcuts before adding them to your binds block.
+binds {
+    Mod+Shift+A { spawn "kitty" "-e" "/usr/bin/ai-desktop" "ask"; }
+    Mod+Shift+P { spawn "kitty" "-e" "/usr/bin/ai-desktop" "panel"; }
+}

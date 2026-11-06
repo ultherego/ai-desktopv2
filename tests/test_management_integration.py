@@ -38,7 +38,7 @@ class ManagementIntegrationTests(unittest.TestCase):
             code = entry(["--agent", "reviewer", "--model", "opus", "--effort", "high",
                           "--question", "Sprawdź plik"])
         self.assertEqual(code, 0)
-        resolve.assert_called_once_with("reviewer", "opus", "high")
+        resolve.assert_called_once_with("reviewer", "opus", "high", catalog=True)
         self.assertIsNone(execution.current())
         self.assertIn("reviewer", output.getvalue())
 

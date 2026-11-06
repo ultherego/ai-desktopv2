@@ -59,8 +59,8 @@ class Harness(unittest.TestCase):
 
         policy = Mock()
         policy.limits.return_value = Limits()
+        policy.allows.side_effect = lambda path: path not in self.revoked
         snapshot = assistant_flow.AccessSnapshot(policy, {"claude": True, "systemd": [], "weather": False}, dict(EMPTY))
-        stand_in = SimpleNamespace(allows=lambda path: path not in self.revoked)
         with ExitStack() as stack:
             stack.enter_context(patch("ai_desktop.agent_profiles.resolve", return_value=PROFILE))
             stack.enter_context(patch.object(ask.os, "geteuid", return_value=REAL_UID))
@@ -68,7 +68,6 @@ class Harness(unittest.TestCase):
             stack.enter_context(patch.object(ask.sys.stdin, "isatty", return_value=True))
             stack.enter_context(patch.object(ask, "installation_ready"))
             stack.enter_context(patch.object(assistant_flow, "capture_access", return_value=snapshot))
-            stack.enter_context(patch.object(ask.permissions, "load_policy", return_value=stand_in))
             stack.enter_context(patch.object(ask, "managed_session", side_effect=lambda **_: nullcontext()))
             sent = stack.enter_context(patch.object(ask, "send_once", side_effect=send))
             if conversation is not None:
@@ -191,11 +190,11 @@ class MemoryRobustnessTests(Harness):
 
     def test_budget_exhaustion_is_reported_and_counted_not_silent(self):
         replies = []
-        for index in range(60):
+        for index in range(cm.MAX_ENTRIES + 8):
             replies += ["Wynik %d: wartość %d." % (index, index)] + ([] if replies else [YES])
 
         def model(payload, number):
-            return answer("OK", {"add": [{"kind": "value", "text": "Wartość %d: %d W " % (number, number) + "x" * 380}]})
+            return answer("OK", {"add": [{"kind": "value", "text": "Wartość %d: %d W " % (number, number) + "x" * (cm.ENTRY_BYTES - 50)}]})
         result = self.run_ui(replies + [""], model)
         last = self.payloads[-1]
         self.assertLessEqual(len(last["memory"]["entries"]), cm.MAX_ENTRIES)
@@ -385,7 +384,7 @@ class MemoryUnitTests(unittest.TestCase):
         self.assertEqual(cm.validate(good), good)
         for mutate in (lambda d: d["entries"][0].update(path="/etc/passwd"), lambda d: d["entries"][0].update(kind="cmd"),
                        lambda d: d["entries"][0].update(id="../x"), lambda d: d.update(extra=1),
-                       lambda d: d["entries"][0].update(text="x" * 401), lambda d: d.update(dropped=-1),
+                       lambda d: d["entries"][0].update(text="x" * (cm.ENTRY_BYTES + 1)), lambda d: d.update(dropped=-1),
                        lambda d: d["entries"].extend([dict(d["entries"][0])])):
             bad = json.loads(json.dumps(good))
             mutate(bad)
@@ -431,7 +430,7 @@ class RevocationDependencyTests(unittest.TestCase):
     def test_many_sources_across_turns_still_save_and_no_kept_turn_has_a_shortened_dependency_list(self):
         talk = cs.Conversation()
         for turn in range(5):
-            sources = tuple("/x/%d/%d" % (turn, index) for index in range(100))
+            sources = tuple("/x/%d/%d" % (turn, index) for index in range(cs.MAX_SOURCE_PATHS // 4))
             talk.finish("Pytanie %d" % turn, "Odpowiedź %d" % turn, None, sources)
         state = cs.export(talk)
         self.assertLessEqual(len(state["paths"]), sessions.MAX_PATHS)

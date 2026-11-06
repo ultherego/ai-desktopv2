@@ -1,10 +1,10 @@
 # AI Desktop
 
-A terminal assistant for diagnostics, configuration and file work on CachyOS and Arch Linux x86_64. You start `ai-desktop ask`, write a plain sentence, and the program itself collects the data your `~/.config/ai-desktop/permissions.toml` file allows and sends it to the model. Every write shows a full diff and waits for your consent.
+A terminal assistant for diagnostics, configuration and file work on CachyOS and Arch Linux x86_64. In a terminal, start `ai-desktop`, write a plain sentence, and the program itself collects the data your `~/.config/ai-desktop/permissions.toml` file allows and sends it to the model. Every write shows a full diff and waits for your consent.
 
 The interface and settings are in English, and Claude answers in the language of your question.
 
-Underneath runs the official Claude Code client in the exact version **2.1.312**, which you download yourself. The client works under a separate system account `ai-desktop`, in a Bubblewrap sandbox, and reaches the network only through a filtering proxy. Codex can be used optionally.
+Underneath runs the official Claude Code client in the exact version **2.1.312**, which you download yourself. The client works under a separate system account `ai-desktop`, in a Bubblewrap sandbox, and reaches the network only through a filtering proxy. Codex uses a separate subscription adapter. For a local model, the controller can send an approved request to a configured loopback server.
 
 **What this is not:**
 
@@ -13,17 +13,33 @@ Underneath runs the official Claude Code client in the exact version **2.1.312**
 - It does not use an API key and does not switch to another service when something fails.
 - It is not certified isolation or a secret scanner. See [SECURITY.md](SECURITY.md).
 
+## Choose where to work
+
+| In a terminal | Result |
+|---|---|
+| `ai-desktop` | Start or resume a conversation. Outside a terminal the default remains offline status. |
+| `ai-desktop agent list` / `ai-desktop agent use local` | Inspect services or choose the default for future conversations. |
+| `ai-desktop agents use reviewer` | Select a role and its Skills. A role cannot expand the access policy. |
+| `/provider codex` inside `ask` | Review the destination and the context the new recipient would receive. Confirm to continue the same conversation there. |
+| `ai-desktop account list` / `ai-desktop usage` | See accounts and cached quota windows. After connecting native Codex limits in DankBar, click refresh or run `ai-desktop usage --refresh --provider codex` for a fresh reading. |
+| `ai-desktop panel` / `ai-desktop status --json` | Open the interactive panel or read local metadata for a desktop widget. |
+| `ai-desktop local models` | Explicitly query the model list of your configured local inference server. |
+
+For local inference, start your own trusted OpenAI-compatible server on `127.0.0.1`, enable `local = true` under `[network]` in your existing policy, then choose `ai-desktop agent use local`. The default port is 8080. Cloud accounts and the local service have independent permissions. There is no automatic recipient switch.
+
+See [agent settings, accounts and sessions](docs/AGENT_MANAGEMENT.md), [verified client installation](docs/AGENT_INSTALL.md) and [Niri shortcuts and the DMS widget](docs/DESKTOP.md).
+
 ## Development status
 
 This is a development version, not a 1.0 release.
 
-The current candidate package is **0.1.0-70** (changes: [CHANGELOG.md](CHANGELOG.md)).
+The current candidate package is **0.1.0-79** (changes: [CHANGELOG.md](CHANGELOG.md)).
 
 What is still missing and what has not been checked is described in [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md). Read that file before using this on important data. The plan up to version 1.0: [docs/ROADMAP.md](docs/ROADMAP.md), tasks: [docs/TODO.md](docs/TODO.md).
 
 ## Installation on a laptop (CachyOS / Arch x86_64)
 
-You need a regular user with `sudo`, a terminal and a Claude account (subscription). Steps in `fish`:
+The example below installs and connects Claude for a regular user with a terminal and `sudo`. For Codex, use the verified client installer linked above. Local inference uses your running server and requires no subscription login.
 
 ```fish
 # 1. Dependencies and build tools
@@ -42,7 +58,7 @@ and ./claude-code --version  # must print: 2.1.312 (Claude Code)
 
 # 4. Build and install the package (the version in the file name = pkgrel from PKGBUILD)
 makepkg --cleanbuild
-sudo pacman -U ai-desktop-0.1.0-70-x86_64.pkg.tar.zst
+sudo pacman -U ai-desktop-0.1.0-79-x86_64.pkg.tar.zst
 sudo systemctl daemon-reload
 
 # 5. Log in to Claude (interactive, once)
@@ -62,7 +78,7 @@ ai-desktop ask                # conversation
 
 Notes:
 
-- **Claude client (step 3).** The package does not download it itself. Without the `claude-code` file in `packaging/arch/` only local commands work, and questions to the model are refused. Use of the client is subject to Anthropic's terms. Do not add this file to Git and do not redistribute it.
+- **Claude client (step 3).** The package does not download it itself. Without the `claude-code` file in `packaging/arch/` the Claude adapter is unavailable. Selected Codex and local adapters have their own prerequisites. Use of the client is subject to Anthropic's terms. Do not add this file to Git and do not redistribute it.
 - **Sudo.** The client session is started by a fixed helper with administrator rights, so `ask`, `material`, `project`, `task run`, `login` and `stop` may ask for your `sudo` password. The package adds no sudoers or polkit rules.
 - **Requirements.** Python 3.12 or newer, systemd, working unprivileged namespaces and a regular terminal: without one the program does not ask for consent, it refuses.
 - **Fresh system.** These steps have not yet been repeated on a completely fresh installation.
@@ -107,11 +123,14 @@ The fields below are optional. Add them in the given section when you want to ch
 
 | Section and field | Default | At most | Meaning |
 |---|---|---|---|
-| `[files] file_size` | `"5MiB"` | `"16MiB"` | largest file for `material` |
+| `[files] file_size` | `"32MiB"` | `"64MiB"` | largest locally inspected text file |
 | `[files] part_size` | `"240KiB"` | `"512KiB"` | portion when analyzing a whole file |
-| `[files] read_files` | 64 | 128 | files in one context |
-| `[files] read_file_size` | `"64KiB"` | `"128KiB"` | bytes per file |
-| `[files] read_total_size` | `"128KiB"` | `"256KiB"` | bytes of all context files |
+| `[files] read_files` | 128 | 512 | files in one context |
+| `[files] read_file_size` | `"2MiB"` | `"8MiB"` | bytes per file |
+| `[files] read_total_size` | `"4MiB"` | `"16MiB"` | bytes of all context files |
+| `[files] test_copy_files` | 2000 | 20000 | files in the local test copy |
+| `[files] test_copy_file_size` | `"8MiB"` | `"32MiB"` | local copy bytes per file |
+| `[files] test_copy_total_size` | `"64MiB"` | `"128MiB"` | local copy total, independent of model data |
 | `[files] listing_entries` | 128 | 512 | entries in a list/find step |
 | `[files] discovery_bytes` | `"128KiB"` | `"256KiB"` | bytes of discovery steps sent to the model in one question |
 | `[files] search_results` | 40 | 200 | matches in a find step |
@@ -124,13 +143,15 @@ The fields below are optional. Add them in the given section when you want to ch
 | `[commands] share_processes` | `false` | | `true`: commands see host processes and their command lines |
 | `[commands] change` | none | | change templates: they run on the live system and require `yes`, a test from `allow` and an undo |
 
-`read_file_size` must not exceed `read_total_size`. Regardless of these fields, fixed limits apply: 384 KiB of JSON context and 512 KiB for the whole request. Files changed by the model are limited to 64 KiB per file and 128 KiB in total, even if you raise the read limits.
+`read_file_size` must not exceed `read_total_size`; the same rule applies to the two test-copy byte settings. Existing explicitly configured smaller values remain in force. The wire ceiling is 34 MiB of serialized context and 36 MiB for a complete request, including JSON escaping. These local ceilings do not guarantee that a selected model accepts that much text. Prefer content search and range reads for large files; selected excerpts carry source hashes and coverage. Up to 64 files can change in one proposal, bounded by 8 MiB per resulting file and 16 MiB combined. Anchored replacements let the model change a small part of a large file without generating its entire replacement. Test-copy-only files are never attached to the model request.
 
 ### Commands: `[commands]`
 
 By default the model runs nothing. `allow` is a list of exact templates, without a shell. `<unit>` means one systemd unit name, `<int>` a number up to 99999, and `<word>` one simple word. Templates starting with a shell, an interpreter, `sudo`, a network client or a writing program (`rm`, `tee`, `git`, `find`, `sed` and similar) are rejected when the policy is loaded.
 
-**Commands from `allow` run without asking, and their output goes to the model.** Remove from the list what you do not want to share, including from the template, which contains among others `journalctl`, `ps aux` and `docker ps`. `deny` does not filter command output.
+For Docker, Btrfs and nmcli, give the complete command path before a placeholder, for example `docker container inspect <word>`. Spell out unknown subcommands and plugin arguments literally. Host Unix sockets may still be reachable, so review the operation itself before adding it to `allow`.
+
+**Commands from `allow` run without asking, and their output goes to the model.** Remove from the list what you do not want to share, including any extra `journalctl`, `ps aux` or `docker ps` rules you add. `deny` does not filter command output.
 
 Commands from `allow` run in a sandbox: read-only file system, hidden `/home`, `/root` and `/run/user`, no network and no input. It does not isolate host Unix sockets, so only list commands that change nothing. Some programs will not see the host state (e.g. `ip`, `wpctl`, `glxinfo`).
 
@@ -171,9 +192,11 @@ How consents work:
 
 After an applied change the model takes the next step by itself or finishes the answer, at most 5 automatic steps. Each further write again shows the diff and asks. A refusal or error hands the turn back to you. Type `continue` to go on after the limit.
 
-The check on the copy comes from a list: `python-unittest`, `python-syntax`, `json`, `toml`, `bash-syntax`, `fish-syntax`, `text`. The `text` check only confirms valid UTF-8 text: **syntax and behaviour are not checked**. No check proves the project is correct.
+In a normal conversation, ask to run the current project's tests or type `/test pytest`, `/test python-unittest`, `/test go-test` or `/test npm-test`. Start AI Desktop in a project already covered by a recursive `files.read` rule and use a profile that permits execution. Before each run the controller shows the current directory, a snapshot identifier and the number of indexed and excluded files. It asks before running the fixed recipe on a temporary copy. Raw test output stays in the terminal. The conversation remembers the result for that snapshot. Go and npm require a systemd user manager with delegated CPU, memory and PID controllers and run without downloading dependencies.
 
-A conversation remembers the last 32 exchanges (up to 128 KiB in total, the oldest drop out first) and a short task memory. A long history uses up the service limit, because it goes with every question. If you revoke access to a file, the answers that depend on it disappear from memory before the next question. A timeout or service limit ends the conversation, and unsaved history is lost.
+The check on the copy comes from a list: `python-unittest`, `pytest`, `go-test`, `npm-test`, `python-syntax`, `json`, `toml`, `bash-syntax`, `fish-syntax`, `text`. The `text` check only confirms valid UTF-8 text: **syntax and behaviour are not checked**. No check proves the project is correct.
+
+A conversation sends up to 64 recent exchanges within a 512 KiB history budget, with up to 32 KiB per answer, and up to 96 structured task notes within 64 KiB. The in-memory window is 128 turns; saved records keep the recent 64 and bounded notes in at most 16 MiB. This is bounded working context, not an unlimited transcript or automatic semantic compaction. A long history uses up the service limit, because it goes with every question. If you revoke access to a file, the answers that depend on it disappear from memory before the next question. A timeout or service limit ends the conversation, and unsaved history is lost.
 
 You turn on web search with `web = true`. It is a separate request: only your question, without files or local data. Weather (`weather = true`) reveals the place name and your IP address to the Open-Meteo service, and the result goes to the model.
 
@@ -193,15 +216,18 @@ Local commands that send nothing: `/find TEXT`, `/show A-B`, `/log`, `/exit`. `/
 
 ### `ai-desktop project DIRECTORY`
 
+The project editor receives the authorized conversation and observations behind the proposed edit. Type `/test pytest`, `/test python-unittest`, `/test go-test` or `/test npm-test` to run a fixed suite on an isolated copy of the authorized index. The controller requests approval for the copy. On a size refusal it reports the measured file count or byte total, the relevant policy setting and the fixed copy ceiling (20,000 files, 32 MiB per file and 128 MiB total); defaults are 2,000 files, 8 MiB per file and 64 MiB total, configured separately with `test_copy_*`. A refused copy runs no tests. The test output stays in your terminal. Go and npm need a delegated systemd user scope with verified cgroup v2 limits and the corresponding local toolchain. Recipes never install dependencies.
+
+
 One directory covered by `files.read`. The scan is local and repeated before each question. Limits: 20,000 files, 100,000 entries, depth
 16. Entries from `deny`, links, special files and `.git` are skipped and counted.
 
 - **Reading.** One consent per question. The model asks for names, a content search and line reads, at most 8 requests and 2 MiB of data. File names, matches and fragments are sent. With a large project you approve further stages (up to 5) one by one.
-- **Changes.** This mode is not read-only: after a request for a change the model proposes files, and from there the same flow as in `ask` applies (consent to send, test on a copy, diff, separate consent to write, undo). This needs a `files.write` entry with the directory and subdirectories covering the project, e.g. `~/Projects/**`. Restrictions: 8 files, 5 path levels, 64 KiB per file.
+- **Changes.** This mode is not read-only: after a request for a change the model proposes files, and from there the same flow as in `ask` applies (consent to send, test on a copy, diff, separate consent to write, undo). This needs a `files.write` entry with the directory and subdirectories covering the project, e.g. `~/Projects/**`. Edits support up to 64 changed files, 5 path levels and 8 MiB per resulting file, within the owner’s lower read limits. The local test copy supports paths up to 16 levels deep independently of editable targets.
 - **Deletion.** A list of files, `[y/n]`, the task trash and a printed restore command.
-- `project` does not run commands and does not use the Internet.
+- Project suites can run on the approved copy. The project mode has no general-purpose command runner or web search.
 
-Local commands: `/files [DIR]`, `/search TEXT`, `/refresh`, `/log`, `/exit`. Large pastes (up to 32 KiB) appear as a placeholder and go to the model as data. Enter sends, and Alt+Enter breaks the line. Two Ctrl+C within 3 seconds end the session.
+Local commands: `/files [DIR]`, `/search TEXT`, `/refresh`, `/log`, `/test RECIPE`, `/exit`. Large pastes (up to 32 KiB) appear as a placeholder and go to the model as data. Enter sends, and Alt+Enter breaks the line. Two Ctrl+C within 3 seconds end the session.
 
 ### `ai-desktop task`
 
@@ -212,7 +238,7 @@ ai-desktop task run "Fix the addition in calc.py" --workspace /path/to/project \
     --file calc.py --context test_calc.py --test python-unittest
 ```
 
-`--file` may be changed, `--context` is read-only. The directory must be given as an absolute path and must not be the whole home directory. Limits: 64 input files, 32 proposed, 64 KiB per file, 128 KiB in total, instruction up to 128 KiB. Tests run on a copy, without network or home directory. Python tests cannot create processes, threads or sockets, so not every test suite will work here. `--preview` shows the data without the model or a test. There are two consents: to send and to write.
+`--file` may be changed, `--context` is read-only. The directory must be given as an absolute path and must not be the whole home directory. Limits: 512 selected input files, 64 changed files, 8 MiB per file and 16 MiB in total, instruction up to 128 KiB. Small unique anchored replacements are applied against the original bytes; missing, repeated or overlapping anchors are refused. Tests run on a copy, without network or home directory. Python tests cannot create processes, threads or sockets, so not every test suite will work here. `--preview` shows the data without the model or a test. There are two consents: to send and to write.
 
 ### Undo and restore
 
@@ -246,7 +272,7 @@ You can add them on your own system if you consciously want to. A program not in
 
 The packaged Skills lead from a symptom through the needed reads and interpretation of results to an established cause or a clearly stated lack of data. They take the sandbox restrictions into account: lack of access to the session or network is not proof of a host failure. A proposed fix requires a separate plan, consent and a check of the result; loading a procedure runs nothing.
 
-A Skill is an instruction for the model of up to 96 KiB, not a permission. An agent can have any number of Skills, but together with its role up to 104 KiB: the whole instruction goes to the Claude client as one argument, and Linux limits that to 128 KiB. In `ask` only the names and descriptions of the assigned Skills go with each question. The content goes only when the model asks for it, and the program shows that with a `Skill NAME` line. In `material`, `project` and `task` the content of the assigned Skills goes with each request. A Skill should describe how to do something, not what your computer looks like: the model reads the facts itself when needed. Files and commands are decided by `permissions.toml`. The package contains only general Skills; what concerns your computer you keep on your side:
+A Skill is a procedure, not a permission. The shared loader starts with assigned names and descriptions in all four modes: `ask`, `material`, `project` and `task`. The model requests needed procedures and individual bundled references; unrelated bodies stay out of its request. Bundles are frozen and rechecked for changes before handoff. References include official source URLs, a checked date, version applicability and a content hash; a rolling wiki snapshot must not be described as documentation verified for an installed version. Skill knowledge has a separate bounded budget from file-discovery output. Native client tools and automatic native Skill discovery remain disabled. Files and commands are decided by `permissions.toml`. The package contains only general Skills; what concerns your computer you keep on your side:
 
 ```fish
 ai-desktop skills new my-system      # creates ~/.config/ai-desktop/skills/my-system/SKILL.md

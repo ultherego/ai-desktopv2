@@ -1,6 +1,7 @@
 """Whole-material plan: exact cover, stages, controller-only coverage, phase schema."""
 import copy
 import unittest
+from unittest.mock import patch
 
 from ai_desktop import analysis_contract as ac
 from ai_desktop import material_step as ms
@@ -104,8 +105,8 @@ class PlanTests(unittest.TestCase):
 
     def test_more_parts_than_the_synthesis_can_take_are_refused_up_front(self):
         big = material(lines=70000)                              # ~5 MiB: 22 parts of 240 KiB fit the synthesis
-        self.assertLessEqual(len(w.WholePlan(big).parts), ms.MAX_OBSERVATIONS)
-        with self.assertRaises(w.WholeError):                    # 128 KiB parts would be 40: a note per part cannot fit
+        self.assertLessEqual(len(w.WholePlan(big).parts), ms.MAX_PARTS)
+        with patch.object(w, "MAX_PARTS", 24), self.assertRaises(w.WholeError):
             w.WholePlan(big, part_bytes=128 * 1024)
 
     def test_a_file_that_would_need_too_many_parts_is_refused(self):

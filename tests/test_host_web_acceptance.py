@@ -104,10 +104,11 @@ class WebFixtureTests(unittest.TestCase):
 
     @unittest.skipIf(os.geteuid() == 0, "real policy refuses root")
     def test_real_policy_preflight_never_contacts_native(self):
-        from ai_desktop import ask_cli, cli, permissions
+        from ai_desktop import agent_profiles, ask_cli, cli, permissions
         with tempfile.TemporaryDirectory(prefix="ai-web-preflight-", dir=pwd.getpwuid(os.geteuid()).pw_dir) as home:
             fixture = host.create_fixture(home)
             with patch.object(permissions, "_home", return_value=home), \
+                    patch.object(agent_profiles, "Store", agent_profiles.Store), \
                     patch.object(permissions, "_read", wraps=permissions._read), \
                     patch.object(sys, "argv", ["fixture", "policy-check"]), patch.object(sys, "path", list(sys.path)), \
                     patch.object(cli, "main") as native, patch.object(ask_cli, "request") as request, \
@@ -120,9 +121,18 @@ class WebFixtureTests(unittest.TestCase):
             host.check_state(fixture)
 
     def simulate(self, behavior, *, refusal=False):
+        from ai_desktop import agent_profiles
         fixture = self.fixture()
         access = {"files": [], "systemd": [], "weather": False, "web": True}
+        profile = agent_profiles.defaults().profiles["default"]
+        controls = {"provider": profile.provider, "model": profile.model, "effort": profile.effort,
+                    "instructions": agent_profiles.catalog_for(profile), "profile": "default", "access": profile.access}
         package = ModuleType("ai_desktop")
+        profile_store = Mock()
+        def resolve():
+            package.agent_profiles.Store()
+            return dict(controls)
+        package.agent_profiles = SimpleNamespace(Store=profile_store, resolve=resolve)
         policy = SimpleNamespace(access=lambda: access, sources=lambda: {
             "claude": True, "weather": False, "systemd": [], "web": True}, recheck=Mock())
         package.permissions = SimpleNamespace(_read=Mock(), read_selected=Mock(), load_policy=lambda: policy)
@@ -147,11 +157,25 @@ class WebFixtureTests(unittest.TestCase):
                 return "Answer\nSources:\n[1] Python downloads — ``https://www.python.org/downloads/``"
             return "Answer\nSources:\n[1] Python downloads — `https://www.python.org/downloads/`"
         def original_request(question, args, reader, **kwargs):
-            data = {"mode": "web" if kwargs.get("web") else "assistant", "question": question}
+            data = {"mode": "web" if kwargs.get("web") else "assistant", "question": question,
+                    "execution": dict(controls)}
             if data["mode"] == "assistant":
                 data["access"] = kwargs["access"]
+                if behavior == "planner-knowledge":
+                    data["knowledge"] = {"resources": []}
             if behavior == "extra-payload" and data["mode"] == "web":
                 data["context"] = ["PRIVATE LOCAL DATA"]
+            if data["mode"] == "web":
+                if behavior == "missing-execution":
+                    del data["execution"]
+                elif behavior == "changed-execution":
+                    data["execution"]["instructions"] += "UNAPPROVED"
+                elif behavior == "changed-provider":
+                    data["execution"]["provider"] = "codex"
+                elif behavior == "extra-execution-field":
+                    data["execution"]["tools"] = "Bash"
+                elif behavior in ("knowledge", "conversation", "memory"):
+                    data[behavior] = {"local": "PRIVATE LOCAL DATA"}
             approval = SimpleNamespace(payload=json.dumps(data), sha256="digest")
             if behavior == "no-session":
                 return package.ask_cli.send_once(approval)
@@ -189,11 +213,14 @@ class WebFixtureTests(unittest.TestCase):
                 code = exc.code
             except AssertionError:
                 code = 2
+        profile_store.assert_called_once_with(home=fixture["home"])
         return code, output.getvalue()
 
     def test_native_proof_rejects_extra_payload_reads_sessions_and_missing_sources(self):
         for behavior in ("full", "extra-approval", "local-read", "collector", "extra-payload", "no-session",
-                         "missing-web", "context", "extra-session", "no-proof", "wrong-source", "malformed-source"):
+                         "missing-web", "context", "extra-session", "no-proof", "wrong-source", "malformed-source",
+                         "missing-execution", "changed-execution", "changed-provider", "extra-execution-field",
+                         "planner-knowledge", "knowledge", "conversation", "memory"):
             with self.subTest(behavior=behavior):
                 code, output = self.simulate(behavior)
                 self.assertEqual(code, 0 if behavior == "full" else 2)

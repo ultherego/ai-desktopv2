@@ -4,12 +4,13 @@
 # Only the guarded package scriptlet may apply it during this approved install.
 pkgname=ai-desktop
 pkgver=0.1.0
-pkgrel=70
+pkgrel=79
 pkgdesc='Terminal AI assistant for CachyOS and Arch with an isolated client and approved changes'
 arch=('x86_64')
 url='https://github.com/ultherego/ai-desktopv2'
 license=('Apache-2.0')
 depends=('python>=3.12' 'bubblewrap' 'systemd' 'ca-certificates' 'libseccomp' 'sudo' 'python-rich>=13.7' 'python-cryptography')
+optdepends=('python-pytest: run the offline pytest recipe' 'go: run the offline go-test recipe' 'npm: run the offline npm-test recipe')
 options=('!strip')  # Preserve an optionally supplied official native binary.
 install=ai-desktop.install
 source=()
@@ -40,6 +41,13 @@ package() {
         install -d -m755 "${target}/skills/${skill##*/}"
         [[ -f "${skill}/SKILL.md" && ! -L "${skill}/SKILL.md" ]] || return 1
         install -m644 "${skill}/SKILL.md" "${target}/skills/${skill##*/}/SKILL.md"
+        if [[ -d "${skill}/references" ]]; then
+            install -d -m755 "${target}/skills/${skill##*/}/references"
+            for src in "${skill}"/references/*.md; do
+                [[ -f "${src}" && ! -L "${src}" ]] || return 1
+                install -m644 "${src}" "${target}/skills/${skill##*/}/references/"
+            done
+        fi
     done
 
     # Never place these in /usr/lib/sysusers.d or /usr/lib/tmpfiles.d:
@@ -51,13 +59,14 @@ package() {
 
     # Dormant units only: no enable/start, polkit rule or automatic preset.
     local unit
-    for unit in ai-desktop-handoff@.socket ai-desktop-handoff@.service ai-desktop-analysis@.socket ai-desktop-analysis@.service; do
+    for unit in ai-desktop-handoff@.socket ai-desktop-handoff@.service ai-desktop-analysis@.socket ai-desktop-analysis@.service \
+                ai-desktop-codex-limits@.socket ai-desktop-codex-limits@.service; do
         [[ -f "${startdir}/../systemd/${unit}" && ! -L "${startdir}/../systemd/${unit}" ]] || return 1
         install -Dm644 "${startdir}/../systemd/${unit}" "${pkgdir}/usr/lib/systemd/system/${unit}"
     done
     [[ -f "${startdir}/../systemd/activated-worker.py" && ! -L "${startdir}/../systemd/activated-worker.py" ]] || return 1
     install -m644 "${startdir}/../systemd/activated-worker.py" "${target}/activated-worker.py"
-    for src in analysis-worker.py analysis-client.py analysis-session.py codex-auth.py codex-client.py; do
+    for src in analysis-worker.py analysis-client.py analysis-session.py codex-auth.py codex-client.py codex-quota.py; do
         [[ -f "${startdir}/../systemd/${src}" && ! -L "${startdir}/../systemd/${src}" ]] || return 1
         install -m644 "${startdir}/../systemd/${src}" "${target}/${src}"
     done
@@ -91,6 +100,39 @@ package() {
         [[ -f "${startdir}/codex" && ! -L "${startdir}/codex" ]] || return 1
         [[ "$(head -c4 "${startdir}/codex" | od -An -tx1 | tr -d ' \n')" == 7f454c46 ]] || return 1
         install -m755 "${startdir}/codex" "${target}/codex"
+    fi
+
+    # Optional launchers and examples. The package never changes a user's Niri or DMS configuration.
+    local desktop="${root}/packaging/desktop" widget="dms/AiDesktop"
+    [[ -d "${desktop}" && ! -L "${desktop}" && ! -L "${desktop}/dms" && ! -L "${desktop}/${widget}" ]] || return 1
+    [[ -d "${desktop}/${widget}/usage" && ! -L "${desktop}/${widget}/usage" ]] || return 1
+    for src in ai-desktop.desktop ai-desktop-panel.desktop ai-desktop-{login,logout}-{claude,codex}.desktop ai-desktop-check-sign-in.desktop \
+               ai-desktop-codex-limits{,-disconnect}.desktop; do
+        [[ -f "${desktop}/${src}" && ! -L "${desktop}/${src}" ]] || return 1
+        install -Dm644 "${desktop}/${src}" "${pkgdir}/usr/share/applications/${src}" || return 1
+    done
+    for src in niri-bindings.kdl "${widget}"/{plugin.json,Widget.qml,Settings.qml,usage/QuotaCard.qml,usage/Status.js}; do
+        [[ -f "${desktop}/${src}" && ! -L "${desktop}/${src}" ]] || return 1
+        install -Dm644 "${desktop}/${src}" "${pkgdir}/usr/share/ai-desktop/${src}" || return 1
+    done
+
+    # install_agents.py binds the selected clients to the bytes it just verified, including Codex's extracted ELF.
+    if [[ "${AI_DESKTOP_CHECK_CLIENTS:-}" == 1 ]]; then
+        local client expected actual
+        for client in claude-code codex; do
+            if [[ "$client" == claude-code ]]; then
+                expected="${AI_DESKTOP_EXPECT_CLAUDE:-}"
+            else
+                expected="${AI_DESKTOP_EXPECT_CODEX:-}"
+            fi
+            if [[ "$expected" == - ]]; then
+                [[ ! -e "${target}/${client}" ]] || return 1
+            else
+                [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || return 1
+                actual="$(sha256sum "${target}/${client}")" || return 1
+                [[ "${actual%% *}" == "$expected" ]] || return 1
+            fi
+        done
     fi
 
     install -d -m755 "${pkgdir}/usr/bin"

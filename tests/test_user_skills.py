@@ -37,7 +37,7 @@ class RepositoryContentTests(unittest.TestCase):
         for name in names:
             self.assertIn("- " + name + ": ", catalog)
         self.assertNotIn("## ", catalog)
-        self.assertLess(len(catalog.encode("utf-8")), 8192)
+        self.assertLess(len(catalog.encode("utf-8")), 16384)
 
     def test_the_largest_prompt_fits_one_argv_string_of_the_claude_client(self):
         """Linux caps one argument at 128 KiB (MAX_ARG_STRLEN); the whole system prompt is one `--system-prompt` value."""

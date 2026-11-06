@@ -44,7 +44,7 @@ class ExecutionValidationTests(unittest.TestCase):
                     patch.object(agent_profiles, "resolve", return_value=selected) as resolve, \
                     contextlib.redirect_stdout(io.StringIO()):
                 self.assertEqual(task(["--effort", effort, "remaining"]), 0)
-            resolve.assert_called_once_with(None, None, effort)
+            resolve.assert_called_once_with(None, None, effort, catalog=True)
             self.assertEqual(calls[-1], (["remaining"], selected))
         previous = list(calls)
         with patch.object(agent_profiles, "resolve", return_value=changed(
@@ -362,7 +362,7 @@ class ExecutionNativeTests(unittest.TestCase):
             "import contextlib,sys; from types import SimpleNamespace; "
             "from ai_desktop import analysis_child as c; "
             "c.check_boundary=lambda _:None; c.install_mode_filter=lambda:None; "
-            "c._Bridge=lambda *_:contextlib.nullcontext(SimpleNamespace(serve_forever=lambda:None,shutdown=lambda:None)); "
+            "c._Bridge=lambda *_,**__:contextlib.nullcontext(SimpleNamespace(serve_forever=lambda:None,shutdown=lambda:None)); "
             "c.client_command=lambda action,selected=None:[sys.executable,'-I','-c'," + repr(native) + "]; "
             "raise SystemExit(c.main(['analyze','{}']))")
         code, output, errors = bounded_process([sys.executable, "-B", "-c", bootstrap], env={"PATH": "/usr/bin"},
@@ -374,15 +374,16 @@ class ExecutionNativeTests(unittest.TestCase):
 class ConversationControlsTests(unittest.TestCase):
     def test_idle_effort_hints_and_selection_use_the_active_provider(self):
         for provider in execution.PROVIDERS:
-            selected = changed(provider=provider, model="default")
+            selected = changed(provider=provider, model="default", effort="default")
             output = io.StringIO()
             with self.subTest(provider=provider), execution.using(selected), contextlib.redirect_stdout(output):
                 self.assertTrue(run_controls.conversation_command("/ustawienia"))
                 self.assertIn("|".join(execution.efforts_for(provider)), output.getvalue())
                 self.assertTrue(run_controls.conversation_command("/sila xhigh"))
-                self.assertEqual(execution.current()["effort"], "xhigh")
+                previous = "xhigh" if "xhigh" in execution.efforts_for(provider) else "default"
+                self.assertEqual(execution.current()["effort"], previous)
                 self.assertTrue(run_controls.conversation_command("/sila max"))
-                self.assertEqual(execution.current()["effort"], "max" if provider == "claude" else "xhigh")
+                self.assertEqual(execution.current()["effort"], "max" if provider == "claude" else previous)
 
     def test_history_is_closed_copied_and_scoped(self):
         history = [{"question": "poprzednie pytanie", "answer": "poprzednia odpowiedź"}]
@@ -395,9 +396,9 @@ class ConversationControlsTests(unittest.TestCase):
                 {"question": "poprzednie pytanie", "answer": "poprzednia odpowiedź"}])
         self.assertEqual(execution.current_history(), [])
         for bad in (None, (), {}, [{"question": "q"}], [{"question": "q", "answer": "a", "tools": "Bash"}],
-                    [{"question": "q", "answer": "a"}] * 33,
+                    [{"question": "q", "answer": "a"}] * (execution.MAX_HISTORY + 1),
                     [{"question": "x" * (128 * 1024 + 1), "answer": "a"}],
-                    [{"question": "q", "answer": "x" * 8257}],
+                    [{"question": "q", "answer": "x" * (execution.HISTORY_ANSWER_BYTES + 1)}],
                     [{"question": "q", "answer": "\x1b[31m"}],
                     [{"question": "q", "answer": "\ud800"}]):
             with self.subTest(bad=repr(bad)[:60]), self.assertRaisesRegex(ValueError, "conversation"):

@@ -74,8 +74,10 @@ class AnalysisRecipientTests(unittest.TestCase):
             # desktop owner's real settings, account files or OAuth store.
             stack.enter_context(patch.object(agent_profiles, "resolve", side_effect=
                 lambda profile=None, model=None, effort=None: resolve(profile, model, effort, store=self.store)))
-            stack.enter_context(patch.object(analysis_cli.os, "getuid", return_value=1000))
-            stack.enter_context(patch.object(analysis_cli.os, "geteuid", return_value=1000))
+            # Only the terminal command's entry guard simulates a desktop UID. File ownership
+            # checks for these real temporary stores use the actual runner UID (including CI).
+            identity = stack.enter_context(patch.object(analysis_cli, "os", wraps=analysis_cli.os))
+            identity.getuid.return_value = identity.geteuid.return_value = 1000
             stack.enter_context(patch.object(analysis_cli.sys.stdin, "isatty", return_value=True))
             stack.enter_context(patch.object(analysis_cli.sys.stdout, "isatty", return_value=True))
             stack.enter_context(patch.object(analysis_cli, "installation_ready"))

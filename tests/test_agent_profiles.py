@@ -40,7 +40,7 @@ class ProfileStoreTests(unittest.TestCase):
     def installed_skills(self):
         root = self.home / "installed-presets"
         root.mkdir(mode=0o755)
-        for name in profiles.PRESET_SKILLS.values():
+        for name in {name for group in profiles.PRESET_SKILLS.values() for name in group}:
             directory = root / name
             directory.mkdir(mode=0o755)
             path = directory / "SKILL.md"
@@ -92,12 +92,12 @@ class ProfileStoreTests(unittest.TestCase):
                 self.assertTrue(profiles.instructions_for(selected))
         self.assertEqual(prepared.active, "default")
         self.assertEqual({name: selected.skills for name, selected in prepared.entries},
-                         {name: (skill,) for name, skill in profiles.PRESET_SKILLS.items()})
+                         profiles.PRESET_SKILLS)
         self.assertEqual(prepared.profiles["analyst"].access, "read-only")
         self.assertEqual(prepared.profiles["reviewer"].access, "read-only")
         self.assertEqual(prepared.profiles["diagnostic"].access, "read-only")
         self.assertEqual(original, profiles.defaults())
-        self.assertTrue(all(not selected.skills for _, selected in original.entries))
+        self.assertTrue(all(selected.skills for _, selected in original.entries))
         self.assertFalse(self.store.path.exists())
         run.assert_not_called()
         process.assert_not_called()
@@ -118,19 +118,45 @@ class ProfileStoreTests(unittest.TestCase):
             prepared = profiles.prepared(original)
             again = profiles.prepared(prepared)
         self.assertEqual(prepared.active, original.active)
-        self.assertEqual(prepared.profiles["default"], replace(default, skills=("concise-assistant",)))
+        self.assertEqual(prepared.profiles["default"], replace(default, skills=profiles.PRESET_SKILLS["default"]))
         for name in ("reviewer", "analyst", "custom"):
             self.assertEqual(prepared.profiles[name], original.profiles[name])
         self.assertIn("diagnostic", prepared.profiles)
         self.assertIn("programmer", prepared.profiles)
         self.assertEqual(again, prepared)
 
+    def test_ask_resolution_never_falls_back_to_bodies_when_a_long_catalog_overflows(self):
+        root = self.home / "long-descriptions"
+        root.mkdir()
+        names = ("one", "two")
+        for name in names:
+            directory = root / name
+            directory.mkdir()
+            data = "---\nname: " + name + "\ndescription: " + "a" * 53050 + "\n---\nprivate body\n"
+            (directory / "SKILL.md").write_text(data)
+        config = profiles.defaults().put("default", profiles.Profile(skills=names))
+        self.write(config.data())
+        with patch.object(skills, "ROOT", root):
+            self.assertIn("private body", profiles.resolve(store=self.store, catalog=False)["instructions"])
+            with self.assertRaises(profiles.ProfileError):
+                profiles.resolve(store=self.store, catalog=True)
+
+    def test_prepared_diagnostic_can_load_the_btrfs_and_systemd_procedures_it_references(self):
+        with patch.object(skills, "ROOT", self.installed_skills()):
+            selected = profiles.prepared(profiles.defaults()).profiles["diagnostic"]
+            catalog = profiles.catalog_for(selected)
+            for name in ("arch-btrfs", "arch-systemd", "cachyos-boot-snapshots"):
+                self.assertIn("- " + name + ":", catalog)
+            self.assertNotIn("# Btrfs diagnostics", catalog)
+            original = profiles.defaults().put("diagnostic", replace(selected, skills=("arch-audio",)))
+            self.assertEqual(profiles.prepared(original).profiles["diagnostic"].skills, ("arch-audio",))
+
     def test_prepared_publishes_with_existing_snapshot_transaction(self):
         root = self.installed_skills()
         before = self.store.load()
         with patch.object(skills, "ROOT", root):
             after = self.store.mutate(profiles.prepared, expected=before)
-        self.assertEqual(after.config.profiles["default"].skills, ("concise-assistant",))
+        self.assertEqual(after.config.profiles["default"].skills, profiles.PRESET_SKILLS["default"])
         self.assertEqual(self.store.path.stat().st_mode & 0o777, 0o600)
         self.store.mutate(lambda value: value.select("reviewer"), expected=after)
         with patch.object(skills, "ROOT", root), self.assertRaises(profiles.ProfileError):
@@ -157,7 +183,7 @@ class ProfileStoreTests(unittest.TestCase):
             self.store.mutate(profiles.prepared, expected=self.store.load())
         self.assertEqual(self.store.path.read_bytes(), original)
 
-    def test_preparation_validates_combined_instructions_of_existing_custom_profiles(self):
+    def test_preparation_validates_catalog_and_each_source_for_large_custom_profiles(self):
         root = self.installed_skills()
         big = root / "big"
         big.mkdir(mode=0o755)
@@ -170,7 +196,15 @@ class ProfileStoreTests(unittest.TestCase):
         original = profiles.defaults().put("custom", profiles.Profile(
             instructions="a" * profiles.MAX_INSTRUCTIONS, skills=("big", "big2")))
         self.write(original.data())
+        with patch.object(skills, "ROOT", root):
+            after = self.store.mutate(profiles.prepared, expected=self.store.load())
+            self.assertEqual(after.config.profiles["custom"], original.profiles["custom"])
+            instructions = profiles.resolve("custom", store=self.store)["instructions"]
+        self.assertIn("- big: Large test skill", instructions)
+        self.assertIn("- big2: Large test skill", instructions)
+        self.assertNotIn("x" * 1024, instructions)
         before = self.store.path.read_bytes()
+        path.write_text("---\nname: big\ndescription: Large test skill\n---\n" + "x" * skills.MAX_SKILL_BYTES)
         with patch.object(skills, "ROOT", root), self.assertRaises(profiles.ProfileError):
             self.store.mutate(profiles.prepared, expected=self.store.load())
         self.assertEqual(self.store.path.read_bytes(), before)
@@ -314,11 +348,12 @@ class ProfileStoreTests(unittest.TestCase):
         with patch.object(skills, "ROOT", root):
             self.assertEqual(self.cli(["agents", "update", "reviewer", "--skill", "cachyos-diagnostics"])[0], 0)
             execution = profiles.resolve(profile="reviewer", store=self.store)
-        self.assertIn("Skill cachyos-diagnostics:", execution["instructions"])
+        self.assertIn("- cachyos-diagnostics:", execution["instructions"])
+        self.assertNotIn("Sprawdź dowody.", execution["instructions"])
         self.assertEqual(execution["access"], "read-only")
         self.assertLessEqual(len(execution["instructions"].encode()), 8192)
         self.assertEqual(self.cli(["agents", "update", "reviewer", "--no-skills"])[0], 0)
-        self.assertNotIn("Skill cachyos-diagnostics:", profiles.resolve(profile="reviewer", store=self.store)["instructions"])
+        self.assertNotIn("- cachyos-diagnostics:", profiles.resolve(profile="reviewer", store=self.store)["instructions"])
 
     def test_menu_uses_snapshot_and_returns_clean_summary(self):
         reader = iter(("2", "4"))

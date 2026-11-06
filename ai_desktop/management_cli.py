@@ -17,6 +17,8 @@ def model_choices(provider):
     """(values, labels, note). Claude: the client's aliases. Codex: Auto, the client's own catalog, free text."""
     if provider == "claude":
         return profiles.MODELS, tuple(MODEL_LABELS[key] for key in profiles.MODELS), None
+    if provider == "local":
+        return ("default", "custom"), ("Current server model", MODEL_LABELS["custom"]), None
     print("Getting the model list from the Codex client…", flush=True)
     try:
         entries = model_catalog.fetch()
@@ -28,13 +30,13 @@ def model_choices(provider):
     return values, labels, note
 EFFORT_LABELS = {"default": "client default", "low": "low", "medium": "medium", "high": "high",
                  "xhigh": "very high", "max": "maximum"}
-SERVICE_LABELS = {"claude": "Claude", "codex": "Codex"}
+SERVICE_LABELS = {name: execution.provider_name(name) for name in execution.PROVIDERS}
 
 
 def _profile_flags(parser, *, create=False):
-    parser.add_argument("--provider", choices=("claude", "codex"),
+    parser.add_argument("--provider", choices=execution.PROVIDERS,
                         help="Choose the service for all agents")
-    parser.add_argument("--model", type=execution.model_argument, metavar="MODEL")
+    parser.add_argument("--model", type=execution.service_model_argument, metavar="MODEL")
     parser.add_argument("--effort", choices=profiles.EFFORTS, help="Reasoning level")
     parser.add_argument("--instructions", help="Your own role instructions, up to 4096 B")
     parser.add_argument("--access", choices=profiles.ACCESSES, help="read-only blocks file changes")
@@ -55,9 +57,10 @@ def build_parser(*, prog="ai-desktop claude", provider_neutral=False):
     commands.add_parser("skills", help="Skills of the active profile in the terminal")
     settings = commands.add_parser("set", help="Change the settings of the active profile")
     if provider_neutral:
-        settings.add_argument("--provider", choices=("claude", "codex"),
+        settings.add_argument("--provider", choices=execution.PROVIDERS,
                               help="Choose the service for all agents")
-    settings.add_argument("--model", choices=profiles.MODELS)
+    settings.add_argument("--model", type=execution.service_model_argument if provider_neutral else execution.model_argument,
+                          metavar="MODEL")
     settings.add_argument("--effort", choices=profiles.EFFORTS)
     agents = commands.add_parser("agents", help="Manage profiles")
     actions = agents.add_subparsers(dest="action")
@@ -77,6 +80,15 @@ def build_parser(*, prog="ai-desktop claude", provider_neutral=False):
     copy.add_argument("source")
     copy.add_argument("name")
     return parser
+
+
+def _skill_summary(names):
+    """Keep menu labels bounded even when a role assigns many valid Skills."""
+    if not names:
+        return "none assigned"
+    shown = ", ".join(names[:3])
+    remaining = len(names) - min(3, len(names))
+    return str(len(names)) + " assigned · " + shown + (" (+" + str(remaining) + " more)" if remaining else "")
 
 
 def _summary(config):
@@ -111,6 +123,8 @@ def _models(provider="claude"):
     print("Reasoning: " + ", ".join(profiles.efforts_for(provider)) + ".")
     if provider == "claude":
         print("Model and level availability depends on your Claude account and the client. The model never changes automatically.")
+    elif provider == "local":
+        print("Use default for the current server model or set the alias configured in llama-server.")
     else:
         print("The Codex client picks the default model. Availability and level depend on your account and the client.")
 
@@ -231,7 +245,7 @@ class _SettingsMenu:
         return value if value.strip() else None
 
     def update(self, before, name, selected):
-        profiles.instructions_for(selected)
+        profiles.catalog_for(selected)
         current = before.config.with_provider(before.config.selected_provider)
         if current.profiles[name] != selected:
             self.store.mutate(lambda value: value.with_provider(current.selected_provider).put(name, selected),
@@ -248,8 +262,8 @@ class _SettingsMenu:
             print("The settings were changed elsewhere at the same time. The menu was refreshed.")
 
     def service(self, before):
-        value = self.pick("Service · for all agents · no login", ("claude", "codex"),
-                          labels=("Claude", "ChatGPT / Codex"), current=before.config.selected_provider)
+        value = self.pick("Service · for all agents · no login", execution.PROVIDERS,
+                          labels=("Claude", "ChatGPT / Codex", "Local llama.cpp"), current=before.config.selected_provider)
         if value is not None:
             selected = before.config.with_provider(value)
             if selected != before.config:
@@ -272,7 +286,7 @@ class _SettingsMenu:
             raise profiles.ProfileError("skill")
         result = []
         for name in skills.names():
-            profiles.instructions_for(profiles.Profile(skills=(name,)))
+            profiles.catalog_for(profiles.Profile(skills=(name,)))
             result.append(name)
         return tuple(result)
 
@@ -283,18 +297,18 @@ class _SettingsMenu:
             return selected
         draft = selected
         while True:
-            action = self.select("Skills · " + (", ".join(draft.skills) or "none assigned"),
+            action = self.select("Skills · " + _skill_summary(draft.skills),
                                  ("Add Skill", "Unassign", "Preview Skill", "Save", "Back"))
             if action is None or action == 4:
                 return selected
             if action == 3:
-                profiles.instructions_for(draft)
+                profiles.catalog_for(draft)
                 return draft
             if action == 0:
                 name = self.pick("Add Skill", tuple(name for name in names if name not in draft.skills))
                 if name is not None:
                     candidate = replace(draft, skills=draft.skills + (name,))
-                    profiles.instructions_for(candidate)
+                    profiles.catalog_for(candidate)
                     draft = candidate
             elif action == 1:
                 name = self.pick("Unassign Skill", draft.skills)
@@ -314,7 +328,7 @@ class _SettingsMenu:
             value = self.pick("Model · " + selected.provider, values, labels=labels,
                               current=selected.model if selected.model in values else None)
             if value == "custom":
-                value = self.text("Codex model ID: ", 96)
+                value = self.text(SERVICE_LABELS[selected.provider] + " model ID: ", 96)
                 value = value.strip() if value is not None else None
             if value is not None:
                 return replace(selected, model=value)
@@ -348,7 +362,7 @@ class _SettingsMenu:
                 "Reasoning: " + EFFORT_LABELS[selected.effort],
                 "Access: " + ("read-only" if selected.access == "read-only" else "changes after approval"),
                 "Instructions: " + ("custom" if selected.instructions else "none"),
-                "Skills: " + (", ".join(selected.skills) or "none assigned"))
+                "Skills: " + _skill_summary(selected.skills))
 
     def draft(self, selected):
         fields = ("model", "effort", "access", "instructions", "skills")
@@ -358,7 +372,7 @@ class _SettingsMenu:
             if action is None or action == 6:
                 return None
             if action == 5:
-                profiles.instructions_for(selected)
+                profiles.catalog_for(selected)
                 return selected
             selected = self.change(selected, fields[action])
 
@@ -424,7 +438,7 @@ class _SettingsMenu:
                     if name in before.config.profiles:
                         raise profiles.ProfileError("exists")
                     selected = before.config.with_provider(before.config.selected_provider).profiles[source]
-                    profiles.instructions_for(selected)
+                    profiles.catalog_for(selected)
                     self.store.mutate(lambda value: value.with_provider(before.config.selected_provider).copy(source, name),
                                       expected=before)
                 elif action == 4:
@@ -553,7 +567,7 @@ def main(argv=None, *, reader=input, store=None, chooser=None,
             if name in before.config.profiles:
                 raise profiles.ProfileError("exists")
             selected = before.config.with_provider(before.config.selected_provider).profiles[source]
-            profiles.instructions_for(selected)
+            profiles.catalog_for(selected)
             store.mutate(lambda value: value.with_provider(before.config.selected_provider).copy(source, name),
                          expected=before)
             print("Copied profile: " + name)
@@ -569,7 +583,7 @@ def main(argv=None, *, reader=input, store=None, chooser=None,
             config = config.with_provider(args.provider or config.selected_provider)
             selected = config.profiles[name] if exists else profiles.Profile(provider=config.selected_provider)
             selected = replace(selected, **updates)
-            profiles.instructions_for(selected)
+            profiles.catalog_for(selected)
             return config.put(name, selected)
         store.mutate(operation)
         print(("Created" if action == "create" else "Changed") + " profile: " + name)

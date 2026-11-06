@@ -12,11 +12,12 @@ import unicodedata
 KINDS = ("goal", "success", "baseline", "trial", "observation", "value", "correction", "decision", "proposal", "open")
 STATUSES = ("active", "superseded", "rejected", "done")
 PINNED = ("goal", "success", "baseline")        # trimmed last, and only after everything else
-MAX_ENTRIES = 40
-ENTRY_BYTES = 400
-MEMORY_BYTES = 10 * 1024
+MAX_ENTRIES = 96
+ENTRY_BYTES = 1024
+MEMORY_BYTES = 64 * 1024
 MAX_OPS = 12
-_ID = re.compile(r"m(?:[1-9][0-9]{0,3})\.(?:[1-9][0-9]?)\Z")
+MAX_TURN = 2**31 - 1
+_ID = re.compile(r"m(?:[1-9][0-9]{0,9})\.(?:[1-9][0-9]?)\Z")
 MARKER = "@@MEMORY "
 
 
@@ -57,7 +58,7 @@ def validate(value):
             if type(item) is not dict or not keys <= set(item) <= keys | {"by"}:
                 raise ValueError()
             if (type(item["id"]) is not str or not _ID.fullmatch(item["id"]) or item["id"] in seen
-                    or type(item["turn"]) is not int or isinstance(item["turn"], bool) or not 1 <= item["turn"] < 10**4
+                    or type(item["turn"]) is not int or isinstance(item["turn"], bool) or not 1 <= item["turn"] <= MAX_TURN
                     or type(item["kind"]) is not str or item["kind"] not in KINDS
                     or type(item["status"]) is not str or item["status"] not in STATUSES):
                 raise ValueError()
@@ -125,7 +126,7 @@ def parse_ops(raw):
 
 
 def _drop_order(entry):
-    pinned = entry["kind"] in PINNED and entry["status"] == "active"
+    pinned = (2 if entry["kind"] == "goal" else 1) if entry["kind"] in PINNED and entry["status"] == "active" else 0
     finished = entry["status"] in ("superseded", "rejected", "done")
     return (pinned, not finished, entry["turn"])
 
@@ -146,6 +147,8 @@ def apply(memory, turn, ops, user_note=None, goal=False, facts=()):
 
     Ids are assigned here, `supersedes` marks the old entry `superseded` and points at the new one, and an unknown id
     is ignored and reported instead of being invented."""
+    if type(turn) is not int or not 1 <= turn <= MAX_TURN:
+        raise ValueError("memory")
     entries = [dict(item) for item in memory["entries"]]
     known = {item["id"] for item in entries}
     notes, counter = [], 0

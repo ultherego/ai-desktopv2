@@ -44,6 +44,25 @@ class TaskWorkspaceTests(unittest.TestCase):
         return source, TaskPlan(before, source, {"summary": "change", "files": [
             {"path": "data.csv", "content": "a;b\n1;2\n"}]}, "text")
 
+    def test_two_mib_anchored_edit_keeps_format_and_survives_durable_undo(self):
+        original = b"\xef\xbb\xbf" + b"# filler\r\n" * 210000 + b"VALUE = 1\r\n"
+        target = self.root / "large.py"
+        target.write_bytes(original)
+        before = workspace.snapshot(str(self.root), ["large.py"])
+        source = {"instruction": "Update VALUE only", "files": [{"path": "large.py", "writable": True,
+                  "content": contract.plain_text(original.decode("utf-8"))}]}
+        response = {"summary": "Update VALUE", "files": [{"path": "large.py", "replacements": [
+            {"old": "VALUE = 1", "new": "VALUE = 2"}]}]}
+        plan = TaskPlan(before, source, response, "python-syntax")
+        self.assertGreater(len(source["files"][0]["content"].encode()), 1024 * 1024)
+        self.assertLess(len(canonical(response)), 256)
+        self.assertIn("+VALUE = 2", plan.diff())
+        self.apply(plan)
+        self.assertEqual(target.read_bytes(), original.replace(b"VALUE = 1", b"VALUE = 2"))
+        self.assertEqual(workspace.status(str(self.root)), [(plan.sha256, "applied")])
+        self.assertTrue(workspace.rollback(str(self.root), plan.sha256))
+        self.assertEqual(target.read_bytes(), original)
+
     def test_an_edit_keeps_the_bom_and_windows_line_ends_and_undo_restores_the_exact_bytes(self):
         original = b"\xef\xbb\xbfa,b\r\n1,2\r\n"
         source, plan = self.windows_plan(original)
@@ -87,6 +106,24 @@ class TaskWorkspaceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             self.apply(plan)
         self.assertEqual((self.root / "data.csv").read_bytes(), b"a\r\nb\r\n")
+
+    def test_crlf_expansion_total_refuses_before_journal_or_target_writes(self):
+        for name in ("a.txt", "b.txt"):
+            (self.root / name).write_bytes(b"a\r\n")
+        with patch.object(contract, "MAX_TOTAL", 10):
+            before = workspace.snapshot(str(self.root), ["a.txt", "b.txt"])
+            source = {"instruction": "change", "files": [
+                {"path": name, "content": "a\n", "writable": True} for name in before["files"]]}
+            plan = TaskPlan(before, source, {"summary": "change", "files": [
+                {"path": name, "content": "a\nb\n"} for name in before["files"]]}, "text")
+            with patch.object(workspace, "_write") as write, patch.object(workspace, "_save") as save:
+                with self.assertRaisesRegex(ValueError, "formatted total"):
+                    self.apply(plan)
+                write.assert_not_called()
+                save.assert_not_called()
+        for name in ("a.txt", "b.txt"):
+            self.assertEqual((self.root / name).read_bytes(), b"a\r\n")
+        self.assertFalse((self.root / workspace.STATE).exists())
 
     def test_apply_existing_create_new_and_idempotent_durable_rollback(self):
         plan = self.plan(); self.apply(plan)

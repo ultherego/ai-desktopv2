@@ -85,6 +85,15 @@ class AccountAdminTests(unittest.TestCase):
                 stops = [c.args[0] for c in process.call_args_list if c.args[0][:2] == ["/usr/bin/systemctl", "stop"]]
                 self.assertEqual(stops, [["/usr/bin/systemctl", "stop", "ai-desktop-codex-auth-" + "a" * 16 + ".service"]])
 
+    def test_only_semantic_worker_exit_is_mapped_as_local_disconnect(self):
+        for native_code, expected in ((codex_admin.worker_exit(5), 5), (4, 2), (5, 2), (6, 2), (203, 2)):
+            with self.subTest(code=native_code), ExitStack() as stack:
+                self.admin_patches(stack, native_code=native_code)
+                self.assertEqual(codex_admin.main("logout", allow=True), expected)
+        with ExitStack() as stack:
+            self.admin_patches(stack, native_code=codex_admin.worker_exit(5), active=True)
+            self.assertEqual(codex_admin.main("logout", allow=True), 2)
+
     def test_unverified_or_active_cleanup_cannot_report_success(self):
         for kwargs in ({"active": True}, {"cleanup_error": True}):
             with self.subTest(kwargs=kwargs), ExitStack() as stack:
@@ -187,6 +196,8 @@ class AuthCallbackTests(unittest.TestCase):
                 handler.do_GET()
         with tempfile.TemporaryDirectory() as temp, \
                 patch.object(codex_admin, "HOME", Path(temp)), \
+                patch("ai_desktop.analysis_sandbox.HOME", Path(temp)), \
+                patch("ai_desktop.analysis_sandbox.service_identity"), \
                 patch("ai_desktop.e2_socket_activation._worker_identity", return_value=True), \
                 patch.object(codex_admin.os, "isatty", return_value=True), \
                 patch("ai_desktop.siwc_auth.AuthStore"), \
@@ -231,7 +242,7 @@ class InstalledEntrypointTests(unittest.TestCase):
         for argument in ("login-verbose", "logout-verbose", "worker-login-verbose", "worker-logout-verbose"):
             with self.subTest(argument=argument), ExitStack() as stack:
                 admin, worker = Mock(return_value=0), Mock(return_value=0)
-                fake = SimpleNamespace(main=admin, auth_worker=worker)
+                fake = SimpleNamespace(main=admin, auth_worker=worker, worker_exit=codex_admin.worker_exit)
                 stack.enter_context(patch.dict(sys.modules, {"ai_desktop.codex_admin": fake}))
                 stack.enter_context(patch.object(sys, "argv", ["codex-auth.py", argument]))
                 stack.enter_context(patch.object(sys, "path", sys.path[:]))
@@ -252,7 +263,7 @@ class InstalledEntrypointTests(unittest.TestCase):
                                     (["login", "TOKEN_SECRET"], None), (["/tmp/command"], None)):
             with self.subTest(arguments=arguments), ExitStack() as stack:
                 admin, worker = Mock(return_value=0), Mock(return_value=0)
-                fake = SimpleNamespace(main=admin, auth_worker=worker)
+                fake = SimpleNamespace(main=admin, auth_worker=worker, worker_exit=codex_admin.worker_exit)
                 stack.enter_context(patch.dict(sys.modules, {"ai_desktop.codex_admin": fake}))
                 stack.enter_context(patch.object(sys, "argv", ["codex-auth.py", *arguments]))
                 stack.enter_context(patch.object(sys, "path", sys.path[:]))

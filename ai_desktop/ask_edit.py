@@ -42,6 +42,7 @@ class PreparedEdit:
     check: str
     workspace: str
     write_grant: object
+    project_test: object = None
 
 
 class WriteGrant:
@@ -89,7 +90,7 @@ class WriteGrant:
         permit.check()
 
 
-def prepare(plan, snapshot, args, reader, *, question_consent, expected_versions=None):
+def prepare(plan, snapshot, args, reader, *, question_consent, expected_versions=None, project_context=None, test_root=None):
     from .run_controls import require_changes
     require_changes()
     """Snapshot only approved readable data and absent writable new targets."""
@@ -159,10 +160,34 @@ def prepare(plan, snapshot, args, reader, *, question_consent, expected_versions
             if writable:
                 targets.append(path)
             files.append({"path": name, "content": content, "writable": writable})
-        source = task_contract.request({"instruction": question_consent.question, "files": files})
+        source = {"instruction": question_consent.question, "files": files}
+        if project_context is not None:
+            source["project_context"] = project_context
+        source = task_contract.request(source)
         grant = WriteGrant(question_consent, snapshot, index, before, source, read_paths, targets)
         grant.require_transfer(question_consent, source)
-        return PreparedEdit(before, source, plan["check"], workspace, grant)
+        project_test = None
+        if plan["check"] in task_contract.TEST_SUITES:
+            from .project_checks import current_directory
+            from .project_edit_test import PreparedProjectTest
+            root = test_root if test_root is not None else current_directory(policy)
+            if root is None:
+                print("Project suites need the project directory covered by a recursive files.read rule. "
+                      "Open that directory before asking for the edit and test.")
+                raise ValueError("project test root")
+            if any(not target.startswith(root + "/") for target in targets):
+                print("The files to edit are outside the project selected for the test. Open their project and retry.")
+                raise ValueError("edit outside tested project")
+            try:
+                project_test = PreparedProjectTest(policy, root, workspace, before)
+            except ValueError as exc:
+                from .project_scope import TestScopeRefused
+                if isinstance(exc, TestScopeRefused):
+                    print("The local project test copy cannot be prepared. Nothing was sent or saved.")
+                    for detail in exc.details:
+                        print(detail)
+                raise
+        return PreparedEdit(before, source, plan["check"], workspace, grant, project_test)
     except (EditDenied, AnalysisDenied):
         raise
     except (OSError, ValueError, TypeError, KeyError, AttributeError, ExecutionDenied):
@@ -226,7 +251,7 @@ def finish(prepared, response, args, reader):
     values = dict(vars(args), workspace=prepared.workspace, test=prepared.check)
     try:
         code = finish_task(prepared.before, prepared.source, response, SimpleNamespace(**values), reader,
-                           write_guard=prepared.write_grant.check)
+                           write_guard=prepared.write_grant.check, project_test=prepared.project_test)
     except (ExecutionDenied, RecursionError):
         raise EditDenied("input") from None
     conversation_state.note_action(_change_fact(response, code, prepared.check))

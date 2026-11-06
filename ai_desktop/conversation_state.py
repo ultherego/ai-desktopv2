@@ -12,10 +12,9 @@ from contextvars import ContextVar
 from . import conversation_memory as memory
 from .execution import HISTORY_ANSWER_BYTES, HISTORY_QUESTION_BYTES, HISTORY_TOTAL_BYTES, MAX_HISTORY
 
-MAX_TURNS = 64                 # finished turns kept for revalidation; only the last MAX_HISTORY are sent verbatim
-MAX_SOURCE_PATHS = 256         # one saved conversation's table of sources (conversation_sessions.MAX_PATHS)
-MAX_SOURCES = 8                # files remembered per turn (more are summarised as "too many": the turn is then tainted by all)
-REDACTED = "[answer removed: the source it used is no longer allowed]"
+MAX_TURNS = 128                # finished turns kept for revalidation; only the last MAX_HISTORY are sent verbatim
+MAX_SOURCE_PATHS = 2048        # one saved conversation's table of sources (conversation_sessions.MAX_PATHS)
+REDACTED = "[answer withheld: its sources cannot be verified under the current permissions]"
 FACT_REDACTED = "Action taken: details removed because access to the source it used was revoked."
 _log = ContextVar("ai_desktop_turn_sources", default=None)
 
@@ -79,6 +78,7 @@ class Conversation:
         self.origins = {}          # entry id -> "user" | "model"; only model-written entries can be revoked
         self.taints = {}           # entry id -> tuple(paths) the entry may depend on
         self.number = 0
+        self.title = None
 
     # -- what a request carries ---------------------------------------------------------------------------------
     def history(self):
@@ -142,6 +142,8 @@ class Conversation:
         """Record a completed, approved turn. `ops` is the validated memory update or None (then only the user note)."""
         self.number += 1
         n = self.number
+        if self.title is None:
+            self.title = title_of(question)
         taint = set(sources) | set(self.visible_taint())
         first = not self.turns and not any(e["kind"] == "goal" for e in self.memory["entries"])
         # The user's own words are kept deterministically for the goal (first message) and whenever the model sent no
@@ -188,17 +190,18 @@ def export(conversation):
 
     # The source table is bounded. A turn whose sources no longer fit cannot be revoked precisely later, so it is stored
     # redacted (conservative) rather than with a shortened dependency list. A later turn inherits what earlier ones read.
-    known, fits = set(), {}
+    known, kept_turns = set(), set()
     for turn in reversed(turns):
         if not turn.redacted and len(known | set(turn.taint)) <= MAX_SOURCE_PATHS:
             known.update(turn.taint)
-            fits[id(turn)] = True
-    over = [not t.redacted and id(t) not in fits for t in turns]
-    history = [{"question": _bounded(t.question, HISTORY_QUESTION_BYTES),
-                "answer": _bounded(REDACTED if t.redacted or cut else t.answer, HISTORY_ANSWER_BYTES - 64)}
-               for t, cut in zip(turns, over)]
-    meta_turns = [{"n": t.n, "taint": [] if cut else [index(p) for p in t.taint], "redacted": t.redacted or cut}
-                  for t, cut in zip(turns, over)]
+            kept_turns.add(turn)
+    history, meta_turns = [], []
+    for turn in turns:
+        redacted = turn not in kept_turns
+        history.append({"question": _bounded(turn.question, HISTORY_QUESTION_BYTES),
+                        "answer": REDACTED if redacted else _bounded(turn.answer, HISTORY_ANSWER_BYTES - 64)})
+        meta_turns.append({"n": turn.n, "taint": [] if redacted else [index(p) for p in turn.taint],
+                           "redacted": redacted})
     # A note that depends on sources which no longer fit is left out, for the same reason.
     kept = []
     for entry in conversation.memory["entries"]:
@@ -209,11 +212,14 @@ def export(conversation):
             kept.append(entry)
     user = [e["id"] for e in kept if conversation.origins.get(e["id"]) == "user"]
     taints = {e["id"]: [index(p) for p in conversation.taints[e["id"]]] for e in kept if conversation.taints.get(e["id"])}
-    saved = memory.validate({**conversation.memory, "entries": kept})
+    saved = memory.validate({**conversation.memory, "entries": kept,
+                             "dropped": conversation.memory["dropped"] + len(conversation.memory["entries"]) - len(kept)})
     exported = {"history": history, "memory": saved, "paths": paths, "turns": meta_turns,
                 "meta": {"user": user, "taints": taints}}
-    if conversation.turns:
-        # The title is the user's own first message, shortened; it names the thread in the list and nothing else.
+    if conversation.title is not None:
+        # Keep the original title after its verbatim turn leaves the in-memory window.
+        exported["title"] = conversation.title
+    elif conversation.turns:
         exported["title"] = title_of(conversation.turns[0].question)
     return exported
 
@@ -222,6 +228,9 @@ def load(state):
     """Rebuild a conversation from a persisted ask state (or from an older record that has only `history`)."""
     conversation = Conversation()
     history = state.get("history", [])
+    conversation.title = state.get("title")
+    if conversation.title is None and history:
+        conversation.title = title_of(history[0]["question"])
     if "memory" in state:
         paths = state["paths"]
         conversation.memory = memory.validate(state["memory"])
@@ -235,9 +244,11 @@ def load(state):
         for pair, meta in zip(history, state["turns"]):
             conversation.turns.append(Turn(meta["n"], pair["question"], pair["answer"],
                                            tuple(paths[i] for i in meta["taint"]), meta["redacted"]))
-        conversation.number = max((t.n for t in conversation.turns), default=0)
+        conversation.number = max([t.n for t in conversation.turns]
+                                  + [entry["turn"] for entry in conversation.memory["entries"]], default=0)
     else:
-        for pair in history:                      # a pre-memory record: verbatim turns only, no known sources
+        for pair in history:
+            # Earlier versions saved the user's words but no evidence of what the answer read.
             conversation.number += 1
-            conversation.turns.append(Turn(conversation.number, pair["question"], pair["answer"]))
+            conversation.turns.append(Turn(conversation.number, pair["question"], REDACTED, redacted=True))
     return conversation

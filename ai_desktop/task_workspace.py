@@ -25,7 +25,7 @@ STATE = ".ai-desktop-tasks"
 READ = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
 DIR = READ | os.O_DIRECTORY
 CREATE = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC
-MAX_JOURNAL = 2 * 1024 * 1024
+MAX_JOURNAL = 6 * contract.MAX_TOTAL + 2 * 1024 * 1024  # before/after/undo, JSON escaping and metadata
 MAX_JOURNALS = 128
 MAX_LEGACY_PARENT_ENTRIES = 4096
 
@@ -514,8 +514,8 @@ def apply(session, authorization, *, write_guard=None):
                         "undo_temp": _stage_name(stage_names)})
     if not 1 <= len(entries) <= contract.MAX_CHANGED_FILES:
         raise ValueError("entries")
-    replacements = [dict(item, content=contract.file_text(contract.in_file_format(
-        item["content"], before["files"][item["path"]]["file"]))) for item in replacements]
+    replacements = contract.formatted_replacements(replacements,
+                                                    {name: item["file"] for name, item in before["files"].items()})
     root = _root(before["workspace"])
     try:
         if identity(os.fstat(root)) != before["root"]:

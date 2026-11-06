@@ -5,6 +5,7 @@ remain inside the configured scope. No commands, URLs or recursive tool loop
 are accepted. One approval covers this
 question and its captured permissions; each payload has its own managed session.
 """
+from contextlib import nullcontext
 from contextvars import ContextVar
 from dataclasses import dataclass
 import json
@@ -17,6 +18,7 @@ from .assistant_contract import PlanError, parse_plan, validate_access, _constan
 from .analysis_contract import (AnalysisDenied, ContextBudgetExceeded, InputBudgetExceeded, application_input,
                                 terminal_text)
 from .question_consent import QuestionConsent
+from .discovery_contract import MAX_SKILL_ROUNDS
 from .terminal_consent import confirm
 from .terminal_style import card, paint, size_label, symbol
 
@@ -51,7 +53,7 @@ def _plan(response, access):
 
 class AccessDenied(ValueError):
     def __init__(self, reason=None, problem=()):
-        self.reason = reason if reason in ("policy-invalid", "network-claude-disabled", "network-codex-disabled") else None
+        self.reason = reason if reason in ("policy-invalid", "network-claude-disabled", "network-codex-disabled", "network-local-disabled") else None
         self.problem = tuple(problem) if type(problem) in (tuple, list) and all(type(line) is str for line in problem) else ()
         super().__init__("access denied")
 
@@ -78,7 +80,7 @@ class AccessSnapshot:
     def require_claude(self):
         self.recheck()
         if self.sources["claude"] is not True:
-            reason = "network-" + self.provider + "-disabled" if self.provider in ("claude", "codex") else None
+            reason = "network-" + self.provider + "-disabled" if self.provider in ("claude", "codex", "local") else None
             raise AccessDenied(reason)
 
 
@@ -109,9 +111,9 @@ def capture_access():
         sources, access = policy.sources(), _usable_writes(policy, policy.access())
     from .execution import current
     selected = current()
-    if selected is not None and selected["provider"] == "codex":
-        if policy is not None:
-            sources = {**sources, "claude": policy.provider_allowed("codex")}
+    if selected is not None and selected["provider"] in ("codex", "local"):
+        if policy is not None or selected["provider"] == "local":
+            sources = {**sources, "claude": policy is not None and policy.provider_allowed(selected["provider"])}
         # This adapter has no external WebSearch tool. Local file/systemd and
         # explicitly selected weather remain controller-owned collectors.
         access = {key: value for key, value in access.items() if key != "web"}
@@ -119,6 +121,10 @@ def capture_access():
     if selected is not None and selected["access"] == "read-only":
         # A read-only profile gets neither files to edit nor commands that change the live system.
         access = {key: value for key, value in access.items() if key not in ("write", "change_commands")}
+    else:
+        from .project_checks import current_directory
+        if current_directory(policy) is not None:
+            access = {**access, "project_test": True}  # capability only; cwd stays local
     return AccessSnapshot(policy, sources, validate_access(access),
                           "claude" if selected is None else selected["provider"])
 
@@ -233,11 +239,12 @@ def _run_command(snapshot, ledger, plan, permit, args, reader):
     shown = lambda words: terminal_text(" ".join(words))
 
     def add(words, role, status, code=None, output="", cut=False):
-        ledger.add_run({"op": "run", "argv": list(words), "status": status, "exit": code, "output": output,
-                        "truncated": cut, "role": role})
+        observed = ledger.add_run({"op": "run", "argv": list(words), "status": status, "exit": code,
+                                   "output": output, "truncated": cut, "role": role})
         outcome = _OUTCOME.get(status, "failed")
         conversation_state.note_action("%s %s: %s%s" % (_LABEL[role], " ".join(words), outcome,
                                                        "" if code is None else ", code %d" % code))
+        return observed
 
     def spend():
         try:
@@ -274,7 +281,7 @@ def _run_command(snapshot, ledger, plan, permit, args, reader):
             change_ran.append(True)
         # The command has already run on the live system: its result is recorded and shown before consent can stop the
         # question. A lapsed consent stops what comes next, it does not erase what happened.
-        add(words, role, step["status"], step["exit"], step["output"], step["truncated"])
+        step = add(words, role, step["status"], step["exit"], step["output"], step["truncated"])
         print(_finished(_LABEL[role], step))
         if args.details:
             print(terminal_text(step["output"]))
@@ -307,7 +314,7 @@ def _run_command(snapshot, ledger, plan, permit, args, reader):
             extra["command"] = lambda program, words: command_ops.sandbox_command(program, words, share_processes=True)
         step = command_ops.execute(path, argv, output_limit=room, timeout=policy.limits().command_timeout, **extra)
         permit.check()
-        add(argv, "read", step["status"], step["exit"], step["output"], step["truncated"])
+        step = add(argv, "read", step["status"], step["exit"], step["output"], step["truncated"])
         print(_read_line(shown(argv), step))
         if args.details:
             print(terminal_text(step["output"]))
@@ -371,15 +378,16 @@ def _run_command(snapshot, ledger, plan, permit, args, reader):
 
 
 def _budget_stop(policy, name):
-    limits = policy.limits()
+    if name == "skills_bytes":
+        from .skill_runtime import MAX_KNOWLEDGE_BYTES
+        print("Refused: selected Skills and references exceed their separate %d B budget." % MAX_KNOWLEDGE_BYTES)
+        raise file_context.FileReadDenied("input")
+    limits = policy.limits() if policy is not None else permissions.Limits()
     print("Refused: the file discovery budget ran out: " + name + "=" + str(getattr(limits, name))
           + " ([files] of permissions.toml; ceiling in the code: " + str(permissions.LIMIT_SPECS[name][2])
           + "). A partial result is not sent as if it were complete.")
     print(recipient("The local result was not sent to Claude."))
     raise file_context.FileReadDenied("input")
-
-
-MAX_SKILL_ROUNDS = 3
 
 
 def _observed(carried, **payload):
@@ -396,13 +404,11 @@ def _observed(carried, **payload):
     return {"discovery": document}
 
 
-def _run_once(question, args, reader, request, *, phase=None, conversation_consent=None, skills=None):
+def _run_once(question, args, reader, request, *, snapshot, phase=None, conversation_consent=None, skills=None):
     """One plan and answer, optionally preceded by bounded discovery. Without a conversation grant it asks every time."""
     def progress(value):
         if phase is not None:
             phase(value)
-    progress("access")
-    snapshot = capture_access()
     explicit = args.no_context or args.systemd or args.systemd_state or args.weather
     if args.preview:
         describe_access(snapshot)
@@ -439,20 +445,31 @@ def _run_once(question, args, reader, request, *, phase=None, conversation_conse
             progress("answer-request")
             answer = request(question, args, reader, context=context, check=permit.check, question_consent=permit)
         else:
+            ledger = ask_discovery.DiscoveryLedger(snapshot.policy, question, (selected or {}).get("instructions", ""))
+            carried = {}
+            loaded = set()
+            if skills is not None and conversation_consent is not None:
+                for name, body in conversation_consent.reusable_skills(skills):
+                    try:
+                        ledger.add_skill(name, body)
+                    except ask_discovery.BudgetExhausted:
+                        continue
+                    loaded.add(name)
+                if loaded:
+                    pending = ledger.snapshot()
+                    try:
+                        application_input(None, question=question, access=snapshot.access, discovery=pending.document)
+                    except (ContextBudgetExceeded, InputBudgetExceeded):
+                        ledger = ask_discovery.DiscoveryLedger(snapshot.policy, question, (selected or {}).get("instructions", ""))
+                        loaded.clear()
+                    else:
+                        carried["document"] = permit.bind_discovery(snapshot.policy, pending, reuse_loader=skills)
             progress("plan-request")
             response = request(question, args, reader, access=snapshot.access, check=permit.check,
-                               question_consent=permit)
+                               question_consent=permit, **({"discovery": carried["document"]} if carried else {}))
             permit.check()
             progress("plan")
             plan = _plan(response, snapshot.access)
-            ledger = None
-            if plan["action"] in ("list", "find", "run", "skill") or (plan["action"] == "read" and plan["files"]):
-                if snapshot.policy is None:
-                    raise AccessDenied()
-                ledger = ask_discovery.DiscoveryLedger(snapshot.policy, question,
-                                                       (current_execution() or {}).get("instructions", ""))
-
-            carried = {}
 
             def next_plan():
                 """One more planner round that carries the cumulative local observations (same single approval)."""
@@ -460,7 +477,7 @@ def _run_once(question, args, reader, request, *, phase=None, conversation_conse
                     pending = ledger.snapshot()
                 except ValueError:
                     _budget_stop(snapshot.policy, "discovery_bytes")
-                document = permit.bind_discovery(snapshot.policy, pending)
+                document = permit.bind_discovery(snapshot.policy, pending, resource_loader=skills)
                 carried["document"] = document
                 progress("plan-request")
                 reply = request(question, args, reader, access=snapshot.access, discovery=document,
@@ -468,30 +485,40 @@ def _run_once(question, args, reader, request, *, phase=None, conversation_conse
                 permit.check()
                 progress("plan")
                 following = _plan(reply, snapshot.access)
-                if following["action"] not in ("list", "find", "run", "skill", "read", "answer", "edit", "delete"):
+                if following["action"] not in ("list", "find", "run", "skill", "read", "read-range", "search-content", "answer", "edit", "delete", "project-test"):
                     raise PlanError("action")
                 return following
 
             context = None
-            skill_rounds, loaded = 0, set()
-            while ledger is not None:
+            skill_rounds = 0
+            while True:
+                if snapshot.policy is None and (plan["action"] in ("list", "find", "run", "read-range", "search-content")
+                                                or plan["action"] == "read" and plan["files"]):
+                    raise AccessDenied()
                 if plan["action"] == "skill":
                     # On demand: until the model asks, only the name and description of a Skill leave this computer.
                     skill_rounds += 1
                     if skills is None or skill_rounds > MAX_SKILL_ROUNDS:
                         raise PlanError("action")
-                    wanted = [name for name in plan["names"] if name not in loaded]
+                    previous = {step["name"]: step["text"] for step in ledger.steps if step["op"] == "skill"}
+                    wanted = [name for name in plan["names"] if name not in loaded or
+                              "/" in name and skills(name) != previous.get(name)]
                     if not wanted:
                         raise PlanError("action")      # nothing new: another round would only repeat the same request
                     progress("collect")
                     for name in wanted:
                         loaded.add(name)
                         text = skills(name)
-                        ledger.add_skill(name, text)
+                        try:
+                            ledger.add_skill(name, text)
+                        except ask_discovery.BudgetExhausted as exhausted:
+                            _budget_stop(snapshot.policy, exhausted.name)
                         print(paint("  %s Skill %s %s %s" % (
                             symbol("skip" if text is None else "ok"), name, symbol("dot"),
                             "no such Skill" if text is None else size_label(len(text.encode("utf-8")))), "muted"))
                     plan = next_plan()
+                    if conversation_consent is not None:
+                        conversation_consent.remember_skills(ledger.steps[-len(wanted):])
                     continue
                 if plan["action"] == "run":
                     # An operation the owner listed in permissions.toml; its bounded result goes back to the model as
@@ -506,6 +533,27 @@ def _run_once(question, args, reader, request, *, phase=None, conversation_conse
                             _run_command(snapshot, ledger, {"action": "run", "argv": argv}, permit, args, reader)
                     else:
                         _run_command(snapshot, ledger, plan, permit, args, reader)
+                    plan = next_plan()
+                    continue
+                if plan["action"] in ("read-range", "search-content"):
+                    progress("collect")
+                    try:
+                        ledger.content(plan, permit)
+                        permit.check()
+                    except ask_discovery.Recoverable as problem:
+                        if not ledger.correction(problem):
+                            _deny(snapshot.policy, problem.code, "Content read refused", "The excerpt was not sent to Claude.")
+                    except ask_discovery.BudgetExhausted as exhausted:
+                        if not ledger.soft_stop(exhausted.name):
+                            _budget_stop(snapshot.policy, exhausted.name)
+                    except (OSError, ValueError, TypeError, KeyError, AttributeError, UnicodeError) as error:
+                        code = error.args[0] if isinstance(error, ValueError) and len(error.args) == 1 else None
+                        if (type(code) is not str or code not in ask_discovery.RECOVERABLE
+                                or not ledger.correction(ask_discovery.Recoverable(
+                                    code, ledger.selectors([plan["file"]]),
+                                    snapshot.policy.file_size() if code == "files-size" else ledger.limit_for(code)))):
+                            _deny(snapshot.policy, code if type(code) is str else None, "Content read refused",
+                                  "The excerpt was not sent to Claude.")
                     plan = next_plan()
                     continue
                 if plan["action"] in ("list", "find"):
@@ -543,6 +591,13 @@ def _run_once(question, args, reader, request, *, phase=None, conversation_conse
                         _deny(snapshot.policy, problem.code, "File read refused",
                               "The file contents were not sent to Claude.")
                     plan = next_plan()
+            if plan["action"] == "project-test":
+                from . import project_checks
+                result = project_checks.current(plan["recipe"], reader, policy=snapshot.policy, permit=permit)
+                if result.summary:
+                    conversation_state.note_sources(result.sources)
+                    conversation_state.note_action(result.summary)
+                return result
             if plan["action"] == "answer":
                 return plan["text"]
             if plan["action"] == "web":
@@ -584,7 +639,11 @@ def _run_once(question, args, reader, request, *, phase=None, conversation_conse
         permit.close()
 
 
-def run(question, args, reader, request, *, phase=None, conversation_consent=None, skills=None):
+from .skill_runtime import version_scope
+
+
+@version_scope
+def run(question, args, reader, request, *, phase=None, conversation_consent=None, skills=None, turn_context=None):
     """One ordinary turn, or at most two collision follow-ups.
 
     Each turn closes the previous QuestionConsent and opens a new one; the prompt
@@ -594,8 +653,12 @@ def run(question, args, reader, request, *, phase=None, conversation_consent=Non
     """
     for turn in range(ask_followup.MAX_FOLLOWUPS + 1):
         try:
-            return _run_once(question, args, reader, request, conversation_consent=conversation_consent, skills=skills,
-                             **({"phase": phase} if phase is not None else {}))
+            if phase is not None:
+                phase("access")
+            snapshot = capture_access()
+            with turn_context(snapshot) if turn_context is not None else nullcontext():
+                return _run_once(question, args, reader, request, snapshot=snapshot, phase=phase,
+                                 conversation_consent=conversation_consent, skills=skills)
         except ask_edit.CreateCollision as conflict:
             if turn == ask_followup.MAX_FOLLOWUPS:
                 print("The conflict was not resolved after two follow-ups. Nothing was saved.")

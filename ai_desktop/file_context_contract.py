@@ -3,12 +3,12 @@ import re
 import unicodedata
 
 
-MAX_FILES = 64                 # defaults (the owner may change them in permissions.toml, see permissions.Limits)
-MAX_FILE_BYTES = 65536
-MAX_TOTAL_BYTES = 131072
-CEILING_FILES = 128            # hard ceilings of the wire schema; the client enforces the owner's (lower or equal) budget
-CEILING_FILE_BYTES = 131072
-CEILING_TOTAL_BYTES = 262144
+MAX_FILES = 128                 # defaults (the owner may change them in permissions.toml, see permissions.Limits)
+MAX_FILE_BYTES = 2 * 1024 * 1024
+MAX_TOTAL_BYTES = 4 * 1024 * 1024
+CEILING_FILES = 512            # hard ceilings of the wire schema; the client enforces the owner's (lower or equal) budget
+CEILING_FILE_BYTES = 8 * 1024 * 1024
+CEILING_TOTAL_BYTES = 16 * 1024 * 1024
 MAX_PATH_BYTES = 512
 _PRIVATE_KEY = re.compile(r"-----BEGIN [A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----|PuTTY-User-Key-File-",
                           re.IGNORECASE)

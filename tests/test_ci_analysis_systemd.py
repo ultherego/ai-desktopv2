@@ -5,11 +5,44 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
 
 import ci_analysis_systemd as driver
+
+
+class DailyPtyProjectConsentTests(unittest.TestCase):
+    def run_prompts(self, prompts, *, project_test):
+        # A real local PTY and a synthetic Python process exercise prompt
+        # boundaries without installing software, invoking a model or systemd.
+        with tempfile.TemporaryDirectory() as temp, patch.object(driver, "daily_clean") as clean, \
+                contextlib.redirect_stdout(io.StringIO()):
+            script = Path(temp) / "prompts.py"
+            script.write_text("for prompt in " + repr([driver.PROMPTS[name] for name in prompts]) + ":\n"
+                              "    assert input(prompt) == 'yes'\n")
+            output = driver.daily_pty(["ask"], entrypoint=script, project_test=project_test)
+            clean.assert_called_once()
+            return output
+
+    def test_project_copy_has_exactly_one_separate_consent_before_write(self):
+        output = self.run_prompts(("ask-question", "project-test", "write"), project_test=True)
+        for name in ("ask-question", "project-test", "write"):
+            self.assertEqual(output.count(driver.PROMPTS[name].encode()), 1)
+
+    def test_ordinary_question_needs_no_copy_consent(self):
+        self.run_prompts(("ask-question",), project_test=False)
+
+    def test_missing_repeated_unexpected_or_out_of_order_copy_consent_refuses(self):
+        for prompts, expected in ((("ask-question", "write"), True),
+                                  (("ask-question", "project-test", "project-test"), True),
+                                  (("ask-question", "project-test"), False),
+                                  (("project-test", "ask-question"), True),
+                                  (("ask-question", "write", "project-test"), True)):
+            with self.subTest(prompts=prompts, expected=expected), self.assertRaises(ValueError):
+                self.run_prompts(prompts, project_test=expected)
 
 
 class CiAnalysisGuardTests(unittest.TestCase):
@@ -34,6 +67,111 @@ class CiAnalysisGuardTests(unittest.TestCase):
             self.assertEqual(driver.main(["--allow-disposable-analysis-test"]), 2)
         self.assertNotIn("SECRET", out.getvalue())
         install.assert_not_called()
+
+    def test_fixture_installs_complete_skills_for_all_default_profiles(self):
+        from ai_desktop import agent_profiles, skills
+        # Profile stores deliberately reject /tmp as a writable ancestor.
+        with tempfile.TemporaryDirectory(dir=Path.home()) as temp:
+            destination = Path(temp) / "installed"
+            home = Path(temp) / "home"
+            home.mkdir(mode=0o700)
+
+            def install(*command):
+                self.assertEqual(command[:7], ("sudo", "-n", "/usr/bin/install", "-o", "root", "-g", "root"))
+                self.assertTrue(Path(command[-1]).is_relative_to(destination))
+                # Exercise real copying/modes in a temporary tree. Ordinary CI
+                # runs as an unprivileged user; only ownership assignment is
+                # omitted here, after asserting the actual CI install uses root.
+                subprocess.run([command[2], *command[7:]], check=True, capture_output=True)
+
+            with patch.object(driver.prior, "DEST", destination), patch.object(driver.prior, "_run", side_effect=install):
+                driver.install_skills()
+            source = driver.ROOT / "skills"
+            installed = destination / "skills"
+            expected = {path.relative_to(source): path.read_bytes() for path in source.rglob("*.md")}
+            self.assertEqual({path.relative_to(installed): path.read_bytes()
+                              for path in installed.rglob("*.md")}, expected)
+            for path in (installed, *installed.rglob("*")):
+                self.assertEqual(path.stat().st_mode & 0o777, 0o755 if path.is_dir() else 0o644)
+            with patch.object(skills, "ROOT", installed), patch.object(skills, "user_root", return_value=home / "private-skills"):
+                store = agent_profiles.Store(home=home)
+                for name, profile in store.load().config.entries:
+                    with self.subTest(profile=name):
+                        selected = agent_profiles.resolve(profile=name, store=store)
+                        for skill in profile.skills:
+                            self.assertIn("- " + skill + ":", selected["instructions"])
+                            snapshot = skills.bundle(skill)
+                            for reference in snapshot["references"]:
+                                self.assertIn(skill + "/" + reference + ":", selected["instructions"])
+                # Installed-source checks are real: neither missing nor unsafe
+                # resources can silently fall back to the source checkout.
+                reference = installed / "arch-pacman/references/package-queries.md"
+                reference.chmod(0o666)
+                with self.assertRaises(agent_profiles.ProfileError):
+                    agent_profiles.resolve(store=store)
+                reference.chmod(0o644)
+                (installed / "concise-assistant/SKILL.md").unlink()
+                with self.assertRaises(agent_profiles.ProfileError):
+                    agent_profiles.resolve(store=store)
+
+    def test_skill_install_refuses_linked_bundle_before_privileged_commands(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            shutil.copytree(driver.ROOT / "skills", root / "skills")
+            reference = root / "skills/arch-pacman/references/package-queries.md"
+            reference.unlink()
+            reference.symlink_to(driver.ROOT / "skills/arch-pacman/references/package-queries.md")
+            with patch.object(driver, "ROOT", root), patch.object(driver.prior, "_run") as command:
+                with self.assertRaises(ValueError):
+                    driver.install_skills()
+                command.assert_not_called()
+
+    def test_native_fixture_accepts_frozen_default_catalog_and_rejects_changed_controls(self):
+        from ai_desktop import agent_profiles, analysis_child, analysis_contract, analysis_sandbox
+        with tempfile.TemporaryDirectory() as temp, tempfile.TemporaryDirectory(dir=Path.home()) as home, \
+                patch.object(driver.prior, "_run"):
+            driver.install(Path(temp), home)
+            namespace = {"__name__": "fixture_validator_test"}
+            exec(compile((Path(temp) / "fixture-client.py").read_text(), "fixture-client.py", "exec"), namespace)
+            validate = namespace["validate_invocation"]
+            selected = agent_profiles.resolve(store=agent_profiles.Store(home=Path(home)))
+            self.assertEqual(namespace["EXECUTION_FIXTURE"], selected)
+            self.assertIn(agent_profiles.CATALOG_HEADER, selected["instructions"])
+            sources = [dict(report=driver.report_fixture(), question="SYNTHETIC: analysis question"),
+                       dict(report=None, question="SYNTHETIC", context=[]),
+                       dict(report=None, question="SYNTHETIC", web=True),
+                       dict(report=None, question="SYNTHETIC", access={"files": [], "systemd": [], "weather": False}),
+                       dict(report=None, task={"instruction": "SYNTHETIC", "files": [
+                           {"path": "file.txt", "content": "SYNTHETIC", "writable": True}]})]
+            for controls in (None, selected):
+                for source in sources:
+                    with self.subTest(controls=controls is not None, source=source.keys()):
+                        approved = analysis_contract.application_input(**source, execution=controls)
+                        parsed, _ = analysis_contract.parse_request(approved.encode())
+                        action = "web" if source.get("web") else "analyze"
+                        body, frozen = analysis_child.native_input(action, parsed.encode())
+                        self.assertNotIn("execution", json.loads(body))
+                        self.assertEqual(frozen, controls)
+                        command = analysis_sandbox.client_command(action, frozen)
+                        environment = analysis_sandbox.client_environment(action, frozen["effort"] if frozen else None)
+                        self.assertEqual(validate(command, environment), action)
+            for action in ("version", "status", "login", "offline-logout"):
+                self.assertEqual(validate(analysis_sandbox.client_command(action),
+                                          analysis_sandbox.client_environment(action)), action)
+            command = analysis_sandbox.client_command("analyze", selected)
+            environment = analysis_sandbox.client_environment("analyze", selected["effort"])
+            for case in ("prompt", "tools", "model", "environment"):
+                altered, env = list(command), dict(environment)
+                if case == "prompt":
+                    altered[-1] += "\nUNAPPROVED"
+                elif case == "tools":
+                    altered[altered.index("--tools") + 1] = "Bash"
+                elif case == "model":
+                    altered.extend(["--model", "opus"])
+                else:
+                    env["ANTHROPIC_API_KEY"] = "SYNTHETIC"
+                with self.subTest(case=case), self.assertRaises(AssertionError):
+                    validate(altered, env)
 
     def test_generated_fixture_keeps_policy_guards_and_limits_override_to_home(self):
         # Installation/compiler/systemd calls are intercepted. Only new,
@@ -137,6 +275,7 @@ class CiAnalysisGuardTests(unittest.TestCase):
 
     def test_compact_task_check_retains_fenced_diff_and_two_ordered_consents(self):
         output = (driver.PROMPTS["transfer"].encode()
+                  + b"\nTest on a copy: passed (python-unittest); 2 selected file(s)."
                   + b"\n=== Changes to save ===\n```diff\n"
                   + b"--- a/calc.py\n+++ b/calc.py\n-    return a - b\n+    return a + b\n```\n"
                   + driver.PROMPTS["write"].encode() + b"\nChanges saved.\n")
@@ -147,6 +286,7 @@ class CiAnalysisGuardTests(unittest.TestCase):
                     output.replace(b"```diff\n", b""),
                     output.replace(b"\n```", b""),
                     output + b"Test on a copy: passed (python-unittest).\n",
+                    output.replace(b"2 selected file(s)", b"1 selected file(s)"),
                     output.replace(driver.PROMPTS["transfer"].encode(), b""),
                     output.replace(driver.PROMPTS["write"].encode(), b"")
                         + driver.PROMPTS["write"].encode() * 2,

@@ -1,6 +1,6 @@
 ---
 name: cachyos-scheduler
-description: Diagnoses sched-ext operation and compares a scheduler change on CachyOS. Use for scx_loader, scxctl, a scheduler failure or measuring the effect of scheduling on performance and energy.
+description: Diagnoses sched-ext, scx_loader, scxctl and SCX Manager on CachyOS. Use for scheduler failures, profile selection and measured performance or energy comparisons.
 ---
 
 # Sched-ext: state, diagnosis and trial
@@ -36,3 +36,9 @@ Give the confirmed state of the kernel and manager, the cause or hypothesis with
 
 - Kernel, state and behavior of sched-ext: <https://www.kernel.org/doc/html/latest/scheduler/sched-ext.html#switching-to-and-from-sched-ext>.
 - CachyOS, management and comparison: <https://wiki.cachyos.org/configuration/sched-ext/>.
+
+## Tool references
+
+Load the matching reference when the task concerns these tools. Verify the installed version and help; a rolling source is not a verified version match.
+
+- [Manager versions, capabilities and profiles](references/scheduler-tools.md).

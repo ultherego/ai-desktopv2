@@ -25,11 +25,11 @@ The service is shared by all agents. After a service change, an agent returns to
 | Claude | `default`, `best`, `fable`, `opus`, `sonnet`, `haiku`, `opusplan` | `default`, `low`, `medium`, `high`, `xhigh`, `max` |
 | Codex | `default` or an identifier of the form `[a-z][a-z0-9._-]{0,95}` | `default`, `low`, `medium`, `high`, `xhigh` |
 
-`default` means the client's choice. Model availability depends on the account and the client: there is no automatic switch to another model or service. For `xhigh` and `max` the wait for an answer is 260 s instead of 110 s.
+`default` means the client's choice. Model availability depends on the account and the client: there is no automatic switch to another model or service. For `xhigh` and `max` the wait for an answer is 900 s instead of 110 s.
 
 ## Agents
 
-An agent is a saved role: service, model, level, access (`changes` or `read-only`), instructions up to 4 KiB and any number of Skills (up to 104 KiB in total). The limit is 24 profiles. A `read-only` agent does not write, does not delete and does not get
+An agent is a saved role: service, model, level, access (`changes` or `read-only`), instructions up to 4 KiB and assigned Skills (role plus metadata catalog up to 104 KiB; selected procedures/references use a separate 192 KiB budget). The limit is 24 profiles. A `read-only` agent does not write, does not delete and does not get
 commands from the `change` list.
 
 ```fish
@@ -51,12 +51,12 @@ After `agents setup`:
 | Profile | Skill | Access |
 |---|---|---|
 | `default` | `concise-assistant` | `changes` |
-| `diagnostic` | `cachyos-diagnostics` | `read-only` |
+| `diagnostic` | CachyOS diagnostic, desktop documentation and Arch procedures (17 for an empty selection) | `read-only` |
 | `programmer` | `code-development` | `changes` |
 | `reviewer` | `code-review` | `read-only` |
 | `analyst` | `project-analysis` | `read-only` |
 
-Profiles are in the private `~/.config/ai-desktop/agents.json`. In `material` and `project` the commands `/settings`, `/agent NAME`, `/model ALIAS` and `/effort LEVEL` change the next question when nothing is running. Changing the service requires a new conversation.
+Profiles are in the private `~/.config/ai-desktop/agents.json`. In `material` and `project` the commands `/settings`, `/agent NAME`, `/model ALIAS` and `/effort LEVEL` change the next question when nothing is running. In `ask`, `/provider NAME` can transfer the current conversation with explicit consent.
 
 The program runs only one role in the foreground. The client's native subagents and MCP servers are disabled.
 
@@ -70,8 +70,10 @@ ai-desktop skills menu            # assignments of the active agent
 ai-desktop skills new NAME        # ~/.config/ai-desktop/skills/NAME/SKILL.md
 ```
 
-A Skill is an instruction of up to 96 KiB, without tools, scripts or additional files. The package contains general Skills for CachyOS (`cachyos-*`) and Arch Linux (`arch-*`), for programming and analysis, and `desktop-documentation`, which points to desktop documentation; the CachyOS Skills deliberately do not describe desktops and compositors. Your own Skill lives outside the repository and the package, and with the same name it takes priority over the general one.
-A name consists of lowercase letters, digits and hyphens. Do not put secrets in it: the content of an assigned Skill goes to the model. A path written in a Skill or in an agent's instructions counts as given by you, so the model can read it without discovery; the policy and `deny` still decide.
+A Skill is a procedure of up to 96 KiB, without executable tools or scripts. It may include bounded documentation under `references/`, loaded individually on demand. The package contains general Skills for CachyOS (`cachyos-*`) and Arch Linux (`arch-*`), for programming and analysis, and `desktop-documentation`, which points to desktop documentation; the CachyOS Skills deliberately do not describe desktops and compositors. Your own Skill lives outside the repository and the package, and with the same name it takes priority over the general one.
+A name consists of lowercase letters, digits and hyphens. Do not put secrets in it: the content of an assigned Skill goes to the model. A path written in the main Skill procedure or in an agent's instructions counts as given by you, so the model can read it without discovery; the policy and `deny` still decide.
+
+Reference documents do not ground local paths or grant reads. New configurations expose the general catalog; existing saved assignments, including an empty list, are preserved.
 
 Changing assigned Skills may require a new conversation, because a saved conversation is tied to the agent's configuration.
 
@@ -83,10 +85,10 @@ Run `ai-desktop ask` once and keep working: after an answer, `>` comes back. Arr
 
 **Memory has two layers:**
 
-1. The last 32 exchanges, up to 128 KiB in total (question up to 128 KiB, answer up to 8 KiB with visible truncation).
-2. Task memory: up to 40 entries (400 B each, 10 KiB in total) with the goal, criterion, attempts, values, corrections and decisions. The model proposes updates in its answer, and when out of room the oldest unprotected entries are dropped first. The program adds facts itself: what it ran and with what exit code, what it applied, what was refused.
+1. Up to 64 recent exchanges within 512 KiB (question up to 128 KiB, answer up to 32 KiB with visible truncation).
+2. Task memory: up to 96 entries (1 KiB each, 64 KiB in total) with the goal, criterion, attempts, values, corrections and decisions. The model proposes updates in its answer, and when out of room the oldest unprotected entries are dropped first. The program adds facts itself: what it ran and with what exit code, what it applied, what was refused.
 
-Memory gives no permissions. When access to a file is revoked, the answers and model entries that depend on it are removed before the next question, and the program says so. The program does not remember turns older than 8, apart from what went into task memory.
+Memory gives no permissions. When access to a file is revoked, the answers and model entries that depend on it are removed before the next question, and the program says so. Only the latest 64 exchanges can be included verbatim in a request.
 
 ## Saved conversations
 
@@ -100,7 +102,7 @@ ai-desktop sessions resume ID
 ai-desktop sessions remove ID
 ```
 
-The save is in `~/.local/state/ai-desktop/conversations` (directory `0700`, files `0600`, up to 64 KiB per file, 128 conversations). It contains the limited text of the conversation, memory and metadata, not whole materials, although an answer may quote a file. Resuming re-checks the policy, the file or project and the agent's configuration. Consents, write authorizations and the login session are not restored. A conversation open in another process will not be removed. `ai-desktop stop` concerns the temporary client session, not saved conversations.
+The save is in `~/.local/state/ai-desktop/conversations` (directory `0700`, files `0600`, up to 16 MiB per file, 128 conversations). It contains the limited text of the conversation, memory and metadata, not whole materials, although an answer may quote a file. Resuming re-checks the policy, the file or project and the agent's configuration. Consents, write authorizations and the login session are not restored. A conversation open in another process will not be removed. `ai-desktop stop` concerns the temporary client session, not saved conversations.
 
 ## Commands and changes on the live system
 
@@ -145,3 +147,63 @@ The list of models in the menu comes from the client, run in a closed sandbox wi
 ## Older commands
 
 `claude` and `codex` are listed in `ai-desktop --help-all`. For daily work use `settings` and `login`. `doctor` shows brief metadata, and `doctor --v` a JSON report; it does not check login or whether the model works.
+
+## Local llama.cpp server
+
+Use an already-running, trusted `llama-server` on the same computer. AI Desktop sends OpenAI-compatible chat completions to `http://127.0.0.1:8080/v1/chat/completions` by default. In the existing `permissions.toml`, enable `local` under `[network]`. The optional `[local]` section selects an unprivileged numeric port (1024–65535). Keep the existing `[files]` rules.
+
+```toml
+[network]
+local = true
+
+[local]
+port = 8080
+```
+
+Select the service with `ai-desktop settings set --provider local`, or use `ai-desktop ask --provider local` for one conversation. The `default` model uses the model served by a single-model server. If your server uses an alias, select it with `ai-desktop settings set --provider local --model my-model`. Use an alias of up to 96 letters, digits, dots, underscores or hyphens, beginning with a letter or digit. `ai-desktop doctor` shows the configured address and policy while offline. To actively query the enabled loopback server, run `ai-desktop local models` or `ai-desktop local status`. Both read only `/v1/models`. A successful check confirms that the server returned a model catalog; some servers also advertise unloaded models.
+
+The approval names the recipient and port. The controller rechecks the permission file immediately before releasing the text. It sends the application instructions and the approved request body. Responses are untrusted text processed by the same operation, test and write checks as a remote response. The local adapter rejects native tool calls and redirects. There is no cloud fallback, OAuth, key lookup, server installation or automatic startup. External weather collection, if separately enabled and requested, still contacts the weather service. WebSearch is unavailable on this provider.
+
+The server is a separate, owner-managed program. Its launch options, file access, logging and outbound network are outside AI Desktop's sandbox. Trust extends to whoever can bind the configured TCP port: another local user could claim it while your server is stopped. Use this on a machine you control with a dedicated loopback server, never a reverse proxy that forwards to another recipient. Servers requiring API keys, TLS, streaming-only responses or a remote host are unsupported.
+
+### Separate subscription accounts
+
+The existing subscription for each service is named `default`. Register a named account, complete its private browser login, then select it for new tasks:
+
+```fish
+ai-desktop account add claude work --login
+ai-desktop account add codex personal --login
+ai-desktop account use claude work
+ai-desktop account list
+ai-desktop usage --json
+```
+
+Without `--login`, `add` only registers the name. Run `ai-desktop account login claude work` later. In a terminal, `account add` and `account use` can prompt for missing choices. Selecting an account changes new requests for that provider. The original login command operates on the legacy default subscription. Named slots are separate for each desktop UID and provider. The authenticated caller determines the UID. The service mounts only the selected Claude profile or reads only the selected Codex auth store. The selected name is part of the approved request. An already connected name cannot be relinked to a different subscription.
+
+To replace an expired named login, connect and select a fresh name. To **permanently disable** the old name, run `ai-desktop account retire claude work --confirm-retire` from your terminal. This records a permanent local tombstone and removes only that named profile's local credentials. It also blocks saved conversations bound to that name from reaching the provider. Revoke any remaining remote grant or session through the provider. The legacy default profile has its own lifecycle.
+
+### Sign-in state and disconnection
+
+A successful sign-in records the provider and local account alias for the desktop. Terminal output identifies the account and distinguishes success, cancellation and failure, including in plain text when colors are disabled. A login completed on an earlier release may show an unknown state. To check an existing profile, use **Check sign-in…** in the widget or run `ai-desktop account check codex default` (replace the provider and alias as appropriate). This explicit action checks local credentials under the service account; if the check cannot complete, the previous state is retained. The displayed state describes the local connection. The provider can subsequently expire or revoke a session.
+
+Use **Sign out…** or `ai-desktop account logout PROVIDER ALIAS` to disconnect a specific slot after confirming the target. The legacy default profile is shared by desktop users of this installation. Use a fresh named slot when switching identities across conversations. A named Claude slot closes on logout. To sign in again, add another alias. A named Codex slot can reconnect to the same verified account when its identity binding is available. If Codex signs out locally but cannot confirm remote revocation, use ChatGPT settings to disconnect the app.
+
+### Quota readings
+
+The home panel shows the selected account for the active service. Choose **Subscription limits** to browse all accounts and **Back** to return. `ai-desktop usage --provider claude` prints the same structured windows. Reset and observation times in terminal views use your local time zone. Live percentages use the terminal's green, yellow (75%) and red (90%) colors. Use `NO_COLOR=1` for plain text. JSON keeps the original timestamps and UTC summary for consumers.
+
+By default the terminal and widget read local observations. An approved conversation may deliver native quota events. A partial event preserves the other window and its observation time. Expired readings are labelled as historical.
+
+For an on-demand Codex account snapshot, use the native quota connection for a signed-in local slot. These fish commands use the default slot:
+
+```fish
+ai-desktop account connect-limits codex default
+ai-desktop usage --refresh --provider codex --account default
+ai-desktop usage --provider codex
+```
+
+The first command asks for confirmation and opens the native Codex device login. Choose the intended workspace in the browser. The setup enables a dedicated socket for your desktop UID, including after reboot. Subsequent manual refreshes use that socket. The second command performs an authenticated `account/rateLimits/read` and updates the local snapshot. The third displays the cached result. A current permission policy allowing Codex is required for connecting and requesting a reading. An explicit disconnect can still remove the local credential when network access is disabled.
+
+The CLI labels the linked reading **Native Codex limits**. Its values apply to the account and workspace chosen during device login. AI Desktop's Sign in with ChatGPT session authorizes conversations separately. The two workspaces can differ, including when the same email address is used. Passive conversation observations and native account snapshots are kept separately. Missing windows stay unknown. For app-specific usage, open [ChatGPT settings](https://chatgpt.com/settings/usage).
+
+Run `ai-desktop account disconnect-limits codex default` to remove the separate local grant. Disconnecting the last retained native slot stops and disables its per-user socket. A change to the conversation sign-in invalidates the native association. The widget or Codex account picker offers an explicit cleanup action for a retained native credential, even if the chat slot was signed out or retired.

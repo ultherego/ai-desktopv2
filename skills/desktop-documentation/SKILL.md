@@ -7,7 +7,7 @@ description: Diagnoses desktop or compositor configuration from its version and 
 
 ## Identify the environment
 
-Establish the name and version of the running desktop or compositor, the session type and the exact symptom. Rely on the available session data, program version or the user's answer; an installed package alone does not prove it is currently running. Check whether the problem concerns configuration, an output device, a single application or the start of the whole session.
+Establish the name and version of the running desktop or compositor, the session type and the exact symptom. Rely on the available session data, program version or the user's answer; an installed package alone does not prove it is currently running. Keep the active session separate from the set of installed environments; several can coexist. Treat desktop shells and panels such as DMS as separate components, not as synonyms for a compositor. Check whether the problem concerns configuration, an output device, one application or the whole session.
 
 Commands run by AI Desktop usually have no graphical session or user sockets. An error connecting to IPC, Wayland or a user service then means no visibility. Do not treat it as evidence of a failure and do not propose a restart. When such an observation is essential, state exactly what is missing; do not change permissions or the execution mode to get around the limit.
 

@@ -94,6 +94,21 @@ class SignInTests(unittest.TestCase):
         self.assertEqual(self.store.status(), {"active": None, "accounts": []})
         self.assertFalse(self.directory.exists())
 
+    def test_native_quota_binding_lasts_one_explicit_login_and_stays_private(self):
+        self.sign_in()
+        with self.assertRaises(auth.AuthError):
+            self.store.quota_binding()
+        first = self.store.quota_binding(enroll=True)
+        self.assertEqual(self.store.quota_binding(), first)
+        self.assertNotIn(first, repr(self.store.status()))
+        self.assertTrue(self.client.logout())
+        with self.assertRaises(auth.AuthError):
+            self.store.quota_binding(enroll=True)
+        self.sign_in()
+        with self.assertRaises(auth.AuthError):
+            self.store.quota_binding()
+        self.assertNotEqual(self.store.quota_binding(enroll=True), first)
+
     def test_registration_has_pkce_nonce_state_scopes_and_stable_host(self):
         first, second = self.pending(), self.pending()
         one = parse_qs(first.authorization_url.split("?", 1)[1])

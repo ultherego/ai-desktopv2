@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """LC1 acceptance helper: synthetic files in ~/ai-lc1-check and file-based checks.
 
-prepare          creates the fixtures (small module, ~200 KB log, exactly 1 MiB, 16 MiB + 1, ANSI, bad UTF-8, empty)
+prepare          creates the fixtures (small module, ~200 KB log, exactly 1 MiB, 64 MiB + 1, ANSI, bad UTF-8, empty)
 refusals         runs the INSTALLED loader under the owner's REAL policy on every fixture and
                  compares the outcome with the expected closed refusal (no terminal, no model)
 check-unchanged  proves the fixtures are byte-identical and nothing else appeared
@@ -18,7 +18,7 @@ import sys
 
 NAME = "ai-lc1-check"
 SIZE = 1024 * 1024
-CEILING = 16 * 1024 * 1024               # hard ceiling of the owner's file_size setting: always refused
+CEILING = 64 * 1024 * 1024               # hard ceiling of the owner's file_size setting: always refused
 MARK = "ERROR-MARKER"
 
 

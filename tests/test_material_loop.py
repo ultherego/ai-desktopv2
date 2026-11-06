@@ -50,7 +50,7 @@ class RequestSchemaTests(unittest.TestCase):
             "bool-size": lambda v: v["material"].update(size=True),
             "hit-text-int": lambda v: v["observations"][0]["hits"][0].update(text=5),
             "too-many-observations": lambda v: v["observations"].extend({"kind": "dropped", "first": 1, "last": 1} for _ in range(30)),
-            "history-too-long": lambda v: v["history"].extend({"question": "q", "answer": "a"} for _ in range(5)),
+            "history-too-long": lambda v: v["history"].extend({"question": "q", "answer": "a"} for _ in range(ms.MAX_HISTORY + 1)),
             "history-bad-turn": lambda v: v["history"].append({"question": "q"}),
         }
         for name, mutate in mutations.items():
@@ -213,12 +213,12 @@ class LoopTests(unittest.TestCase):
         self.assertFalse(loop().preload_range(500, 900))
 
     def test_history_is_bounded_and_shortened_visibly(self):
-        turn = ml.history_turn("q", "a" * 5000)
+        turn = ml.history_turn("q", "a" * (ms.HISTORY_TEXT + 1))
         self.assertTrue(turn["answer"].endswith("…[shortened]"))
         self.assertLessEqual(len(turn["answer"].encode()), ms.HISTORY_TEXT + 40)
-        lp = ml.Loop(m.import_bytes(RAW, "file"), history=[{"question": "q%d" % i, "answer": "a"} for i in range(9)])
+        lp = ml.Loop(m.import_bytes(RAW, "file"), history=[{"question": "q%d" % i, "answer": "a"} for i in range(ms.MAX_HISTORY + 5)])
         self.assertEqual(len(lp.history), ms.MAX_HISTORY)
-        self.assertEqual(lp.history[-1]["question"], "q8")
+        self.assertEqual(lp.history[-1]["question"], "q%d" % (ms.MAX_HISTORY + 4))
 
 
 if __name__ == "__main__":
