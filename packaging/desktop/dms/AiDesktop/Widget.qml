@@ -312,15 +312,23 @@ PluginComponent {
                     delegate: Quota.QuotaCard {
                         id: usageCard
                         required property var modelData
-                        readonly property bool showUsageLink: account.provider === "codex" && !hasUsage && account.status !== "retired"
-                        readonly property bool showConnect: account.provider === "codex" && account.selected === true &&
-                            account.auth_state === "signed_in" && !account.live_limits_connected &&
-                            account.status !== "retired" && root.codexAvailable
+                        readonly property bool selectedCodex: account.provider === "codex" && account.selected === true && account.status !== "retired"
+                        readonly property bool showConnect: selectedCodex && account.auth_state === "signed_in" &&
+                            !account.live_limits_connected && root.codexAvailable
+                        readonly property bool showRefresh: selectedCodex && account.auth_state === "signed_in" &&
+                            account.live_limits_connected === true && root.codexAvailable
+                        readonly property bool showSignIn: selectedCodex && !hasUsage &&
+                            account.auth_state !== "signed_in" && root.codexAvailable
                         objectName: "usageCard_" + account.provider + "_" + account.account
                         width: ListView.view.width
                         height: implicitHeight + (actions.visible ? actions.implicitHeight + Theme.spacingS : 0)
                         account: modelData
                         sampledAt: root.sampledAt
+                        emptyUsageText: root.fetchingLimitsFor === account.account && account.provider === "codex"
+                            ? "Reading usage and reset times…"
+                            : selectedCodex && root.codexProvider?.allowed === false ? "Live limits are blocked by policy."
+                            : selectedCodex && root.codexProvider?.client_present !== true ? "The Codex client is unavailable."
+                            : Status.emptyUsageText(account)
                         active: account.provider === root.service && account.selected === true && account.status !== "retired"
                         fontFamily: Theme.fontFamily
                         accentColor: Theme.primary
@@ -349,18 +357,19 @@ PluginComponent {
                             anchors.bottom: parent.bottom
                             anchors.bottomMargin: usageCard.inset
                             width: parent.width - 2 * usageCard.inset
-                            visible: usageCard.showUsageLink || usageCard.showConnect
+                            visible: usageCard.showConnect || usageCard.showRefresh || usageCard.showSignIn
                             spacing: Theme.spacingS
 
                             ChoiceButton {
-                                id: usageLink
-                                objectName: "chatgptUsageLink"
-                                visible: usageCard.showUsageLink
+                                objectName: "refreshUsage_" + usageCard.account.account
+                                visible: usageCard.showRefresh
+                                enabled: !root.switching && !root.fetchingLimitsFor
+                                busy: root.fetchingLimitsFor === usageCard.account.account
                                 maximumWidth: parent.width
-                                text: "View usage in ChatGPT"
-                                iconName: "open_in_new"
-                                tooltipText: "Opens the account signed in to your browser"
-                                onClicked: Qt.openUrlExternally("https://chatgpt.com/settings/usage")
+                                text: busy ? "Reading limits…" : "Refresh limits"
+                                iconName: "refresh"
+                                tooltipText: "Read this account's usage and reset times"
+                                onClicked: root.fetchLiveLimits(usageCard.account.account)
                             }
                             ChoiceButton {
                                 id: connectLimits
@@ -369,6 +378,19 @@ PluginComponent {
                                 maximumWidth: parent.width
                                 text: usageCard.account.native_limits_cleanup_pending === true ? "Reconnect live limits…" : "Connect live limits…"
                                 onClicked: root.manageLiveLimits(usageCard.account.account, false)
+                            }
+                            ChoiceButton {
+                                visible: usageCard.showSignIn
+                                enabled: !root.switching && !root.fetchingLimitsFor
+                                maximumWidth: parent.width
+                                text: usageCard.account.auth_state === "unknown" ? "Check sign-in…"
+                                    : usageCard.account.requires_new_alias ? "Add account…" : "Sign in…"
+                                onClicked: {
+                                    if (usageCard.account.auth_state === "unknown")
+                                        root.accountAction("codex", usageCard.account.account, "check");
+                                    else
+                                        root.manageAccounts("codex");
+                                }
                             }
                         }
                     }

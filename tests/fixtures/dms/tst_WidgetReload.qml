@@ -135,16 +135,23 @@ Item {
             host.shouldBeVisible = true;
             widget.refresh();
             compare(Proc.limitReads.length, 0, "Passive refresh cannot fetch a native quota");
+            const usageCard = findChild(popout, "usageCard_codex_" + account.account);
+            verify(usageCard);
+            verify(!findChild(usageCard, "chatgptUsageLink"), "Missing limits must not redirect to a browser");
+            verifyButtonInside(usageCard, "Refresh limits");
+            compare(findChild(usageCard, "emptyUsage").text, "Read limits to show usage and reset times here.");
             widget.fetchLiveLimits("--help");
             widget.manageLiveLimits("spare", true);
             compare(Proc.limitReads.length, 0);
             compare(SessionService.lastLaunched, "ai-desktop-codex-limits.desktop");
 
-            mouseClick(refresh);
+            clickButton(usageCard, "Refresh limits");
             compare(JSON.stringify(Proc.limitReads), JSON.stringify([
                 ["/usr/bin/ai-desktop", "usage", "--refresh", "--provider", "codex", "--account", account.account, "--json"]
             ]));
             verify(!refresh.enabled);
+            verify(visibleButton(usageCard, "Reading limits…"));
+            compare(findChild(usageCard, "emptyUsage").text, "Reading usage and reset times…");
             widget.fetchLiveLimits(account.account);
             compare(Proc.limitReads.length, 1, "In-flight refresh cannot be duplicated");
 
@@ -264,18 +271,16 @@ Item {
             tryVerify(() => findChild(popout, cardName) !== null);
             const card = findChild(popout, cardName);
             verify(card.border && card.border.width > 0 && card.color.a > 0, "Expected the visible card surface");
-            verifyButtonInside(card, "View usage in ChatGPT");
+            verify(!findChild(card, "chatgptUsageLink"));
             verifyButtonInside(card, "Connect live limits…");
+            compare(findChild(card, "emptyUsage").text,
+                    "Connect this account's limits to show usage and reset times here.");
 
             function surface() { return findChild(popout, "selectUsage_codex_" + alias); }
             tryVerify(() => surface() && surface().enabled);
             Proc.changes = [];
-            compare(Qt.platform.pluginName, "offscreen");
-            // The offscreen platform acknowledges the URL but cannot launch a browser.
-            ignoreWarning("This plugin does not support QPlatformServices::openUrl() for 'https://chatgpt.com/settings/usage'.");
-            clickButton(card, "View usage in ChatGPT");
-            compare(Proc.changes.length, 0, "The browser link must not activate Codex");
             clickButton(card, "Connect live limits…");
+            compare(Proc.changes.length, 0, "Connecting limits must not activate Codex");
             compare(JSON.stringify(SessionService.lastArgs), JSON.stringify([alias]));
             const connect = visibleButton(card, "Connect live limits…");
             connect.enabled = false;
@@ -306,7 +311,25 @@ Item {
             compare(Proc.changes.length, 3, "A blocked Codex account must not activate from Usage");
             snapshot.providers[0].allowed = true;
 
-            // Existing readings also allow connecting while the browser action is hidden.
+            // Sign-in recovery stays in the same Usage card and targets the displayed alias.
+            for (const auth of ["unknown", "signed_out"]) {
+                codex.auth_state = auth;
+                Proc.statusReply = JSON.stringify(snapshot);
+                widget.refresh();
+                const label = auth === "unknown" ? "Check sign-in…" : "Sign in…";
+                tryVerify(() => visibleButton(findChild(popout, cardName), label) !== null);
+                const current = findChild(popout, cardName);
+                verifyButtonInside(current, label);
+                clickButton(current, label);
+                compare(SessionService.lastLaunched, auth === "unknown"
+                        ? "ai-desktop-check-sign-in.desktop" : "ai-desktop-login-codex.desktop");
+                if (auth === "unknown")
+                    compare(JSON.stringify(SessionService.lastArgs), JSON.stringify(["codex", alias]));
+                compare(Proc.changes.length, 3, "Recovery buttons preserve service selection");
+            }
+            codex.auth_state = "signed_in";
+
+            // Existing readings also allow reconnecting without hiding the recorded values.
             codex.windows = {five_hour: {percent: 19, reset: now + 600}};
             codex.native_limits_cleanup_pending = true;
             Proc.statusReply = JSON.stringify(snapshot);
@@ -409,7 +432,7 @@ Item {
                 account.windows = {};
                 Proc.statusReply = JSON.stringify(snapshot);
                 mouseClick(refresh);
-                tryVerify(() => visibleButton(popout, "View usage in ChatGPT") !== null);
+                tryVerify(() => findChild(popout, "emptyUsage")?.visible === true);
                 exerciseLiveLimits(widget, popout, snapshot, provider, account, host);
             }
             clickButton(popout, "Open chat");

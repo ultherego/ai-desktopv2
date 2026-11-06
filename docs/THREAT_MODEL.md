@@ -57,7 +57,7 @@ Rejected option: a token broker hiding OAuth from the client, once marked "PREFE
 
 ### Independent-client execution, registration and update boundary
 
-Candidate 0.1.0-82 uses independent compatible Claude/Codex installations, directly from supported system packages or from an explicitly registered native/HOME/npm source; local inference needs neither. The application package no longer redistributes their executables. Existing service account and credential ownership are retained. New CachyOS acceptance must cover these changed execution paths before merge.
+Candidate 0.1.0-82 uses independent compatible Claude/Codex installations, directly from supported system packages or from an explicitly registered native/HOME/npm source; local inference needs neither. The application package no longer redistributes their executables. Existing service account and credential ownership are retained. The changed native execution paths passed the exact-head CachyOS offline acceptance recorded in [ROADMAP.md](ROADMAP.md), without an account profile, network or model request; this is not live login or inference evidence.
 
 Direct system discovery uses fixed native paths and bounded trusted symlink resolution. The AUR Claude wrapper is not executed; its known `/opt/claude-code/bin/claude` payload is examined directly. Codex's recognized `/usr/lib/openai-codex/` layout includes helpers and resources. Root-owned safe ancestors, executable format, file identity and privileged file attributes are checked.
 

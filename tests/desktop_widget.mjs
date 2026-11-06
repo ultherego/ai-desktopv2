@@ -78,3 +78,22 @@ assert.equal(widget.remaining(1020), "17m");
 assert.equal(widget.remaining(5400), "1h 30m");
 assert.equal(widget.remaining(259200), "3d 0h");
 console.log("Quota labels and user-initiated selection checks passed.");
+
+// Missing data explains the exact next action inside the card; it never invents zero usage.
+const emptyCodex = {provider: "codex", selected: true, auth_state: "signed_in", windows: {}};
+assert.equal(widget.emptyUsageText(emptyCodex), "Connect this account's limits to show usage and reset times here.");
+assert.equal(widget.emptyUsageText({...emptyCodex, native_limits_cleanup_pending: true}),
+             "Reconnect this account's limits to show usage and reset times here.");
+assert.equal(widget.emptyUsageText({...emptyCodex, live_limits_connected: true}),
+             "Read limits to show usage and reset times here.");
+assert.equal(widget.emptyUsageText({...emptyCodex, live_limits_connected: true, quota_source: "codex_native", observed_at: now}),
+             "Codex did not report a 5-hour or 7-day window.");
+assert.equal(widget.emptyUsageText({...emptyCodex, auth_state: "unknown"}),
+             "Check sign-in before connecting limits for this account.");
+assert.equal(widget.emptyUsageText({...emptyCodex, auth_state: "signed_out", native_limits_cleanup_pending: true}),
+             "Sign in to Codex, then connect limits to show usage here.");
+assert.equal(widget.emptyUsageText({...emptyCodex, selected: false}),
+             "Select this account in Accounts & login to read its limits.");
+assert.equal(widget.emptyUsageText({...emptyCodex, status: "retired"}), "Account retired");
+assert.equal(widget.emptyUsageText({provider: "claude"}), "Usage not reported");
+console.log("Codex in-widget empty, reconnect and ready-to-read states passed.");

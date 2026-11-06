@@ -2,6 +2,8 @@
 
 For project maintainers. Tick items for a specific commit: the result of another commit attests nothing.
 
+Candidate 82 evidence: on `0f0bcb6a0b77e52fcf29b46d4f8e1c56d112659f`, CachyOS CI/LOCAL, upgrade 81 to 82, retained Claude registration, complete Codex registration and both native offline probes passed. All five GitHub jobs also passed for this SHA. These results did not exercise login, token renewal or model inference; see [ROADMAP.md](ROADMAP.md) for scope and later changes. Unchecked wider release requirements below remain open.
+
 ## Version
 
 - [ ] The `pkgver-pkgrel` number in `packaging/arch/PKGBUILD` is new.
@@ -36,7 +38,7 @@ Client gates apply before merging/releasing the migrated runtime (S8); the conse
 - [ ] Unsafe ownership/modes, path substitution, unrecognized wrappers, unsupported version families and incompatible capabilities fail before model data or credentials are released.
 - [ ] The approved operation uses one bound executable and client-private resource snapshot; replacement or an update during the operation refuses further phases. Test symlink retargeting and in-place changes, not just an atomic file rename.
 - [ ] A tested compatible client update between tasks works without rebuilding AI Desktop; registered clients use an explicit approved refresh.
-- [ ] Native Claude rejects the appended invalid option after the full analyze/web option sets, demonstrates first-error ordering with two invalid options, and independently returns signed-out `auth status` JSON in an empty offline profile. Print and auth modes are not combined; help-only or synthetic parser tests are not this native evidence.
+- [x] On candidate-82 head `0f0bcb6`, native Claude 2.1.319 rejects the appended invalid option after the full analyze/web option sets, demonstrates first-error ordering with two invalid options, and independently returns signed-out `auth status` JSON in an empty offline profile. Print and auth modes are not combined; help-only or synthetic parser tests are not this native evidence.
 - [ ] Separate authentication, restricted tools, model transport, namespace and egress checks pass through the actual migrated runtime on CachyOS.
 - [ ] A declared plan/stage/copy-test approval cannot authorize an undeclared operation; the final diff still requires a separate write decision.
 - [ ] Cleanup removes only proven-unused experiments. Production modules, fixtures and checks are not removed merely because their names start with `e2_`.

@@ -8,7 +8,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from ai_desktop import account_cli, codex_limits_cli as limits
+from ai_desktop import account_cli, codex_account_protocol, codex_limits_cli as limits
 from ai_desktop.account_store import Accounts, AccountStore, ProfileError, decode
 from ai_desktop.codex_quota_ipc import QuotaError
 
@@ -186,6 +186,60 @@ class CodexLimitsCLITests(unittest.TestCase):
         self.admin.assert_called_with("disconnect", "work")
         self.assertFalse(self.row("codex", "work")["native_limits_cleanup_pending"])
         self.assertTrue(self.row()["live_limits_connected"])
+
+    def test_reconnect_publishes_both_native_windows_to_widget_without_a_browser(self):
+        self.store.mutate(lambda s: s.with_native_limits("default", observed=350, windows=SAMPLES)
+                          .logged_in("codex", "default", 399))
+        self.assertTrue(self.row()["native_limits_cleanup_pending"])
+        self.assertEqual(self.row()["windows"], {})
+
+        def read_native(alias):
+            self.assertEqual(alias, "default")
+            protocol = codex_account_protocol.AccountProtocol("read")
+            protocol.start()
+            protocol.feed(json.dumps({"id": 0, "result": {"userAgent": "synthetic"}}).encode())
+            protocol.feed(json.dumps({"id": 2, "result": {
+                "account": {"type": "chatgpt", "planType": "plus", "email": "private@example.invalid"},
+                "requiresOpenaiAuth": True}}).encode())
+            protocol.feed(json.dumps({"id": 3, "result": {
+                "accountId": "private-workspace",
+                "rateLimits": {"limitId": "unrelated", "planType": "free"},
+                "rateLimitsByLimitId": {"codex": {"limitId": "codex", "planType": "pro",
+                    "primary": {"usedPercent": 0, "windowDurationMins": 300, "resetsAt": 1400},
+                    "secondary": {"usedPercent": 100, "windowDurationMins": 10080, "resetsAt": 5100}}}
+            }}).encode())
+            return protocol.finish()
+
+        self.read.side_effect = read_native
+        with patch("webbrowser.open") as browser:
+            self.assertEqual(self.connect(), 0)
+        browser.assert_not_called()
+        self.admin.assert_called_once_with("connect", "default")
+        self.read.assert_called_once_with("default")
+        self.output.seek(0)
+        self.output.truncate()
+        self.assertEqual(account_cli.usage_main(["--json", "--provider", "codex", "--account", "default"]), 0)
+        [row] = json.loads(self.output.getvalue())
+        self.assertEqual(row["windows"], {"five_hour": {"percent": 0, "reset": 1400},
+                                          "seven_day": {"percent": 100, "reset": 5100}})
+        self.assertEqual((row["quota_source"], row["plan"], row["observed_at"]), ("codex_native", "pro", 400))
+        self.assertTrue(row["live_limits_connected"])
+        self.assertFalse(row["native_limits_cleanup_pending"])
+        self.assertEqual(self.row("codex", "work")["windows"], {})
+        self.assertNotIn("private", self.output.getvalue())
+        self.read.assert_called_once_with("default")  # Displaying the fresh snapshot is passive.
+
+    def test_cancelled_reconnect_keeps_stale_marker_without_reading_or_fabricating_windows(self):
+        self.store.mutate(lambda s: s.with_native_limits("default", observed=350, windows=SAMPLES)
+                          .logged_in("codex", "default", 399))
+        self.confirm.return_value = "n"
+        self.assertEqual(self.connect(), 0)
+        self.assertTrue(self.row()["native_limits_cleanup_pending"])
+        self.assertFalse(self.row()["live_limits_connected"])
+        self.assertEqual(self.row()["windows"], {})
+        self.assertIsNone(self.row()["observed_at"])
+        self.admin.assert_not_called()
+        self.read.assert_not_called()
 
     def test_picker_can_disconnect_retired_or_unrecorded_service_grant(self):
         self.store.mutate(lambda s: s.with_native_limits("work").retire("codex", "work"))

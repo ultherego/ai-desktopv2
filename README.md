@@ -36,9 +36,9 @@ See [agent settings, accounts and sessions](docs/AGENT_MANAGEMENT.md), [verified
 
 This is a development version, not a 1.0 release.
 
-The current candidate package is **0.1.0-82** (changes: [CHANGELOG.md](CHANGELOG.md)).
+The current candidate package is **0.1.0-83** (changes: [CHANGELOG.md](CHANGELOG.md)).
 
-Candidate 0.1.0-82 migrates the runtime and package to independent clients, including explicitly registered HOME installations. Its new execution paths still require the recorded CachyOS acceptance before merge. The accepted 0.1.0-79 result does not cover this migration.
+Candidate 0.1.0-82 migrates the runtime and package to independent clients, including explicitly registered HOME installations. Its exact-head CachyOS upgrade and isolated offline compatibility checks passed with Claude 2.1.319 and Codex 0.167.0; see [the acceptance record](docs/ROADMAP.md). These checks did not perform login or model inference. Candidate 83 improves the Codex usage card: connect or reconnect its limits session and read percentages and reset times directly in the widget. Its installed-widget acceptance is still pending. PR #20 remains unmerged.
 
 `ai-desktop doctor` and `doctor --v` inspect metadata without executing a client. `doctor --clients` explicitly probes the selected cloud client offline, without login, network or a model request. A successful probe checks adapter prerequisites; it does not certify the vendor or prove that authentication and inference work.
 
