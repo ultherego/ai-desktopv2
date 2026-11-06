@@ -272,7 +272,7 @@ def daily_clean(uid):
 
 
 def daily_pty(action, *, expected=0, refusal=False, interrupt=None, reason=None,
-              write_refusal=False, entrypoint=None):
+              write_refusal=False, entrypoint=None, project_test=False):
     asking = action[:1] == ["ask"] and "--preview" not in action
     analyzing = action[:1] == ["analyze"] and "--preview" not in action
     master, slave = pty.openpty()
@@ -283,7 +283,7 @@ def daily_pty(action, *, expected=0, refusal=False, interrupt=None, reason=None,
                                env={"PATH": "/usr/bin", "LANG": "C.UTF-8", "TERM": "dumb"})
     os.close(slave)
     output, answered, interrupted, wrote = bytearray(), False, False, False
-    transfers = 0
+    transfers, tests = 0, 0
     try:
         deadline = time.monotonic() + 65
         while time.monotonic() < deadline and len(output) <= 65536:
@@ -305,7 +305,15 @@ def daily_pty(action, *, expected=0, refusal=False, interrupt=None, reason=None,
                 transfers += 1
                 os.write(master, b"no\n" if refusal else b"yes\n")
                 answered = True
+            test_prompts = output.count(PROMPTS["project-test"].encode())
+            if test_prompts > tests:
+                if not project_test or tests or test_prompts != 1 or not answered or refusal:
+                    raise ValueError("project-test-consent")
+                os.write(master, b"yes\n")
+                tests += 1
             if any(PROMPTS[action].encode() in output for action in ("write", "rollback")) and not wrote:
+                if project_test and tests != 1:
+                    raise ValueError("project-test-before-write")
                 os.write(master, b"no\n" if write_refusal else b"yes\n")
                 wrote = True
             if interrupt and not interrupted and b"Waiting for " in output:
@@ -324,6 +332,7 @@ def daily_pty(action, *, expected=0, refusal=False, interrupt=None, reason=None,
         process.wait(timeout=3)
         if (process.returncode != expected
                 or ((analyzing or asking) and not answered) or (asking and transfers != 1)
+                or tests != int(project_test)
                 or (interrupt and not interrupted) or b"SYNTHETIC-PRIVATE" in output
                 or (reason and ("reason=" + reason).encode() not in output)):
             # This is synthetic CI output only, and only our fixed diagnostics.
@@ -556,7 +565,7 @@ def ask_edit_cycle():
             env={"PATH": "/usr/bin", "LANG": "C.UTF-8", "TERM": "dumb"})
         if checked.returncode or checked.stdout.strip() != edit_fixture.POLICY_MARKER.encode() or checked.stderr:
             raise ValueError("ask-edit-policy")
-        output = daily_pty(["ask"], entrypoint=fixture["script"])
+        output = daily_pty(["ask"], entrypoint=fixture["script"], project_test=True)
         if edit_fixture.NATIVE_MARKER.encode() not in output:
             raise ValueError("ask-edit-proof")
         edit_fixture.check_state(fixture, applied=True)
@@ -564,7 +573,7 @@ def ask_edit_cycle():
         edit_fixture.check_state(fixture)
         if task_workspace.status(str(fixture["project"]))[0][1] != "rolled-back":
             raise ValueError("ask-edit-rollback")
-        print("CI ASK EDIT: PASS real-policy=PASS question-approvals=1 write-approvals=1 "
+        print("CI ASK EDIT: PASS real-policy=PASS question-approvals=1 test-approvals=1 write-approvals=1 "
               "requests=2 read-files=9 request-over32KiB=PASS test=PASS apply=PASS rollback=PASS "
               "cleanup=PASS native=false oauth=false upstream=false")
 

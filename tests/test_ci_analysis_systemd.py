@@ -14,6 +14,37 @@ from unittest.mock import patch
 import ci_analysis_systemd as driver
 
 
+class DailyPtyProjectConsentTests(unittest.TestCase):
+    def run_prompts(self, prompts, *, project_test):
+        # A real local PTY and a synthetic Python process exercise prompt
+        # boundaries without installing software, invoking a model or systemd.
+        with tempfile.TemporaryDirectory() as temp, patch.object(driver, "daily_clean") as clean, \
+                contextlib.redirect_stdout(io.StringIO()):
+            script = Path(temp) / "prompts.py"
+            script.write_text("for prompt in " + repr([driver.PROMPTS[name] for name in prompts]) + ":\n"
+                              "    assert input(prompt) == 'yes'\n")
+            output = driver.daily_pty(["ask"], entrypoint=script, project_test=project_test)
+            clean.assert_called_once()
+            return output
+
+    def test_project_copy_has_exactly_one_separate_consent_before_write(self):
+        output = self.run_prompts(("ask-question", "project-test", "write"), project_test=True)
+        for name in ("ask-question", "project-test", "write"):
+            self.assertEqual(output.count(driver.PROMPTS[name].encode()), 1)
+
+    def test_ordinary_question_needs_no_copy_consent(self):
+        self.run_prompts(("ask-question",), project_test=False)
+
+    def test_missing_repeated_unexpected_or_out_of_order_copy_consent_refuses(self):
+        for prompts, expected in ((("ask-question", "write"), True),
+                                  (("ask-question", "project-test", "project-test"), True),
+                                  (("ask-question", "project-test"), False),
+                                  (("project-test", "ask-question"), True),
+                                  (("ask-question", "write", "project-test"), True)):
+            with self.subTest(prompts=prompts, expected=expected), self.assertRaises(ValueError):
+                self.run_prompts(prompts, project_test=expected)
+
+
 class CiAnalysisGuardTests(unittest.TestCase):
     def test_no_flag_does_not_probe_or_install(self):
         with patch.object(driver, "require_ci") as preflight, patch.object(driver, "install") as install, \

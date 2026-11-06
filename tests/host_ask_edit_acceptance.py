@@ -1,7 +1,8 @@
 """Opt-in native ask editing against a private synthetic project only.
 
-One question authorizes two native requests; writing the reviewed diff and
-rolling it back each require fresh manual consent. No real policy is replaced.
+One question authorizes two native requests; testing the project copy, writing
+the reviewed diff and rolling it back each require fresh manual consent.
+No real policy is replaced.
 """
 import json
 import os
@@ -65,10 +66,10 @@ QUESTION = ("W syntetycznym projekcie aideditfixture odczytaj cały dozwolony za
             "Przetestuj przez python-unittest. Pokaż diff przed zgodą na zapis.")
 POLICY_MARKER = "ASK EDIT POLICY: PASS read=PASS write=PASS deny=PASS readonly=PASS"
 REFUSAL_MARKER = "ASK EDIT REFUSAL: PASS requests=0 tests=0 diffs=0 writes=0"
-NATIVE_MARKER = "ASK EDIT NATIVE: PASS question-approvals=1 write-approvals=1 requests=2 source-files=9 request-over-32KiB=PASS test=PASS diff=PASS apply=PASS"
+NATIVE_MARKER = "ASK EDIT NATIVE: PASS question-approvals=1 test-approvals=1 write-approvals=1 requests=2 source-files=9 request-over-32KiB=PASS test=PASS diff=PASS apply=PASS"
 
 
-BOOTSTRAP = '''import json, sys
+BOOTSTRAP = '''import json, os, sys
 sys.path.insert(0, '/usr/lib/ai-desktop')
 from ai_desktop import cli, permissions, ask_cli, task_cli, terminal_consent
 from ai_desktop.analysis_contract import application_input
@@ -100,7 +101,7 @@ if sys.argv[1:] not in ([], ['refusal']):
 refusal = sys.argv[1:] == ['refusal']
 requests, approvals, tests, diffs, writes, large = [], [], [], [], [], []
 original_request, original_input = ask_cli.request, terminal_consent.fresh_input
-original_test, original_diff, original_apply = task_cli.task_sandbox.run, task_cli.show_diff, task_cli.workspace.apply
+original_test, original_diff, original_apply = task_cli.task_sandbox.run_copy, task_cli.show_diff, task_cli.workspace.apply
 def inspect_source(source):
     files = source['files']
     assert len(files) == len(expected) + 1
@@ -127,14 +128,15 @@ def request(*values, **kwargs):
         requests.append('workspace')
     return original_request(*values, **kwargs)
 ask_cli.request = request
-def test(source, proposed, check):
-    inspect_source(source)
+def test(files, check, *, executable=()):
+    assert approvals == [terminal_consent.PROMPTS['ask-question'], terminal_consent.PROMPTS['project-test']]
     assert check == 'python-unittest'
-    assert {item['path']: item['content'] for item in proposed} == replacement
-    result = original_test(source, proposed, check)
+    assert files == dict(expected, **replacement)
+    assert not executable
+    result = original_test(files, check, executable=executable)
     tests.append(result.get('passed') is True)
     return result
-task_cli.task_sandbox.run = test
+task_cli.task_sandbox.run_copy = test
 def diff(plan, **kwargs):
     data = plan.data()
     assert {item['path']: item['content'] for item in data['proposal']['files']} == replacement
@@ -143,7 +145,7 @@ def diff(plan, **kwargs):
 task_cli.show_diff = diff
 def apply(plan, approval, **kwargs):
     assert tests == [True] and diffs == [True]
-    assert approvals == [terminal_consent.PROMPTS['ask-question'], terminal_consent.PROMPTS['write']]
+    assert approvals == [terminal_consent.PROMPTS['ask-question'], terminal_consent.PROMPTS['project-test'], terminal_consent.PROMPTS['write']]
     assert plan.data()['before']['workspace'] == project
     original_apply(plan, approval, **kwargs)
     writes.append(True)
@@ -154,7 +156,9 @@ if refusal:
     ask_cli.managed_session = forbidden
     ask_cli.send_once = forbidden
     task_cli.task_sandbox.run = forbidden
+    task_cli.task_sandbox.run_copy = forbidden
     task_cli.workspace.apply = forbidden
+os.chdir(project)
 code = cli.main(['ask', '--question', __QUESTION__])
 if refusal:
     assert code == 2 and not any((requests, approvals, tests, diffs, writes, large))
@@ -162,7 +166,7 @@ if refusal:
 elif code == 0:
     if (requests != ['assistant', 'workspace'] or large != [True] or tests != [True]
             or diffs != [True] or writes != [True]
-            or approvals != [terminal_consent.PROMPTS['ask-question'], terminal_consent.PROMPTS['write']]):
+            or approvals != [terminal_consent.PROMPTS['ask-question'], terminal_consent.PROMPTS['project-test'], terminal_consent.PROMPTS['write']]):
         raise SystemExit(2)
     print(__NATIVE_MARKER__)
 raise SystemExit(code)
@@ -270,7 +274,7 @@ def reject(fixture):
         process.wait(timeout=2)
         if (process.returncode != 2 or not answered or REFUSAL_MARKER.encode() not in output
                 or TAIL_MARKER.encode() in output or DENIED.strip().encode() in output
-                or PROMPTS["write"].encode() in output):
+                or any(PROMPTS[name].encode() in output for name in ("project-test", "write"))):
             raise ValueError("refusal")
     finally:
         if process.poll() is None:
@@ -306,7 +310,7 @@ def main(argv=None):
             prior.check_stopped(uid, units)
             stage = "native-edit"
             print("The test uses nine synthetic files, including one of 40 KiB; it does not change your configuration.")
-            print("Approve one question, then, after the test and the full diff, approve the save separately. Then confirm the undo.")
+            print("Approve one question, then the project test copy. After the test and full diff, approve the save separately. Then confirm the undo.")
             started = True
             prior.run(*command(fixture), timeout=600)
             stage = "applied"
@@ -332,7 +336,7 @@ def main(argv=None):
             except (OSError, ValueError, RuntimeError, KeyError, subprocess.SubprocessError):
                 passed = False
                 print("HOST ASK EDIT: FAIL stage=cleanup; use ai-desktop stop")
-    print("HOST ASK EDIT: " + ("PASS upfront-refusal=PASS question-approvals=1 write-approvals=1 native-requests=2 "
+    print("HOST ASK EDIT: " + ("PASS upfront-refusal=PASS question-approvals=1 test-approvals=1 write-approvals=1 native-requests=2 "
         "read-files=9 request-over-32KiB=PASS test=PASS diff=PASS apply=PASS rollback=PASS cleanup=PASS actual-user-policy=NOT-TESTED"
         if passed else "FAIL"))
     return 0 if passed else 2
