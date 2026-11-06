@@ -19,6 +19,7 @@ from . import task_contract as contract, task_sandbox, task_workspace as workspa
 from .task_plan import TaskPlan
 from .terminal_consent import confirm, fresh_input
 from .execution import UNSET
+from .skill_runtime import task_skills, accept_skill_response, recheck_with, MAX_ROUNDS
 
 
 def build_parser():
@@ -59,6 +60,7 @@ def selection(args):
     return before, source
 
 
+@task_skills
 def run_task(args, reader, *, display_state=None):
     from .run_controls import require_changes
     require_changes()
@@ -69,7 +71,8 @@ def run_task(args, reader, *, display_state=None):
         detached = workspace._can_apply(args.workspace)
         if type(detached) is int and detached:
             print(workspace.DETACHED_HISTORY_HINT)
-    gate = AnalysisConsent(None, task=source, source_check=lambda: workspace.unchanged(before))
+    source_check = recheck_with(lambda: workspace.unchanged(before))
+    gate = AnalysisConsent(None, task=source, source_check=source_check)
     selected = json.loads(gate.payload).get("execution")
     # Presentation only: authorization still checks the live execution binding.
     if display_state is not None:
@@ -100,21 +103,34 @@ def run_task(args, reader, *, display_state=None):
     gate.check(None, task=source, sha256=gate.sha256, nonce=gate.nonce)
     workspace.unchanged(before)
     with managed_session(**({} if args.details else {"quiet": True})):
-        approval = gate.authorize(None, task=source, sha256=gate.sha256, nonce=gate.nonce)
-        workspace.unchanged(before)
         print(wait_message(config=selected), flush=True)
-        response = send_once(approval)
+        for number in range(MAX_ROUNDS + 1):
+            source_check()
+            approval = gate.authorize(None, task=source, sha256=gate.sha256, nonce=gate.nonce)
+            response = send_once(approval)
+            source_check()
+            if not accept_skill_response(response):
+                break
+            if number == MAX_ROUNDS:
+                raise AnalysisDenied("consent")
+            gate = AnalysisConsent(None, task=source, source_check=source_check)
     if args.details:
         print("SESSION: STOPPED")
     return finish_task(before, source, response, args, reader, config=selected)
 
 
-def finish_task(before, source, response, args, reader, *, write_guard=None, config=UNSET):
+def finish_task(before, source, response, args, reader, *, write_guard=None, config=UNSET, project_test=None):
     """Shared proposal review; sending data never authorizes a filesystem write.
 
     ask supplies a policy-bound guard, repeated after confirmation and inside
     the executor lock. The standalone task flow retains its explicit selection.
     """
+    source_guard = write_guard
+    if project_test is not None:
+        def write_guard():
+            if source_guard is not None:
+                source_guard()
+            project_test.check()
     if write_guard is not None:
         write_guard()
     try:
@@ -130,14 +146,17 @@ def finish_task(before, source, response, args, reader, *, write_guard=None, con
     if args.details:
         print("=== TEST ON AN ISOLATED COPY ===", flush=True)
         print("Checking the changes on an isolated copy…", flush=True)
-    if args.test in contract.MULTIPROCESS:
+    if args.test in contract.MULTIPROCESS and project_test is None:
         print("Run %s on the selected files with a transient user cgroup, without network or host writes." % args.test)
         if not confirm("project-test", reader=reader):
             print("Test cancelled. Nothing was saved.")
             return 2
     originals = {path: info["file"] for path, info in before["files"].items() if info["file"] is not None
                  and info["file"]["content"] != contract.plain_text(info["file"]["content"])}
-    result = task_sandbox.run(source, proposed["files"], args.test, **({"originals": originals} if originals else {}))
+    if project_test is not None:
+        result = project_test.run(source, proposed["files"], args.test, reader, source_guard)
+    else:
+        result = task_sandbox.run(source, proposed["files"], args.test, **({"originals": originals} if originals else {}))
     if args.details or not result["passed"]:
         print("Untrusted test output:")
         print(terminal_text(result["output"]))
@@ -151,8 +170,10 @@ def finish_task(before, source, response, args, reader, *, write_guard=None, con
         print("TASK TEST: " + ("PASS" if result["passed"] else "FAIL") + " check=" + args.test)
         print("Test on a copy: " + ("passed" if result["passed"] else "failed") + " (" + args.test + ").")
     else:
-        print("Test on a copy: %s (%s); %d selected file(s)." % (
-            "passed" if result["passed"] else "failed", args.test, len(source["files"])))
+        print("Test on a copy: %s (%s); %s." % (
+            "passed" if result["passed"] else "failed", args.test,
+            "complete permitted project with proposed changes" if project_test is not None
+            else "%d selected file(s)" % len(source["files"])))
         if args.test not in contract.TEST_SUITES:
             print("This checks syntax only; project tests were not run.")
     if args.test == "npm-test" and result["passed"]:
@@ -168,7 +189,8 @@ def finish_task(before, source, response, args, reader, *, write_guard=None, con
     show_diff(plan, details=args.details)
     if args.details:
         if args.test != "text":
-            print("The test covers only the selected files; it does not prove the whole project works.")
+            print("The test covers the permitted project copy and proposed changes." if project_test is not None
+                  else "The test covers only the selected files; it does not prove the whole project works.")
         print("Only the changes shown will be saved, and you can undo them.")
         print("Private undo copies are kept in .ai-desktop-tasks; they are never run on the host.")
         print("Plan SHA256:", plan.sha256)

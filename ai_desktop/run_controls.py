@@ -144,8 +144,7 @@ def configured(function):
         try:
             from .agent_profiles import resolve
             overrides = {"provider": selected.provider} if selected.provider is not None else {}
-            if function.__module__.endswith(".ask_cli"):
-                overrides["catalog"] = True
+            overrides["catalog"] = True
             config = resolve(selected.agent, selected.model, selected.effort, **overrides)
             config = execution.validate(config)
             # Preserve the accepted wire for an unchanged default installation.

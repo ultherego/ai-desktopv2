@@ -26,47 +26,47 @@ class TaskBudgetTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             contract.request({"instruction": "y" * (MAX_MESSAGE_BYTES + 1), "files": files})
 
-    def test_request_64k_file_limit_including_utf8(self):
-        for content in ("a" * 65536, "ą" * 32768):
+    def test_request_mib_file_limit_including_utf8(self):
+        for content in ("a" * contract.MAX_FILE, "ą" * (contract.MAX_FILE // 2)):
             with self.subTest(multibyte=content.startswith("ą")):
                 value = source([content])
                 self.assertEqual(contract.request(value), value)
                 with self.assertRaises(ValueError):
                     contract.request(source([content + "x"]))
 
-    def test_request_128k_total_limit(self):
-        contents = ["a" * 65536, "b" * 65536]
+    def test_request_mib_total_limit(self):
+        contents = ["a" * contract.MAX_FILE, "b" * contract.MAX_FILE]
         value = source(contents)
         self.assertEqual(contract.request(value), value)
         with self.assertRaises(ValueError):
             contract.request(source(contents + ["x"]))
 
-    def test_proposal_64k_file_limit_including_utf8(self):
+    def test_proposal_mib_file_limit_including_utf8(self):
         before = source(["original"])
-        for content in ("a" * 65536, "ą" * 32768):
+        for content in ("a" * contract.MAX_FILE, "ą" * (contract.MAX_FILE // 2)):
             with self.subTest(multibyte=content.startswith("ą")):
                 value = proposed([content])
                 self.assertEqual(contract.proposal(json.dumps(value, ensure_ascii=False), before), value)
                 with self.assertRaises(ValueError):
                     contract.proposal(json.dumps(proposed([content + "x"]), ensure_ascii=False), before)
 
-    def test_proposal_128k_total_limit(self):
+    def test_proposal_mib_total_limit(self):
         before = source(["original"] * 3)
-        contents = ["a" * 65536, "b" * 65536]
+        contents = ["a" * contract.MAX_FILE, "b" * contract.MAX_FILE]
         value = proposed(contents)
         self.assertEqual(contract.proposal(json.dumps(value), before), value)
         with self.assertRaises(ValueError):
             contract.proposal(json.dumps(proposed(contents + ["x"])), before)
 
     def test_source_count_and_changed_count_are_distinct_limits(self):
-        before = source(["original"] * 64)
+        before = source(["original"] * contract.MAX_FILES)
         self.assertEqual(contract.request(before), before)
         with self.assertRaises(ValueError):
-            contract.request(source(["original"] * 65))
-        replacement = proposed(["new"] * 32)
+            contract.request(source(["original"] * (contract.MAX_FILES + 1)))
+        replacement = proposed(["new"] * contract.MAX_CHANGED_FILES)
         self.assertEqual(contract.proposal(json.dumps(replacement), before), replacement)
         with self.assertRaises(ValueError):
-            contract.proposal(json.dumps(proposed(["new"] * 33)), before)
+            contract.proposal(json.dumps(proposed(["new"] * (contract.MAX_CHANGED_FILES + 1))), before)
 
     def test_deep_or_invalid_utf8_json_has_a_closed_refusal(self):
         before = source(["original"])
@@ -145,6 +145,59 @@ class UnchangedProposalTests(unittest.TestCase):
 
     def test_a_real_change_is_still_accepted(self):
         self.assertEqual(contract.proposal(self.raw(["new\n"]), source(["old\n"]))["files"][0]["content"], "new\n")
+
+
+class AnchoredProposalTests(unittest.TestCase):
+    def proposal(self, original, replacements, *, writable=True):
+        before = source([original])
+        before["files"][0]["writable"] = writable
+        raw = {"summary": "Anchored change", "files": [{"path": "file0.txt", "replacements": replacements}]}
+        return contract.proposal(json.dumps(raw), before)
+
+    def test_small_proposal_changes_a_mib_file_without_returning_its_complete_content(self):
+        original = "a" * (2 * 1024 * 1024) + "\nunique setting=old\n"
+        result = self.proposal(original, [{"old": "unique setting=old", "new": "unique setting=new"}])
+        self.assertEqual(result["files"], [{"path": "file0.txt", "content": original[:-4] + "new\n"}])
+        self.assertNotIn("replacements", result["files"][0])
+
+    def test_disjoint_anchors_resolve_against_the_original_in_any_order(self):
+        self.assertEqual(self.proposal("alpha beta", [{"old": "beta", "new": "alpha"},
+                                                       {"old": "alpha", "new": "beta"}])["files"][0]["content"],
+                         "beta alpha")
+        with self.assertRaises(ValueError):
+            self.proposal("alpha", [{"old": "alpha", "new": "beta"}, {"old": "beta", "new": "gamma"}])
+
+    def test_ambiguous_missing_and_overlapping_anchors_refuse(self):
+        for original, replacements in (
+                ("same same", [{"old": "same", "new": "changed"}]),
+                ("aaa", [{"old": "aa", "new": "b"}]),
+                ("abcdef", [{"old": "abc", "new": "x"}, {"old": "bcd", "new": "y"}]),
+                ("abcdef", [{"old": "missing", "new": "x"}]),
+                ("abcdef", [{"old": "", "new": "x"}]),
+                ("abcdef", [{"old": "abc", "new": "abc"}]),
+                ("abcdef", [{"old": "abc", "new": "x"}, {"old": "abc", "new": "y"}])):
+            with self.subTest(original=original, edits=replacements), self.assertRaises(ValueError):
+                self.proposal(original, replacements)
+
+    def test_read_only_new_files_and_unknown_edit_fields_refuse(self):
+        with self.assertRaises(ValueError):
+            self.proposal("before", [{"old": "before", "new": "after"}], writable=False)
+        with self.assertRaises(ValueError):
+            self.proposal(None, [{"old": "before", "new": "after"}])
+        for value in ([], "before", [{"old": "before", "new": "after", "occurrence": 1}],
+                      [{"old": "before", "new": "after"}] * (contract.MAX_REPLACEMENTS + 1)):
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                self.proposal("before", value)
+
+    def test_anchor_and_result_limits_count_utf8_bytes(self):
+        with self.assertRaises(ValueError):
+            self.proposal("before", [{"old": "before", "new": "ą" * (contract.MAX_REPLACEMENT_TEXT // 2) + "x"}])
+        original = "a" * (contract.MAX_FILE - 1) + "z"
+        with self.assertRaises(ValueError):
+            self.proposal(original, [{"old": "z", "new": "zz"}])
+        anchors = [str(n) + "a" * (contract.MAX_REPLACEMENT_TEXT - 1) for n in range(5)]
+        with self.assertRaises(ValueError):
+            self.proposal("\n".join(anchors), [{"old": anchor, "new": ""} for anchor in anchors])
 
 
 if __name__ == "__main__":

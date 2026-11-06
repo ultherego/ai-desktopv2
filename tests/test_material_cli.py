@@ -132,7 +132,7 @@ class FileAcceptanceTests(Base):
         self.assertEqual((self.sent, self.fake.opens, self.ready), ([], 0, 0))
 
     def test_limit_encoding_controls_and_empty_files_are_refused_with_closed_hints(self):
-        cases = [(b"a" * (5 * 1024 * 1024 + 1), "The file is over 5242880 bytes (5 MiB, file_size limit)"), (b"\xff\xfe\xfa", "UTF-8"),
+        cases = [(b"a" * (32 * 1024 * 1024 + 1), "The file is over 33554432 bytes (32 MiB, file_size limit)"), (b"\xff\xfe\xfa", "UTF-8"),
                  (b"\x1b[31mred\x1b[0m\n", "control or formatting"), (b"", "empty"), ("﻿bom".encode(), "control or formatting")]
         for raw, hint in cases:
             with self.subTest(hint=hint, size=len(raw)):
@@ -195,7 +195,7 @@ class FileAcceptanceTests(Base):
 
 
 class FileSizeSettingTests(Base):
-    """The owner's `file_size` in [files] decides the largest file `material` imports (default 5 MiB, ceiling 16 MiB)."""
+    """The owner's `file_size` in [files] decides the largest file `material` imports (default 32 MiB, ceiling 64 MiB)."""
 
     def policy_with(self, literal):
         self.config.write_text('version = 1\n[files]\nread = ["~/data/*"]\ndeny = []\nfile_size = %s\n[network]\nclaude = true\n' % literal)
@@ -206,19 +206,19 @@ class FileSizeSettingTests(Base):
         self.file.write_bytes(b"x" * (100 * 1024 + 1))
         self.assertEqual(self.run_cli(["/exit"]), 2)
         self.assertIn("The file is over 102400 bytes (100 KiB, file_size limit)", self.output)
-        self.assertIn("raise file_size in [files] in permissions.toml (16 MiB at most)", self.output)
+        self.assertIn("raise file_size in [files] in permissions.toml (64 MiB at most)", self.output)
         self.file.write_bytes(b"x" * (100 * 1024))
         self.assertEqual(self.run_cli(["/exit"]), 0)
 
     def test_a_larger_limit_accepts_a_file_over_the_default_and_the_ceiling_still_holds(self):
-        self.file.write_bytes(b"x" * (6 * 1024 * 1024))
-        self.assertEqual(self.run_cli(["/exit"]), 2)                       # default 5 MiB
-        self.policy_with('"16MiB"')
+        self.file.write_bytes(b"x" * (33 * 1024 * 1024))
+        self.assertEqual(self.run_cli(["/exit"]), 2)                       # default 32 MiB
+        self.policy_with('"64MiB"')
         self.assertEqual(self.run_cli(["/exit"]), 0)
-        self.assertIn("%d B" % (6 * 1024 * 1024), self.output)
-        self.file.write_bytes(b"x" * (16 * 1024 * 1024 + 1))
+        self.assertIn("%d B" % (33 * 1024 * 1024), self.output)
+        self.file.write_bytes(b"x" * (64 * 1024 * 1024 + 1))
         self.assertEqual(self.run_cli(["/exit"]), 2)
-        self.assertIn("16 MiB", self.output)
+        self.assertIn("64 MiB", self.output)
 
     def test_the_request_schema_accepts_sizes_up_to_the_hard_ceiling_only(self):
         from ai_desktop import material_step as ms, materials

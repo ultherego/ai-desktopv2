@@ -12,12 +12,12 @@ import tempfile
 import threading
 
 from . import account_runtime
-from .analysis_contract import (request_effort, request_seconds, AnalysisDenied, MAX_PACKET_LARGE, ModelText,
+from .analysis_contract import (request_effort, request_seconds, AnalysisDenied, MAX_PACKET_LARGE, MAX_RESPONSE_BYTES, ModelText,
                                 canonical, result_text_limit, terminal_text, validate_meta)
 from .analysis_sandbox import (CA, HOME, INSTALL, NAMESPACES, child_failure,
                                cloud_transport_ready, failure_stage, profile_lock, service_identity, trusted_file)
 from .codex_protocol import CLIENT_VERSION, Protocol, TOKEN_ENV
-from .e2_connect_proxy import ConnectProxy, OPENAI_HOSTS, open_public
+from .e2_connect_proxy import ANALYSIS_STREAM_LIMIT, ConnectProxy, OPENAI_HOSTS, open_public
 from .e2_ipc import _unique_pairs
 from .e2_subscription_boundary import base_command
 from .execution import validate as validate_execution
@@ -97,7 +97,8 @@ class OpenAIProxy(ConnectProxy):
     def __init__(self, path, stream_seconds=120):
         def fixed_dial(host):
             return open_public(host, hosts=OPENAI_HOSTS)
-        super().__init__(path, dial=fixed_dial, stream_seconds=stream_seconds, hosts=OPENAI_HOSTS)
+        super().__init__(path, dial=fixed_dial, stream_seconds=stream_seconds, hosts=OPENAI_HOSTS,
+                         stream_limit=ANALYSIS_STREAM_LIMIT)
 
 
 def private_packet(token, request):
@@ -191,7 +192,7 @@ def run_client(action, report=b"", *, cancelled=None, mode="analysis"):
                 with failure_stage("analysis"):
                     code, output, errors = bounded_process(namespace_command("analyze", directory), env=env,
                         input_bytes=packet, input_limit=PRIVATE_PACKET_BYTES, private_input=True,
-                        timeout=request_seconds(request_effort(report)) + 5, limit=768 * 1024 if mode == "workspace" else 131072, cancelled=cancelled)
+                        timeout=request_seconds(request_effort(report)) + 5, limit=MAX_RESPONSE_BYTES if mode == "workspace" else 131072, cancelled=cancelled)
                     if code != 0:
                         raise child_failure(errors, "client", provider="codex")
                     return result_text(output, mode=mode, token=token)

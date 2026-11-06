@@ -378,6 +378,10 @@ def _run_command(snapshot, ledger, plan, permit, args, reader):
 
 
 def _budget_stop(policy, name):
+    if name == "skills_bytes":
+        from .skill_runtime import MAX_KNOWLEDGE_BYTES
+        print("Refused: selected Skills and references exceed their separate %d B budget." % MAX_KNOWLEDGE_BYTES)
+        raise file_context.FileReadDenied("input")
     limits = policy.limits() if policy is not None else permissions.Limits()
     print("Refused: the file discovery budget ran out: " + name + "=" + str(getattr(limits, name))
           + " ([files] of permissions.toml; ceiling in the code: " + str(permissions.LIMIT_SPECS[name][2])
@@ -473,7 +477,7 @@ def _run_once(question, args, reader, request, *, snapshot, phase=None, conversa
                     pending = ledger.snapshot()
                 except ValueError:
                     _budget_stop(snapshot.policy, "discovery_bytes")
-                document = permit.bind_discovery(snapshot.policy, pending)
+                document = permit.bind_discovery(snapshot.policy, pending, resource_loader=skills)
                 carried["document"] = document
                 progress("plan-request")
                 reply = request(question, args, reader, access=snapshot.access, discovery=document,
@@ -481,14 +485,14 @@ def _run_once(question, args, reader, request, *, snapshot, phase=None, conversa
                 permit.check()
                 progress("plan")
                 following = _plan(reply, snapshot.access)
-                if following["action"] not in ("list", "find", "run", "skill", "read", "answer", "edit", "delete", "project-test"):
+                if following["action"] not in ("list", "find", "run", "skill", "read", "read-range", "search-content", "answer", "edit", "delete", "project-test"):
                     raise PlanError("action")
                 return following
 
             context = None
             skill_rounds = 0
             while True:
-                if snapshot.policy is None and (plan["action"] in ("list", "find", "run")
+                if snapshot.policy is None and (plan["action"] in ("list", "find", "run", "read-range", "search-content")
                                                 or plan["action"] == "read" and plan["files"]):
                     raise AccessDenied()
                 if plan["action"] == "skill":
@@ -496,7 +500,9 @@ def _run_once(question, args, reader, request, *, snapshot, phase=None, conversa
                     skill_rounds += 1
                     if skills is None or skill_rounds > MAX_SKILL_ROUNDS:
                         raise PlanError("action")
-                    wanted = [name for name in plan["names"] if name not in loaded]
+                    previous = {step["name"]: step["text"] for step in ledger.steps if step["op"] == "skill"}
+                    wanted = [name for name in plan["names"] if name not in loaded or
+                              "/" in name and skills(name) != previous.get(name)]
                     if not wanted:
                         raise PlanError("action")      # nothing new: another round would only repeat the same request
                     progress("collect")
@@ -527,6 +533,27 @@ def _run_once(question, args, reader, request, *, snapshot, phase=None, conversa
                             _run_command(snapshot, ledger, {"action": "run", "argv": argv}, permit, args, reader)
                     else:
                         _run_command(snapshot, ledger, plan, permit, args, reader)
+                    plan = next_plan()
+                    continue
+                if plan["action"] in ("read-range", "search-content"):
+                    progress("collect")
+                    try:
+                        ledger.content(plan, permit)
+                        permit.check()
+                    except ask_discovery.Recoverable as problem:
+                        if not ledger.correction(problem):
+                            _deny(snapshot.policy, problem.code, "Content read refused", "The excerpt was not sent to Claude.")
+                    except ask_discovery.BudgetExhausted as exhausted:
+                        if not ledger.soft_stop(exhausted.name):
+                            _budget_stop(snapshot.policy, exhausted.name)
+                    except (OSError, ValueError, TypeError, KeyError, AttributeError, UnicodeError) as error:
+                        code = error.args[0] if isinstance(error, ValueError) and len(error.args) == 1 else None
+                        if (type(code) is not str or code not in ask_discovery.RECOVERABLE
+                                or not ledger.correction(ask_discovery.Recoverable(
+                                    code, ledger.selectors([plan["file"]]),
+                                    snapshot.policy.file_size() if code == "files-size" else ledger.limit_for(code)))):
+                            _deny(snapshot.policy, code if type(code) is str else None, "Content read refused",
+                                  "The excerpt was not sent to Claude.")
                     plan = next_plan()
                     continue
                 if plan["action"] in ("list", "find"):
@@ -612,6 +639,10 @@ def _run_once(question, args, reader, request, *, snapshot, phase=None, conversa
         permit.close()
 
 
+from .skill_runtime import version_scope
+
+
+@version_scope
 def run(question, args, reader, request, *, phase=None, conversation_consent=None, skills=None, turn_context=None):
     """One ordinary turn, or at most two collision follow-ups.
 

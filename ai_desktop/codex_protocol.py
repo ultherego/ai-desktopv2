@@ -23,7 +23,7 @@ import time
 import unicodedata
 
 from . import __version__
-from .analysis_contract import (AnalysisDenied, MAX_PACKET_LARGE, REQUEST_SECONDS_LONG, SYSTEM_PROMPT, ModelText, MODEL_ID,
+from .analysis_contract import (AnalysisDenied, MAX_PACKET_LARGE, MAX_RESPONSE_BYTES, REQUEST_SECONDS_LONG, SYSTEM_PROMPT, ModelText, MODEL_ID,
                                 application_input, canonical, parse_request,
                                 result_text_limit, validate_meta)
 from .e2_ipc import _unique_pairs
@@ -49,14 +49,14 @@ class Limits:
     # A maximum-size application JSON string is escaped once more for RPC and
     # echoed by userMessage lifecycle events. These internal limits include that
     # framing overhead; they do not change the application or final-answer caps.
-    wire_bytes: int = 8 * 1024 * 1024
+    wire_bytes: int = 4 * MAX_PACKET_LARGE + 4 * MAX_RESPONSE_BYTES
     line_bytes: int = 2 * MAX_PACKET_LARGE + 65536
     messages: int = 4096
     stderr_bytes: int = 16384
     items: int = 64
 
     def __post_init__(self):
-        for name, maximum in (("wire_bytes", 8 * 1024 * 1024),
+        for name, maximum in (("wire_bytes", 4 * MAX_PACKET_LARGE + 4 * MAX_RESPONSE_BYTES),
                               ("line_bytes", 2 * MAX_PACKET_LARGE + 65536), ("messages", 4096),
                               ("stderr_bytes", 16384), ("items", 64)):
             value = getattr(self, name)
@@ -325,8 +325,12 @@ def _validated_input(raw):
         if memory is not None:
             from .conversation_memory import validate as validate_memory
             memory = validate_memory(memory)
+        from .skill_runtime import validate_knowledge, using_knowledge
+        knowledge = data.get("knowledge")
+        if knowledge is not None:
+            knowledge = validate_knowledge(knowledge)
         mode = data["mode"]
-        allowed = {"mode", "execution", "conversation", "memory"}
+        allowed = {"mode", "execution", "conversation", "memory", "knowledge"}
         if mode == "analysis":
             allowed |= {"report", "question"}
             args, kwargs = (data["report"], data["question"]), {}
@@ -349,7 +353,7 @@ def _validated_input(raw):
             raise ValueError()
         if set(data) - allowed:
             raise ValueError()
-        with using_history(history), using_memory(memory):
+        with using_history(history), using_memory(memory), using_knowledge(knowledge):
             envelope = application_input(*args, **kwargs, execution=selected)
         expected, _ = parse_request(envelope.encode("utf-8"))
         if canonical(data) != expected:

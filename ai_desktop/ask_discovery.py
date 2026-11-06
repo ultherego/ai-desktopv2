@@ -10,6 +10,7 @@ import json
 import re
 
 from . import directory_context, permissions
+from .skill_runtime import MAX_KNOWLEDGE_BYTES, observe_command
 from .discovery_contract import (CEILING_TOTAL_ENTRIES, REFUSAL_CODES, MAX_SELECTORS, clean_path, document_bytes,
                                  validate_discovery)
 
@@ -58,6 +59,7 @@ class DiscoveryLedger:
             self.scopes = {}
         self.home = getattr(policy, "home", "") if type(getattr(policy, "home", "")) is str else ""
         self.steps, self.guards = [], ()
+        self.contents, self.content_bytes = (), 0
         self.scan = directory_context.Scan(self.limits.search_scan)
         self.rounds_left = self.limits.discovery_rounds
         self.corrections_left = self.limits.plan_corrections
@@ -72,14 +74,18 @@ class DiscoveryLedger:
 
     def snapshot(self):
         document = validate_discovery(self.document())
-        if document_bytes(document) > self.limits.discovery_bytes:
+        if self._diagnostic_bytes(document) > self.limits.discovery_bytes:
             raise ValueError("discovery_bytes")
-        return directory_context.DiscoverySnapshot(self.policy, document, self.guards)
+        return directory_context.DiscoverySnapshot(self.policy, document, self.guards, self.contents)
+
+    @staticmethod
+    def _diagnostic_bytes(document):
+        return document_bytes({**document, "steps": [s for s in document["steps"] if s["op"] != "skill"]})
 
     def _budget(self):
         # Room for the refusal steps the correction budget may still add (4 selectors of ~560 bytes + framing each).
         reserve = min(self.corrections_left * REFUSAL_RESERVE, self.limits.discovery_bytes // 4)
-        return self.limits.discovery_bytes - (document_bytes(self.document()) if self.steps else 0) - OVERHEAD - reserve
+        return self.limits.discovery_bytes - (self._diagnostic_bytes(self.document()) if self.steps else 0) - OVERHEAD - reserve
 
     def _entries_left(self):
         used = sum(len(d["entries"]) for s in self.steps if s["op"] == "list" for d in s["directories"])
@@ -137,17 +143,18 @@ class DiscoveryLedger:
         document = self.document()
         step = {"op": "skill", "name": name, "status": status, "text": text or ""}
         document["steps"].append(step)
-        if document_bytes(document) > self.limits.discovery_bytes:
-            raise BudgetExhausted("discovery_bytes")
+        if document_bytes({"resources": [s for s in document["steps"] if s["op"] == "skill"]}) > MAX_KNOWLEDGE_BYTES:
+            raise BudgetExhausted("skills_bytes")
         self.steps.append(step)
-        if text:
+        if text and "/" not in name:
             self.hints += "\n" + text
 
     def add_run(self, step):
         # Test and undo must finish after an approved live change. Keep their status even if command
         # output cannot fit on the wire. snapshot() refuses a transfer if the statuses alone overflow.
         self.steps.append(step)
-        if step["output"] and document_bytes(self.document()) > self.limits.discovery_bytes:
+        observe_command(step)
+        if step["output"] and self._diagnostic_bytes(self.document()) > self.limits.discovery_bytes:
             step["output"] = ""
             step["truncated"] = True
         return step
@@ -172,6 +179,28 @@ class DiscoveryLedger:
         self.steps.append(step)
         self.guards += guards
         self._record(step)
+        return step
+
+    def content(self, plan, permit):
+        """One grounded file, local large-file scan, bounded excerpts on the wire."""
+        from . import ask_content
+        self.ground([plan["file"]])
+        self.take_round()
+        distinct = {(guard.ident, guard.relative) for guard in self.contents}
+        selection = plan["file"]
+        key = (selection, "") if type(selection) is str else (selection["id"], selection["path"])
+        if key not in distinct and len(distinct) >= self.limits.read_files:
+            raise ValueError("files-count")
+        room = min(ask_content.MAX_FRAGMENT_BYTES, self.limits.read_file_size,
+                   self.limits.read_total_size - self.content_bytes, max(0, (self._budget() - 2048) // 2))
+        if room < 1:
+            raise BudgetExhausted("discovery_bytes")
+        step, guard, amount = ask_content.collect(self.policy, plan, permit, room=room)
+        if document_bytes({"steps": [step], "remaining": self.document()["remaining"]}) > self._budget():
+            raise BudgetExhausted("discovery_bytes")
+        self.steps.append(step)
+        self.contents += (guard,)
+        self.content_bytes += amount
         return step
 
     # -- grounding ---------------------------------------------------------------------------------------------------
@@ -238,9 +267,9 @@ class DiscoveryLedger:
             return False
         step = {"op": "refusal", "code": problem.code, "selectors": problem.selectors, "limit": problem.limit}
         self.steps.append(step)
-        if document_bytes(self.document()) > self.limits.discovery_bytes:
+        if self._diagnostic_bytes(self.document()) > self.limits.discovery_bytes:
             step["selectors"] = []                     # the owner's byte budget wins over naming the selectors
-            if document_bytes(self.document()) > self.limits.discovery_bytes:
+            if self._diagnostic_bytes(self.document()) > self.limits.discovery_bytes:
                 self.steps.pop()
                 return False
         self.corrections_left -= 1

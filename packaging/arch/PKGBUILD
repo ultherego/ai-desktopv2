@@ -4,7 +4,7 @@
 # Only the guarded package scriptlet may apply it during this approved install.
 pkgname=ai-desktop
 pkgver=0.1.0
-pkgrel=78
+pkgrel=79
 pkgdesc='Terminal AI assistant for CachyOS and Arch with an isolated client and approved changes'
 arch=('x86_64')
 url='https://github.com/ultherego/ai-desktopv2'
@@ -41,6 +41,13 @@ package() {
         install -d -m755 "${target}/skills/${skill##*/}"
         [[ -f "${skill}/SKILL.md" && ! -L "${skill}/SKILL.md" ]] || return 1
         install -m644 "${skill}/SKILL.md" "${target}/skills/${skill##*/}/SKILL.md"
+        if [[ -d "${skill}/references" ]]; then
+            install -d -m755 "${target}/skills/${skill##*/}/references"
+            for src in "${skill}"/references/*.md; do
+                [[ -f "${src}" && ! -L "${src}" ]] || return 1
+                install -m644 "${src}" "${target}/skills/${skill##*/}/references/"
+            done
+        fi
     done
 
     # Never place these in /usr/lib/sysusers.d or /usr/lib/tmpfiles.d:

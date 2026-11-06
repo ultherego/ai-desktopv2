@@ -23,12 +23,13 @@ def manifest():
     """Deterministic list of source bytes to copy. No secrets or unlisted files."""
     try:
         paths = sorted(SOURCE_PACKAGE.glob("*.py"))
-        paths += sorted(SOURCE_SKILLS.glob("*/SKILL.md"))
+        paths += sorted([*SOURCE_SKILLS.glob("*/SKILL.md"), *SOURCE_SKILLS.glob("*/references/*.md")])
         if not paths or not (SOURCE_PACKAGE / "__init__.py").is_file():
             raise InstallDenied("INSTALL: REFUSED")
         out = []
         for file in paths:
-            if file.is_symlink() or not file.is_file():
+            if (file.is_symlink() or not file.is_file()
+                    or any(parent.is_symlink() for parent in file.parents if parent != SOURCE and SOURCE in parent.parents)):
                 raise InstallDenied("INSTALL: REFUSED")
             relative = file.relative_to(SOURCE).as_posix()
             data = file.read_bytes()

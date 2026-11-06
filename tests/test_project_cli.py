@@ -604,10 +604,10 @@ class EditTests(Base):
             with self.subTest(decision=decision), self.assertRaises(pcli.EditRefused) as caught:
                 self.plan(**decision)
             self.assertIn(reason, str(caught.exception))
-        (self.proj / "src/big.txt").write_text("x" * (64 * 1024 + 1))
+        (self.proj / "src/big.txt").write_text("x" * (8 * 1024 * 1024 + 1))
         with self.assertRaises(pcli.EditRefused) as caught:
             self.plan(files=["src/big.txt"])
-        self.assertIn("64 KiB", str(caught.exception))
+        self.assertIn("8 MiB", str(caught.exception))
         deep = self.proj / "a/b/c/d/e"
         deep.mkdir(parents=True)
         (deep / "f.py").write_text("x\n")

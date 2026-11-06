@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-79: large-project workflow and shared knowledge
+
+- Separate larger file/context budgets from local test-copy budgets. Inspect large text by search and line ranges in ordinary conversation, and use checked anchored replacements for larger files. Preserve the complete diff, copy test, apply consent and rollback checks.
+- Keep a larger bounded conversation window and task memory, with a separate larger saved-record budget. The continuation shortcut and full transcript/compaction work remain follow-up items.
+- Load assigned Skills and their needed reference sections on demand in ask, material, project and task. Extend practical Arch/CachyOS procedures using official sources and explicit version applicability.
+- This candidate changes file and worker contracts and requires the existing offline CI and real CachyOS acceptance before merge.
+
 ## 0.1.0-78: quota card layout and service selection
 
 - Give the account list more vertical space when the screen allows it. Codex usage and connection buttons wrap inside the account card. The extra heading above the Codex card was removed.

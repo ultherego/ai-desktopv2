@@ -15,7 +15,7 @@ AI Desktop is a development version, not a 1.0 release. Automated tests do not p
 - If consent expires or permissions change during a `[commands] change` command, the program does not run the test or the undo: it shows them for you to run by hand. Such a turn ends in a refusal, so the result stays on screen but may not reach the conversation memory.
 - A truncated task journal blocks writing in that directory until it is checked by hand. The task trash has no automatic cleanup, and the limit is 128 entries per directory.
 - A file name in `deny` must be written exactly as it is on disk: the rules do not normalize Unicode characters.
-- Edited files are limited to 64 KiB each and 128 KiB combined. A project test requires the entire supported authorized index to fit its copy limits. Go and npm refuse when the user manager cannot enforce the required cgroup limits. Local runtime dependencies must already be available.
+- Edited files are limited to 8 MiB each and 16 MiB combined, with up to 64 changes. Full model output is smaller; use anchored replacements for large files. Configured lower read budgets remain effective. Local copy defaults are independent: 2,000 files, 8 MiB each and 64 MiB combined (hard ceilings 20,000 / 32 MiB / 128 MiB). A project test requires the entire supported authorized index to fit its copy limits. Go and npm refuse when the user manager cannot enforce the required cgroup limits. Local runtime dependencies must already be available.
 - Commands run in a sandbox without network or user session, so for example `ip`, `wpctl` and `glxinfo` do not see the host's state.
 
 - The agent panel shows the last quota windows actually reported by each client, including their observation time. With no observations or after a reset the current balance is unknown. The widget timer refreshes local data. On-demand Codex limits require a separate, explicitly linked native Codex session for the chosen workspace. The signed-in browser account used for ChatGPT app usage may differ.
@@ -26,3 +26,6 @@ AI Desktop is a development version, not a 1.0 release. Automated tests do not p
 - Login expiry and refresh, and real network failures with the official client.
 - An independent security review and installation on a fresh system.
 - Anthropic's terms for a program that runs Claude Code with a subscription login; you use the client on your own account and at your own judgment.
+
+- Working context is bounded: 64 recent turns within 512 KiB, 96 notes within 64 KiB, and recent saved history within a 16 MiB record. This is not a complete unlimited transcript, native-client session reuse or semantic compaction. Provider token limits can be lower than the application’s byte ceilings.
+- Packaged documentation is a dated snapshot. A rolling wiki page is not proof that every option exists in the installed tool; unknown or incompatible applicability must remain explicit. Live official-document retrieval and automatic environment-pack reconciliation are follow-up work.

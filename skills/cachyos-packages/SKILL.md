@@ -1,6 +1,6 @@
 ---
 name: cachyos-packages
-description: Diagnoses CachyOS repositories, mirrors and package signatures. Use for download errors, version differences or judging whether an optimized repository is compatible with the CPU.
+description: Diagnoses CachyOS repositories, mirrors, package signatures, Hello, Package Installer, cachyos-rate-mirrors and Cachy-Update. Use for package errors, update checks or optimized repository compatibility.
 ---
 
 # CachyOS packages
@@ -38,3 +38,10 @@ Give the compared versions and sources, the confirmed cause or hypothesis, and o
 - [CachyOS FAQ: pacman errors](https://wiki.cachyos.org/cachyos_basic/faq/).
 - [Compatibility and migration of optimized repositories](https://wiki.cachyos.org/features/optimized_repos/#migrating-from-x86-64-v3-to-x86-64-v4-or-znver4).
 - [pacman: the sysupgrade option](https://man.archlinux.org/man/pacman.8.en).
+
+## Tool references
+
+Load the matching reference when the task concerns these tools. Verify the installed version and help; a rolling source is not a verified version match.
+
+- [Hello, Package Installer and mirror ranking](references/package-tools.md).
+- [Cachy-Update checks, tray and transactions](references/cachy-update.md).

@@ -17,7 +17,7 @@ class Authorization:
 
 class TaskPlan:
     def __init__(self, before, source, proposal, check, *, clock=time.monotonic):
-        contract.proposal(canonical(proposal), source)
+        proposal = contract.proposal(canonical(proposal), source)
         if set(before["files"]) != {f["path"] for f in source["files"]}:
             raise ValueError("selection")
         for item in source["files"]:

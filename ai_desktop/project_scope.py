@@ -20,7 +20,7 @@ MAX_FILES = 20000
 MAX_SCAN_ENTRIES = 100000
 MAX_DEPTH = 16
 MAX_DIR_ENTRIES = 5000
-FILE_READ_BYTES = 16 * 1024 * 1024        # largest single project file that can be read
+FILE_READ_BYTES = 64 * 1024 * 1024        # largest single project file that can be read
 SEARCH_FILE_BYTES = FILE_READ_BYTES        # larger files are listed but skipped by text search
 SEARCH_BUDGET_BYTES = 64 * 1024 * 1024    # bytes read per search call before returning a cursor
 MAX_HITS = 20
@@ -219,16 +219,16 @@ class Project:
 
     def test_selection(self):
         """All policy-visible entries or a refusal. Never silently narrow the suite to a passing subset."""
-        from . import task_contract
+        from . import copy_contract
         limits = self.policy.limits()
         if not self.complete:
             raise TestScopeRefused(f"Incomplete index: {self._scan_detail or 'scan not completed'}. "
                                    f"{len(self.files)} permitted file(s) indexed so far; full totals are unknown.")
         if not self.files:
             raise TestScopeRefused("The complete index contains 0 permitted regular files.")
-        totals = (("Indexed files", len(self.files), "read_files", task_contract.MAX_FILES),
-                  ("Largest indexed file (bytes)", max(e.size for e in self.files), "read_file_size", task_contract.MAX_FILE),
-                  ("Total indexed bytes", sum(e.size for e in self.files), "read_total_size", task_contract.MAX_TOTAL))
+        totals = (("Indexed files", len(self.files), "test_copy_files", copy_contract.MAX_FILES),
+                  ("Largest indexed file (bytes)", max(e.size for e in self.files), "test_copy_file_size", copy_contract.MAX_FILE),
+                  ("Total indexed bytes", sum(e.size for e in self.files), "test_copy_total_size", copy_contract.MAX_TOTAL))
         exceeded = []
         for label, actual, key, ceiling in totals:
             configured = getattr(limits, key)
@@ -239,13 +239,13 @@ class Project:
             raise TestScopeRefused(*exceeded)
         for entry in self.files:
             try:
-                task_contract.path(entry.path)
+                copy_contract.path(entry.path)
             except ValueError:
                 raise ProjectError("TEST_FORMAT") from None
         return self.files
 
     def test_copy(self, approved):
-        from . import task_contract
+        from . import copy_contract
         if self.test_selection() != approved:
             raise ProjectError("TEST_CHANGED")
         files = {}
@@ -256,7 +256,7 @@ class Project:
             if len(raw) != entry.size:
                 raise ProjectError("TEST_CHANGED")
             try:
-                text = task_contract.file_text(raw.decode("utf-8"))
+                text = copy_contract.file_text(raw.decode("utf-8"))
                 if permissions.contains_private_key(text):
                     raise ValueError("private key")
             except ValueError:

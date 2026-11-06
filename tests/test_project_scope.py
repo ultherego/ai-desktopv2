@@ -181,7 +181,7 @@ class ReadTests(Base):
         self.assertEqual(loaded.material.raw[start:end].decode().splitlines()[0], "line 0050000 some filler text to make it longer")
         self.assertEqual(len(loaded.material.sha256), 64)
 
-    def test_over_sixteen_mib_text_and_binary_are_refused(self):
+    def test_over_sixty_four_mib_text_and_binary_are_refused(self):
         self.put("huge.txt", "a" * (ps.FILE_READ_BYTES + 1))
         (self.proj / "bin.dat").write_bytes(b"\x00\x01\x02")
         project = self.project().scan()

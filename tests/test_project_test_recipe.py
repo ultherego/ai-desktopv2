@@ -10,7 +10,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
 
-from ai_desktop import assistant_flow, permissions, project_checks, project_cli, project_scope, project_step, task_cgroup, task_sandbox
+from ai_desktop import copy_contract, assistant_flow, permissions, project_checks, project_cli, project_scope, project_step, task_cgroup, task_sandbox
 
 
 class ProjectTestRecipeTests(unittest.TestCase):
@@ -74,6 +74,28 @@ class ProjectTestRecipeTests(unittest.TestCase):
         self.assertEqual(self.runner.call_args.kwargs["executable"], ["test_calc.py"])
         self.assertEqual(files, {"test_calc.py": self.testfile.read_bytes().decode()})
 
+    def test_many_large_test_files_use_copy_budget_and_never_go_to_the_provider(self):
+        self.config.write_text(self.policy.replace("claude = false", "claude = true") +
+                               "read_files = 1\nread_file_size = 1024\nread_total_size = 1024\n")
+        for n in range(140):
+            (self.root / f"module{n}.py").write_text("# local-copy-only\n")
+        large = "# local-copy-only\n" * 140000
+        (self.root / "large.py").write_text(large)
+        wire = []
+        def model(question, args, reader, **kwargs):
+            wire.append({"question": question, **kwargs})
+            return '{"action":"project-test","recipe":"pytest"}'
+        args = SimpleNamespace(no_context=False, preview=False, details=False, systemd=None, systemd_state=None, weather=None)
+        with contextlib.chdir(self.root):
+            result = assistant_flow.run("Run the tests here.", args, lambda _: "yes", model)
+        self.assertEqual(result.code, 0)
+        files, _ = self.runner.call_args.args
+        self.assertEqual(len(files), 142)
+        self.assertEqual(files["large.py"], large)
+        self.assertEqual(len(wire), 1)
+        self.assertNotIn("local-copy-only", repr(wire))
+        self.assertNotIn("local-copy-only", result.summary)
+
     def test_owner_decline_policy_revocation_and_concurrent_edit_block_the_runner(self):
         def revoke(_prompt):
             self.config.write_text(self.policy + "# revoked\n")
@@ -104,12 +126,12 @@ class ProjectTestRecipeTests(unittest.TestCase):
         self.assertIsNone(self.session.test_project("pytest"))
         self.runner.assert_not_called()
         (self.root / "unsupported").unlink()
-        (self.root / "large").write_bytes(b"a" * 65537)
+        (self.root / "large").write_bytes(b"a" * (8 * 1024 * 1024 + 1))
         self.assertIsNone(self.session.test_project("pytest"))
         self.runner.assert_not_called()
 
     def test_reports_all_exceeded_fixed_ceilings_without_exposing_excluded_files(self):
-        self.config.write_text(self.policy + "read_files = 128\nread_file_size = 131072\nread_total_size = 262144\n")
+        self.config.write_text(self.policy + "test_copy_files = 64\ntest_copy_file_size = 65536\ntest_copy_total_size = 131072\n")
         for relative in ("scripts/verify.py", "ai_desktop/cli.py", "packaging/arch/PKGBUILD"):
             file = self.root / relative
             file.parent.mkdir(parents=True)
@@ -124,7 +146,7 @@ class ProjectTestRecipeTests(unittest.TestCase):
         self.assertEqual((result.code, result.summary, result.sources), (2, "", ()))
         output = self.output.getvalue()
         self.assertIn("No tests ran", output)
-        self.assertIn("Indexed files: 65 > 64 (permissions.toml [files] read_files = 128; fixed copy ceiling = 64)", output)
+        self.assertIn("Indexed files: 65 > 64 (permissions.toml [files] test_copy_files = 64; fixed copy ceiling = 20000)", output)
         self.assertIn("Largest indexed file (bytes): 131073 > 65536", output)
         self.assertIn(f"Total indexed bytes: {size} > 131072", output)
         self.assertNotIn("SECRET-NAME", output)
@@ -134,13 +156,13 @@ class ProjectTestRecipeTests(unittest.TestCase):
         self.runner.assert_not_called()
 
     def test_owner_budget_is_separate_from_fixed_ceiling_and_only_failed_limits_are_reported(self):
-        self.config.write_text(self.policy + "read_file_size = 1024\n")
+        self.config.write_text(self.policy + "test_copy_file_size = 1024\n")
         (self.root / "big").write_bytes(b"x" * 1025)
         with contextlib.chdir(self.root):
             result = project_checks.current("pytest", lambda _: self.fail("consent must follow preflight"))
         self.assertEqual(result.code, 2)
         output = self.output.getvalue()
-        self.assertIn("1025 > 1024 (permissions.toml [files] read_file_size = 1024; fixed copy ceiling = 65536)", output)
+        self.assertIn("1025 > 1024 (permissions.toml [files] test_copy_file_size = 1024; fixed copy ceiling = 33554432)", output)
         self.assertNotIn("Total indexed bytes", output)
         self.assertNotIn("scripts/verify.py", output)
         self.runner.assert_not_called()

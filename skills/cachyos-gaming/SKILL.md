@@ -1,6 +1,6 @@
 ---
 name: cachyos-gaming
-description: Diagnoses game launching, crashes and performance on CachyOS. Use for Steam, Proton, Lutris or Heroic; guides a comparison of one change against a baseline.
+description: Diagnoses CachyOS games, Steam, Proton-CachyOS, Wine, Lutris, Heroic, gaming metapackages and game-performance. Use for launching, crashes or a measured performance trial.
 ---
 
 # Game diagnostics and measuring a change
@@ -38,3 +38,9 @@ Give the scope of the problem, the evidence, a baseline/trial table with measure
 
 - CachyOS, logs and launch options: <https://wiki.cachyos.org/configuration/gaming/>.
 - Proton, runtime parameters: <https://github.com/ValveSoftware/Proton#runtime-config-options>.
+
+## Tool references
+
+Load the matching reference when the task concerns these tools. Verify the installed version and help; a rolling source is not a verified version match.
+
+- [CachyOS gaming packages, runners and wrappers](references/gaming-tools.md).

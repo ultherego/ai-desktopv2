@@ -145,3 +145,11 @@ Deletion moves to `.ai-desktop-tasks/trash-*` after consent bound to the exact p
 ## 7. What the evidence does not cover
 
 Synthetic tests use a mock client and do not prove the behavior of the real client or OAuth refresh. There is no test for a hostile process of the same UID or for power loss. There is no independent review. The result of one commit or computer does not attest another. Changing these boundaries requires describing the trade-off here and a test on a real system.
+
+### Larger task data and knowledge (candidate 0.1.0-79)
+
+The model wire ceiling (36 MiB) accounts for up to 16 MiB selected UTF-8 data plus JSON escaping and bounded metadata; it is not a new file grant or proof of provider token capacity. Generated workspace text has a separate 4.25 MiB ceiling; anchored replacements can reconstruct larger results locally. Complete restored bytes, including BOM/CRLF, remain subject to edit and rollback bounds.
+
+Local project-test copies have an independent contract: default 2,000 files / 8 MiB per file / 64 MiB combined; hard 20,000 / 32 MiB / 128 MiB. The copy pipe is opt-in and unavailable to ordinary model calls. The sandbox bounds memory to 2 GiB, writable work to 160 MiB and individual files to 32 MiB. This increases resource consumption and needs the real namespace/cgroup fixtures and CachyOS acceptance. Copy membership is never added to model context simply because tests need it.
+
+On-demand procedure and reference selection in all modes is controller-managed. The knowledge envelope is canonically bound to consent and reconstructed without inheriting a worker's ambient catalog. Bundled references have source/version provenance and hashes but remain untrusted evidence. Package-version evidence comes only from a successful, untruncated exact allowed query and is reset with the task. No new command grant, network route, desktop detection/download or shell tool is implied by loading documentation.

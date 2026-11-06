@@ -23,6 +23,7 @@ from .assistant_contract import parse_plan
 from .question_consent import QuestionConsent
 from .workspace_executor import ExecutionDenied
 from .analysis_service import send_once
+from .skill_runtime import task_skills, accept_skill_response
 from .analysis_terminal import render_answer
 from .file_context import _read_hint
 from .material_cli import (GRANT_HINTS, GRANT_SECONDS, SEPARATOR, Session, SessionWindow, _countdown, _countdown_end,
@@ -94,7 +95,7 @@ def build_edit_plan(project, snapshot, decision):
             if entry is None:
                 raise EditRefused(recipient("Claude named a file that is not in the project index."))
             if entry.size > task_contract.MAX_FILE:
-                raise EditRefused("File %s is over the 64 KiB limit for edit mode." % _safe(path, 80))
+                raise EditRefused("File %s is over the %d MiB limit for edit mode." % (_safe(path, 80), task_contract.MAX_FILE // 1048576))
             covering = [s for s in reads if (root + "/" + path).startswith(s.base + "/")]
             if not covering:
                 raise EditRefused("File %s is not within files.read." % _safe(path, 80))
@@ -225,6 +226,7 @@ class ProjectSession(Session):
             print("Skipped in the search: %s." % ", ".join("%s: %d" % kv for kv in skipped.items()))
 
     # --- a question in plain words -----------------------------------------------------
+    @task_skills
     def question(self, text, span=None):
         if not self.can_send:
             print(network_hint())
@@ -368,6 +370,15 @@ class ProjectSession(Session):
             if delivery is None:
                 return
             self._timing(delivery)
+            try:
+                if accept_skill_response(delivery.answer):
+                    if number == loop.max_steps:
+                        print("The task request budget is exhausted after loading Skills.")
+                        return self._stopped(loop)
+                    continue
+            except ValueError:
+                print("The Skill request was refused; the task stopped.")
+                return self._stopped(loop)
             try:
                 decision = parse_decision(delivery.answer)
             except ValueError:
@@ -634,7 +645,7 @@ class ProjectSession(Session):
             permit = QuestionConsent(text, snapshot, plan_ready=True)
             permit.approve()
             prepared = ask_edit.prepare(plan, snapshot, args, self.reader, question_consent=permit,
-                                        expected_versions=versions, project_context=envelope["project"])
+                                        expected_versions=versions, project_context=envelope["project"], test_root=self.project.root)
             self.pacer.record()
             sent = prepared.source["files"]
             transfer = {"files": [item["path"] for item in sent if item["content"] is not None],

@@ -14,10 +14,10 @@ from . import materials
 
 MAX_STEPS = 8
 MAX_OBSERVATIONS = 24
-MAX_HISTORY = 4
+MAX_HISTORY = 16
 NOTE_BYTES = 3072
-MAX_PARTS = 64
-HISTORY_TEXT = 1536
+MAX_PARTS = 512
+HISTORY_TEXT = 8192
 MAX_HITS = 20
 MAX_HIT_TEXT = 200
 MAX_NEEDLE = 128
@@ -27,6 +27,7 @@ MAX_ANSWER_BYTES = 15 * 1024
 MAX_ASK_BYTES = 4096
 DATA_BYTES = 256 * 1024
 PART_DATA_BYTES = 512 * 1024          # data of ONE request, only in the "map" phase of a whole-file analysis (opt-in profile)
+REDUCE_DATA_BYTES = 2 * 1024 * 1024  # bounded notes only, never additional local reads
 TOTAL_BYTES = 2 * 1024 * 1024
 _ID = re.compile(r"[0-9a-f]{16}\Z")
 _HEX64 = re.compile(r"[0-9a-f]{64}\Z")
@@ -79,7 +80,8 @@ def validate_input(value):
     maximum = _int(task["max_steps"], 1, MAX_STEPS)
     _int(task["step"], 1, maximum)
     _int(task["bytes_left"], 0, TOTAL_BYTES)
-    if type(observations) is not list or len(observations) > MAX_OBSERVATIONS:
+    observation_limit = MAX_PARTS if task.get("phase") == "reduce" else MAX_OBSERVATIONS
+    if type(observations) is not list or len(observations) > observation_limit:
         raise ValueError("material step")
     data = 0
     for turn in history:
@@ -91,6 +93,8 @@ def validate_input(value):
         if type(item) is not dict or type(item.get("kind")) is not str:
             raise ValueError("material step")
         kind = item["kind"]
+        if task.get("phase") == "reduce" and kind != "notes":
+            raise ValueError("material step")
         if kind == "search":
             if set(item) != {"kind", "needle", "complete", "hits"} or type(item["complete"]) is not bool:
                 raise ValueError("material step")
@@ -141,8 +145,9 @@ def validate_input(value):
 
 
 def data_limit(task):
-    """Per-request data ceiling: the larger profile exists only for the map phase; every other request keeps 256 KiB."""
-    return PART_DATA_BYTES if type(task) is dict and task.get("phase") == "map" else DATA_BYTES
+    """Separate bounded fragment, whole-file map and notes-only synthesis budgets."""
+    phase = task.get("phase") if type(task) is dict else None
+    return {"map": PART_DATA_BYTES, "reduce": REDUCE_DATA_BYTES}.get(phase, DATA_BYTES)
 
 
 def data_bytes(observations, history=()):

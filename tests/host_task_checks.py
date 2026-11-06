@@ -5,7 +5,8 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from ai_desktop import task_sandbox
+from ai_desktop import task_contract, task_sandbox, task_workspace
+from ai_desktop.task_plan import TaskPlan
 
 
 class TaskKernelTests(unittest.TestCase):
@@ -20,6 +21,40 @@ class TaskKernelTests(unittest.TestCase):
         files["calc.py"] = "def add(a,b): return a-b\n"
         self.assertFalse(self.check(files)["passed"])
         self.assertFalse(self.check({"calc.py": "x=1\n"})["passed"])
+
+    def test_real_copy_accepts_mib_files_and_many_files_without_truncation(self):
+        files = {f"parts/f{n}.txt": "synthetic\n" for n in range(130)}
+        files["large.txt"] = "x" * (2 * 1024 * 1024)
+        files["test_copy.py"] = (
+            "import unittest\nfrom pathlib import Path\nclass T(unittest.TestCase):\n"
+            " def test_complete_copy(self):\n"
+            "  self.assertEqual(len(list(Path('parts').glob('*.txt'))), 130)\n"
+            "  self.assertEqual(Path('large.txt').read_bytes(), b'x' * (2 * 1024 * 1024))\n")
+        result = task_sandbox.run_copy(files, "python-unittest")
+        self.assertTrue(result["passed"], result)
+
+    def test_real_mib_anchored_edit_check_apply_and_rollback(self):
+        original = ("#" + "x" * 1022 + "\n") * 2048 + "VALUE = 1\n"
+        with tempfile.TemporaryDirectory(prefix="ai-task-large-", dir=Path.home()) as directory:
+            root = Path(directory)
+            target = root / "large.py"
+            target.write_bytes(original.encode())
+            target.chmod(0o640)
+            before = task_workspace.snapshot(directory, ["large.py"])
+            source = {"instruction": "Synthetic anchored change", "files": [
+                {"path": "large.py", "content": original, "writable": True}]}
+            proposal = task_contract.proposal(json.dumps({"summary": "Synthetic anchored change", "files": [
+                {"path": "large.py", "replacements": [{"old": "VALUE = 1", "new": "VALUE = 2"}]}]}), source)
+            result = task_sandbox.run(source, proposal["files"], "python-syntax")
+            self.assertTrue(result["passed"], result)
+            self.assertEqual(target.read_bytes(), original.encode())
+            plan = TaskPlan(before, source, proposal, "python-syntax")
+            task_workspace.apply(plan, plan.authorize("SAVE " + plan.sha256))
+            self.assertEqual(target.read_bytes(), original.replace("VALUE = 1", "VALUE = 2").encode())
+            self.assertEqual(target.stat().st_mode & 0o777, 0o640)
+            self.assertTrue(task_workspace.rollback(directory, plan.sha256))
+            self.assertEqual(target.read_bytes(), original.encode())
+            self.assertEqual(target.stat().st_mode & 0o777, 0o640)
 
     def test_real_pytest_on_an_unchanged_copy_pass_fail_empty_and_denials(self):
         files = {"calc.py": "def add(a, b): return a + b\n",

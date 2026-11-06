@@ -134,7 +134,9 @@ class QuestionConsent:
                 if canonical(validate_discovery(self._discovery_snapshot.document)) != self._discovery_bytes:
                     raise ValueError()
                 recheck_discovery(self._discovery_snapshot)
-                if any(self._skill_loader(name) != text for name, text in self._reused_bodies.items()):
+                checker = getattr(getattr(self._skill_loader, "__self__", None), "check_skill", None)
+                if any((not checker(name, text) if checker is not None else self._skill_loader(name) != text)
+                       for name, text in self._reused_bodies.items()):
                     raise ValueError()
             if (self._clock() > self._expires or self._snapshot.policy is not self._policy
                     or self._current_binding() != self._binding):
@@ -215,7 +217,7 @@ class QuestionConsent:
             self.close()
             raise AnalysisDenied("consent") from None
 
-    def bind_discovery(self, policy, snapshot, *, reuse_loader=None):
+    def bind_discovery(self, policy, snapshot, *, reuse_loader=None, resource_loader=None):
         """Bind the cumulative local metadata document before one more planner round.
 
         Each round extends the previous document (earlier steps are an exact prefix) and the number of rounds can never
@@ -259,6 +261,10 @@ class QuestionConsent:
             if seed_skills:
                 self._skill_loader = reuse_loader
                 self._reused_bodies = {step["name"]: step["text"] for step in document["steps"]}
+            elif resource_loader is not None:
+                self._skill_loader = resource_loader
+                self._reused_bodies = {step["name"]: step["text"] for step in document["steps"]
+                                      if step["op"] == "skill" and step["status"] == "ok"}
             self._phase = "discovery"
             self.check()
             return document

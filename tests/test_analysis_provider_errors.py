@@ -79,7 +79,7 @@ class ProviderErrorTests(unittest.TestCase):
 
 class ProxyObservationTests(unittest.TestCase):
     def make_proxy(self, dial):
-        def initialize(instance, path, *, dial, stream_seconds):
+        def initialize(instance, path, *, dial, stream_seconds, stream_limit):
             instance.dial = dial
         with patch.object(sandbox.ConnectProxy, "__init__", initialize):
             return sandbox._Proxy("unused", dial=dial)

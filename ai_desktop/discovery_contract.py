@@ -1,7 +1,8 @@
 """Closed, bounded shape of the local discovery observations sent to the model during one question.
 
-Discovery is metadata only: names, types, sizes and finite refusal codes. Names are untrusted observations, never source
-authority; every later content read still goes through the normal file-policy boundary. The client and the worker both
+List/find discovery is metadata only; explicit content operations add bounded,
+source-hashed excerpts. Names are untrusted observations, never source
+authority; every content read still goes through the normal file-policy boundary. The client and the worker both
 validate this exact shape against the ceilings below (the owner's budgets in permissions.toml can only be lower or equal).
 """
 import json
@@ -14,7 +15,7 @@ MAX_STEPS = 8 + 4 + 32 + MAX_SKILL_ROUNDS * 4 + MAX_REUSED_SKILLS
 MAX_DIRECTORIES = 4            # directories in one list step
 CEILING_ENTRIES = 512          # entries of one list/find step
 CEILING_TOTAL_ENTRIES = 1024   # entries of the whole document
-CEILING_BYTES = 262144         # canonical bytes of the whole document
+CEILING_BYTES = 262144 + 192 * 1024  # diagnostics plus separately budgeted procedures/references
 MAX_QUERIES = 4
 MIN_QUERY_CHARS = 2
 MAX_QUERY_BYTES = 64
@@ -30,7 +31,7 @@ CEILING_OUTPUT = 131072
 REFUSAL_CODES = ("discovery-required", "discovery-budget", "files-missing", "files-count", "files-total", "files-size", "files-empty",
                  "files-depth", "files-entries", "files-type", "files-symlink")
 _ID = re.compile(r"f(?:[0-9]|[1-5][0-9]|6[0-3])\Z", re.ASCII)
-_SKILL = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z", re.ASCII)
+_SKILL = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*(?:/[a-z0-9]+(?:-[a-z0-9]+)*)?\Z", re.ASCII)
 MAX_SKILL_TEXT = 96 * 1024
 
 
@@ -156,6 +157,9 @@ def _step(value, total):
         if "role" in value:
             step["role"] = role
         return step
+    if op == "content":
+        from .ask_content import validate_step
+        return validate_step(value)
     if op == "skill":
         if (set(value) != {"op", "name", "status", "text"} or type(value["name"]) is not str
                 or not _SKILL.fullmatch(value["name"]) or value["status"] not in ("ok", "missing")
@@ -218,7 +222,7 @@ def scope_ids(document):
     for step in document["steps"]:
         if step["op"] == "list":
             found.update(item["id"] for item in step["directories"])
-        elif step["op"] == "find":
+        elif step["op"] in ("find", "content"):
             found.add(step["id"])
         elif step["op"] in ("run", "skill"):
             continue

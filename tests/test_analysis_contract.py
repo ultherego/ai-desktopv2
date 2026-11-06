@@ -208,7 +208,7 @@ class AnalysisContractTests(unittest.TestCase):
         self.assertNotIn("\u202e", text)
         with self.assertRaises(contract.AnalysisDenied):
             contract.read_result(raw, "b" * 64)
-        for text in ("x" * 16385, "\x00" * 16000):
+        for text in ("x" * (contract.MAX_TEXT + 1), "\x00" * contract.MAX_TEXT):
             with self.assertRaises(contract.AnalysisDenied):
                 contract.result_packet("a" * 64, text=text)
 

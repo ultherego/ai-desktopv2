@@ -24,6 +24,7 @@ QUESTION_BYTES = 2048
 MAX_REQUESTS = 8
 MAX_TOTAL_BYTES = 2 * 1024 * 1024
 PACKET_BYTES = 256 * 1024              # dynamic data of one request, before serialization
+REDUCE_PACKET_BYTES = 2 * 1024 * 1024  # bounded notes-only synthesis
 PART_PACKET_BYTES = 512 * 1024         # the same for a "map" request of a whole-file analysis (opt-in profile)
 MAX_RANGES = 8                         # operations per packet
 MAX_DEADLINE_SECONDS = 600
@@ -184,7 +185,8 @@ class TransferSession:
         if self._used_requests() >= self._grant.max_requests:
             raise GrantDenied("BUDGET_EXHAUSTED")
         phase = material_input.get("task", {}).get("phase") if type(material_input) is dict and type(material_input.get("task")) is dict else None
-        ceiling = PART_PACKET_BYTES if phase == "map" and not project else PACKET_BYTES
+        ceiling = ({"map": PART_PACKET_BYTES, "reduce": REDUCE_PACKET_BYTES}.get(phase, PACKET_BYTES)
+                   if not project else PACKET_BYTES)
         if type(data_bytes) is not int or isinstance(data_bytes, bool) or not 0 <= data_bytes <= ceiling:
             raise GrantDenied("PACKET_LIMIT")
         if self._used_bytes() + data_bytes > self._grant.max_bytes:

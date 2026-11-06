@@ -166,13 +166,13 @@ class ConversationLoopTests(unittest.TestCase):
         r = self.run_ui([], ["Jeden", "yes", "Dwa", "no", ""], accesses=[EMPTY, widened])
         self.assertEqual(r.sent.call_count, 1)
 
-    def test_history_window_stays_at_thirty_two_turns_and_the_conversation_does_not_end(self):
+    def test_history_window_stays_at_sixty_four_turns_and_the_conversation_does_not_end(self):
         replies = []
-        for i in range(35):
+        for i in range(67):
             replies += ["Pytanie %d" % i] + ([] if i else ["yes"])
         r = self.run_ui([], replies + [""])
-        self.assertEqual(r.sent.call_count, 35)
-        self.assertEqual([t["question"] for t in r.histories[34]], ["Pytanie %d" % i for i in range(2, 34)])
+        self.assertEqual(r.sent.call_count, 67)
+        self.assertEqual([t["question"] for t in r.histories[66]], ["Pytanie %d" % i for i in range(2, 66)])
 
     def test_a_change_made_before_a_service_failure_stays_in_the_conversation(self):
         seen = []

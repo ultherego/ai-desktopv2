@@ -19,16 +19,17 @@ description: Prepares a code fix with a justified test and verification. Use for
 
 ## Choose a real check
 
-AI Desktop checks selected files on an isolated copy. Available:
+AI Desktop checks an isolated local copy. Its file budget is separate from the selected text sent to the model; inclusion in a test copy does not imply provider disclosure. Available:
 
 | Check | What it can confirm |
 |---|---|
-| `python-unittest` | Tests found in the supplied copy, within the environment's limits. |
+| `python-unittest`, `pytest` | Python tests found in the supplied copy; pytest needs the system installation. |
+| `go-test`, `npm-test` | Fixed offline Go or npm suite in the supplied copy; enforced user cgroup required. |
 | `python-syntax`, `bash-syntax`, `fish-syntax` | The syntax of the respective language. |
 | `json`, `toml` | Correct parsing of the given format. |
 | `text` | UTF-8 integrity only; not syntax or behavior. |
 
-A Python test cannot create processes, threads or sockets. The copy has no network, no HOME and none of the project that was not supplied. Do not claim to have run `pytest`, `go test`, `npm test` or a dependency installation: the current executor does not support these. A syntax result does not replace a behavior test. When a suitable check is missing, name the unverified part and the risk.
+Python tests cannot create processes, threads or sockets. Go and npm use a separate bounded process scope. The copy has no network or user HOME; dependencies must already be available within its permitted contents and runtime. There is no dependency installation or arbitrary test command. For `npm-test`, exit zero confirms only the script result; the test count is unknown. Report only the check actually run. A syntax result does not replace a behavior test. When a suitable check is missing, name the unverified part and the risk.
 
 ## Review and completion
 

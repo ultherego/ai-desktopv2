@@ -38,3 +38,10 @@ Check that the original message is gone, the transaction completed, and the rele
 
 - [pacman: operations and options](https://man.archlinux.org/man/pacman.8.en).
 - [CachyOS-specific errors](https://wiki.cachyos.org/cachyos_basic/faq/).
+
+## Tool references
+
+Load the matching reference when the task concerns these tools. Verify the installed version and help; a rolling source is not a verified version match.
+
+- [Installed pacman queries and configuration files](references/package-queries.md).
+- [Pacman 7.0.0 local repository access](references/pacman-700-local-repositories.md).

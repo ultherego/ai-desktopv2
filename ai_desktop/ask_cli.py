@@ -63,6 +63,8 @@ def build_parser():
 def request(question, args, reader, *, context=None, access=None, task=None, write_grant=None,
             web=False, check, state=None, question_consent=None, discovery=None):
     """One immutable payload; either scoped approval or standalone fresh consent."""
+    from .skill_runtime import recheck_with
+    check = recheck_with(check)
     if question_consent is not None and type(question_consent) is not QuestionConsent:
         raise AnalysisDenied("consent")
     if (task is not None or web is not False or discovery is not None) and question_consent is None:

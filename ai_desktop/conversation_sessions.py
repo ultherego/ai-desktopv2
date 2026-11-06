@@ -21,12 +21,13 @@ import time
 import unicodedata
 
 from . import execution
+from .conversation_memory import MAX_TURN
 
-MAX_FILE = 1024 * 1024
+MAX_FILE = 16 * 1024 * 1024
 MAX_SESSIONS = 128
-MAX_HISTORY = 32                # `ask` keeps the last eight turns; records written with up to four still open
-LEGACY_HISTORY = 4              # material/project sessions keep their previous window
-MAX_PATHS = 256
+MAX_HISTORY = execution.MAX_HISTORY  # archive window; the smaller request byte budget is applied on resume
+LEGACY_HISTORY = 16             # material/project use their own request-history validator
+MAX_PATHS = 2048
 _ID = re.compile(r"[a-f0-9]{24}\Z")
 _HASH = re.compile(r"[a-f0-9]{64}\Z")
 _DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
@@ -109,7 +110,7 @@ def _record(value):
         if type(item) is not dict or set(item) != {"question", "answer"}:
             raise SessionError("session-history")
         _text(item["question"], execution.HISTORY_QUESTION_BYTES)
-        _text(item["answer"], 8192 + 64)
+        _text(item["answer"], execution.HISTORY_ANSWER_BYTES)
     if "title" in value:
         _text(value["title"], MAX_TITLE * 4)
         if len(value["title"]) > MAX_TITLE or "\n" in value["title"] or "\t" in value["title"]:
@@ -141,7 +142,7 @@ def _extras(value):
 
     for turn in turns:
         if (type(turn) is not dict or set(turn) != {"n", "taint", "redacted"} or type(turn["n"]) is not int
-                or not 1 <= turn["n"] < 10**4 or type(turn["redacted"]) is not bool):
+                or not 1 <= turn["n"] <= MAX_TURN or type(turn["redacted"]) is not bool):
             raise SessionError("session-memory")
         indexes(turn["taint"])
     ids = {entry["id"] for entry in value["memory"]["entries"]}
@@ -397,18 +398,29 @@ class Store:
         """Readable records only: one damaged file must not hide all the others (see damaged)."""
         return self._scan()[0]
 
+    def summaries(self):
+        """Validate records one at a time; do not retain every large conversation in a menu."""
+        return self._scan(summaries=True)[0]
+
     def damaged(self):
         """Ids of records that cannot be read, so the user can see and remove them."""
-        return self._scan()[1]
+        return self._scan(summaries=True)[1]
 
-    def _scan(self):
+    def _scan(self, *, summaries=False):
         good, bad = [], []
         with self._root(optional=True) as root:
             if root is None:
                 return good, bad
             for ident in self._ids(root):
                 try:
-                    good.append(self._read(root, ident)[0])
+                    value = self._read(root, ident)[0]
+                    if summaries:
+                        from .conversation_state import title_of
+                        first = value["history"][0]["question"] if value["history"] else value["id"]
+                        value = {**{key: value[key] for key in ("id", "kind", "execution", "updated")},
+                                 "title": value.get("title") or title_of(first),
+                                 "history_count": len(value["history"])}
+                    good.append(value)
                 except (SessionError, OSError):
                     bad.append(ident)
         return good, bad
@@ -566,7 +578,8 @@ class Conversation:
         _text(answer, 1024 * 1024)
         value = self.record
         limit = MAX_HISTORY if value["kind"] == "ask" else LEGACY_HISTORY
-        value["history"] = (value["history"] + [{"question": question, "answer": _cut(answer, 8192)}])[-limit:]
+        answer_limit = execution.HISTORY_ANSWER_BYTES - 64 if value["kind"] == "ask" else 8192
+        value["history"] = (value["history"] + [{"question": question, "answer": _cut(answer, answer_limit)}])[-limit:]
         self._record = self.store.update(value, self._record["revision"])
 
     def close(self):

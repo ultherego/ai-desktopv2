@@ -26,6 +26,7 @@ class DiscoverySnapshot:
     document: dict
     # Alias guards of every step so far; a directory can be empty or describe more files than a content read allows.
     guards: tuple
+    contents: tuple = ()  # exact-file identities behind bounded content excerpts
 
 
 class Scan:
@@ -42,22 +43,29 @@ class Scan:
 
 
 def recheck_discovery(snapshot):
-    """Check the exact policy and the immutable alias identities of every step before a transfer."""
+    """Check the policy, aliases and identities behind content excerpts before transfer."""
+    from .ask_content import ContentGuard
     if (type(snapshot) is not DiscoverySnapshot or type(snapshot.guards) is not tuple
+            or type(snapshot.contents) is not tuple
+            or any(type(guard) is not ContentGuard for guard in snapshot.contents)
             or any(type(guard) is not permissions._AliasGuard for guard in snapshot.guards)):
         raise ValueError("files-selection")
     document = validate_discovery(snapshot.document)
     policy = snapshot.policy
     if policy is None:
-        if snapshot.guards or any(step["op"] != "skill" for step in document["steps"]):
+        if snapshot.guards or snapshot.contents or any(step["op"] != "skill" for step in document["steps"]):
             raise ValueError("files-selection")
         limit = permissions.Limits().discovery_bytes
     elif type(policy) is permissions.Policy:
         limit = policy.limits().discovery_bytes
     else:
         raise ValueError("files-selection")
-    if _byte_size(document) > limit:
+    diagnostic = {**document, "steps": [step for step in document["steps"] if step["op"] != "skill"]}
+    if _byte_size(diagnostic) > limit:
         raise ValueError("discovery_bytes")
+    from .skill_runtime import MAX_KNOWLEDGE_BYTES
+    if _byte_size({"resources": [step for step in document["steps"] if step["op"] == "skill"]}) > MAX_KNOWLEDGE_BYTES:
+        raise ValueError("skills_bytes")
     if policy is None:
         return
     policy.recheck()
@@ -66,6 +74,13 @@ def recheck_discovery(snapshot):
                 or not permissions._enumerable(policy, guard.physical)):
             raise ValueError("files-denied")
         permissions._recheck_alias(policy, guard)
+    content_keys = {(step["id"], step["path"], step["version"]) for step in document["steps"] if step["op"] == "content"}
+    if content_keys != {(guard.ident, guard.relative, guard.version) for guard in snapshot.contents}:
+        raise ValueError("files-selection")
+    for guard in snapshot.contents:
+        if guard.policy is not policy:
+            raise ValueError("files-selection")
+        guard.recheck()
     policy.recheck()
 
 

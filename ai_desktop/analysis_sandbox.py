@@ -16,7 +16,7 @@ import threading
 
 from .analysis_contract import (request_effort, request_seconds, ModelText, extract_meta, AnalysisDenied, CLIENT_VERSION, MAX_PACKET, MAX_PACKET_LARGE, SYSTEM_PROMPT, WEB_SYSTEM_PROMPT,
                                 REASONS, STAGES, result_text_limit)
-from .e2_connect_proxy import ConnectProxy, open_public
+from .e2_connect_proxy import ANALYSIS_STREAM_LIMIT, ConnectProxy, open_public
 from .e2_ipc import _unique_pairs
 from .e2_socket_activation import _worker_identity
 from .e2_subscription_boundary import base_command, privileges_locked
@@ -370,7 +370,8 @@ class _Proxy(ConnectProxy):
                     event.set()
                 raise
 
-        super().__init__(path, dial=observed_dial, stream_seconds=stream_seconds)
+        super().__init__(path, dial=observed_dial, stream_seconds=stream_seconds,
+                         stream_limit=ANALYSIS_STREAM_LIMIT)
 
     def begin_phase(self):
         with self._phase_lock:

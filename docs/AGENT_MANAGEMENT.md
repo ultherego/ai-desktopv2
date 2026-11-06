@@ -25,11 +25,11 @@ The service is shared by all agents. After a service change, an agent returns to
 | Claude | `default`, `best`, `fable`, `opus`, `sonnet`, `haiku`, `opusplan` | `default`, `low`, `medium`, `high`, `xhigh`, `max` |
 | Codex | `default` or an identifier of the form `[a-z][a-z0-9._-]{0,95}` | `default`, `low`, `medium`, `high`, `xhigh` |
 
-`default` means the client's choice. Model availability depends on the account and the client: there is no automatic switch to another model or service. For `xhigh` and `max` the wait for an answer is 260 s instead of 110 s.
+`default` means the client's choice. Model availability depends on the account and the client: there is no automatic switch to another model or service. For `xhigh` and `max` the wait for an answer is 900 s instead of 110 s.
 
 ## Agents
 
-An agent is a saved role: service, model, level, access (`changes` or `read-only`), instructions up to 4 KiB and any number of Skills (up to 104 KiB in total). The limit is 24 profiles. A `read-only` agent does not write, does not delete and does not get
+An agent is a saved role: service, model, level, access (`changes` or `read-only`), instructions up to 4 KiB and assigned Skills (role plus metadata catalog up to 104 KiB; selected procedures/references use a separate 192 KiB budget). The limit is 24 profiles. A `read-only` agent does not write, does not delete and does not get
 commands from the `change` list.
 
 ```fish
@@ -70,8 +70,10 @@ ai-desktop skills menu            # assignments of the active agent
 ai-desktop skills new NAME        # ~/.config/ai-desktop/skills/NAME/SKILL.md
 ```
 
-A Skill is an instruction of up to 96 KiB, without tools, scripts or additional files. The package contains general Skills for CachyOS (`cachyos-*`) and Arch Linux (`arch-*`), for programming and analysis, and `desktop-documentation`, which points to desktop documentation; the CachyOS Skills deliberately do not describe desktops and compositors. Your own Skill lives outside the repository and the package, and with the same name it takes priority over the general one.
-A name consists of lowercase letters, digits and hyphens. Do not put secrets in it: the content of an assigned Skill goes to the model. A path written in a Skill or in an agent's instructions counts as given by you, so the model can read it without discovery; the policy and `deny` still decide.
+A Skill is a procedure of up to 96 KiB, without executable tools or scripts. It may include bounded documentation under `references/`, loaded individually on demand. The package contains general Skills for CachyOS (`cachyos-*`) and Arch Linux (`arch-*`), for programming and analysis, and `desktop-documentation`, which points to desktop documentation; the CachyOS Skills deliberately do not describe desktops and compositors. Your own Skill lives outside the repository and the package, and with the same name it takes priority over the general one.
+A name consists of lowercase letters, digits and hyphens. Do not put secrets in it: the content of an assigned Skill goes to the model. A path written in the main Skill procedure or in an agent's instructions counts as given by you, so the model can read it without discovery; the policy and `deny` still decide.
+
+Reference documents do not ground local paths or grant reads. New configurations expose the general catalog; existing saved assignments, including an empty list, are preserved.
 
 Changing assigned Skills may require a new conversation, because a saved conversation is tied to the agent's configuration.
 
@@ -83,10 +85,10 @@ Run `ai-desktop ask` once and keep working: after an answer, `>` comes back. Arr
 
 **Memory has two layers:**
 
-1. The last 32 exchanges, up to 128 KiB in total (question up to 128 KiB, answer up to 8 KiB with visible truncation).
-2. Task memory: up to 40 entries (400 B each, 10 KiB in total) with the goal, criterion, attempts, values, corrections and decisions. The model proposes updates in its answer, and when out of room the oldest unprotected entries are dropped first. The program adds facts itself: what it ran and with what exit code, what it applied, what was refused.
+1. Up to 64 recent exchanges within 512 KiB (question up to 128 KiB, answer up to 32 KiB with visible truncation).
+2. Task memory: up to 96 entries (1 KiB each, 64 KiB in total) with the goal, criterion, attempts, values, corrections and decisions. The model proposes updates in its answer, and when out of room the oldest unprotected entries are dropped first. The program adds facts itself: what it ran and with what exit code, what it applied, what was refused.
 
-Memory gives no permissions. When access to a file is revoked, the answers and model entries that depend on it are removed before the next question, and the program says so. Only the latest 32 exchanges can be included verbatim in a request.
+Memory gives no permissions. When access to a file is revoked, the answers and model entries that depend on it are removed before the next question, and the program says so. Only the latest 64 exchanges can be included verbatim in a request.
 
 ## Saved conversations
 
@@ -100,7 +102,7 @@ ai-desktop sessions resume ID
 ai-desktop sessions remove ID
 ```
 
-The save is in `~/.local/state/ai-desktop/conversations` (directory `0700`, files `0600`, up to 1 MiB per file, 128 conversations). It contains the limited text of the conversation, memory and metadata, not whole materials, although an answer may quote a file. Resuming re-checks the policy, the file or project and the agent's configuration. Consents, write authorizations and the login session are not restored. A conversation open in another process will not be removed. `ai-desktop stop` concerns the temporary client session, not saved conversations.
+The save is in `~/.local/state/ai-desktop/conversations` (directory `0700`, files `0600`, up to 16 MiB per file, 128 conversations). It contains the limited text of the conversation, memory and metadata, not whole materials, although an answer may quote a file. Resuming re-checks the policy, the file or project and the agent's configuration. Consents, write authorizations and the login session are not restored. A conversation open in another process will not be removed. `ai-desktop stop` concerns the temporary client session, not saved conversations.
 
 ## Commands and changes on the live system
 

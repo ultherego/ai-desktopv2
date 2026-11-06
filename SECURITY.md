@@ -133,3 +133,11 @@ Data that was sent cannot be withdrawn.
 
 Do not add secrets, login files, client binaries or data about a specific computer to the repository. Changes to isolation, permissions, the file system, the network or
 login require a test on real CachyOS or Arch and a description of the trade-off in [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md). The test gate is `scripts/verify.py`.
+
+## Large files and shared knowledge
+
+File read, excerpt, generated edit, history and local test-copy budgets are separate. A larger local copy does not authorize sending its files to a provider. Only selected model inputs cross the model transport; copy-only source and test output stay local. The copy worker has a separate bounded input pipe, filesystem size and memory ceiling. These defaults can consume materially more memory than the earlier small-copy implementation; refusal must happen before a partial copy is tested as complete.
+
+A large-file content search or range read returns only bounded excerpts with source identities, hashes and coverage. Each following handoff rechecks the policy and source state. An anchored edit must uniquely match non-overlapping fragments of the approved original. The controller reconstructs the result, checks file and total byte budgets after restoring line endings, then uses the existing diff, copy test, consent, source-state check and rollback. A model proposal cannot authorize its own write.
+
+Skills and their local references are frozen before task consent and rechecked before sending. Selected knowledge has its own bounded, hash-bound envelope for material/project/task, and a separate budget within ask discovery. It cannot grant tools or permissions. Reference version claims come only from strict results of an already-authorized package query; free text or model-supplied versions are not trusted observations. Rolling references are dated snapshots, not version compatibility proof. Public web requests do not inherit this local knowledge envelope. This implementation does not add automatic remote documentation downloads or native client Skill tools.

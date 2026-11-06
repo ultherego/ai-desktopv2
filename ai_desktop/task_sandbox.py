@@ -6,10 +6,10 @@ from pathlib import Path
 from .analysis_contract import AnalysisDenied, canonical, terminal_text
 from .e2_subscription_boundary import base_command
 from .process_io import bounded_process
-from . import task_contract as contract, task_cgroup
+from . import copy_contract, task_contract as contract, task_cgroup
 
 CHECKS = contract.CHECKS
-MAX_PAYLOAD = 640 * 1024
+MAX_PAYLOAD = copy_contract.MAX_PAYLOAD
 
 
 def command(suite=None):
@@ -24,7 +24,7 @@ def command(suite=None):
     for name, limit in (("/tmp", (384 if suite else 16) * 1024 * 1024), ("/home", 1024 * 1024)):
         pos = args.index(name, args.index("--tmpfs"))
         args[pos - 1:pos - 1] = ["--size", str(limit)]
-    return args + ["--size", str(64 * 1024 * 1024), "--tmpfs", "/work",
+    return args + ["--size", str(copy_contract.WORK_BYTES), "--tmpfs", "/work",
                    "--dir", "/home/client", "--disable-userns", "--assert-userns-disabled",
                    "--ro-bind", str(child), "/opt/task_child.py", "--remount-ro", "/proc",
                    "--remount-ro", "/dev", "--remount-ro", "/", "--chdir", "/work",
@@ -36,6 +36,8 @@ def run(source, replacements, check, *, originals=None):
         raise ValueError("test identity or check")
     contract.request(source)
     proposed = contract.proposal(canonical({"summary": "test", "files": replacements}), source)
+    # A test cannot bless bytes which the durable write/undo format would later refuse.
+    contract.formatted_replacements(proposed["files"], originals or {})
     files = {f["path"]: f["content"] for f in source["files"] if f["content"] is not None}
     files.update({f["path"]: f["content"] for f in proposed["files"]})
     if originals is not None:
@@ -47,17 +49,13 @@ def run_copy(files, check, *, executable=()):
     """Accept only a bounded in-memory selection, never a host mount or a caller-supplied command."""
     if os.geteuid() == 0 or os.getuid() != os.geteuid() or check not in CHECKS:
         raise ValueError("test identity or check")
-    if type(files) is not dict or not 1 <= len(files) <= contract.MAX_FILES:
-        raise ValueError("test files")
-    items = [{"path": contract.path(name), "content": contract.file_text(content)} for name, content in files.items()]
+    copy_contract.validate_files(files)
+    items = [{"path": name, "content": content} for name, content in files.items()]
     if any(name not in files for name in executable):
         raise ValueError("executable outside test selection")
     for item in items:
         if item["path"] in executable:
             item["executable"] = True
-    # Edits can replace some selected files in addition to an already full selection.
-    if sum(len(item["content"].encode()) for item in items) > 2 * contract.MAX_TOTAL:
-        raise ValueError("test size")
     payload = canonical({"files": items, "check": check}).encode()
     if len(payload) > MAX_PAYLOAD:
         raise ValueError("test size")
@@ -71,7 +69,7 @@ def run_copy(files, check, *, executable=()):
     else:
         argv = command()
     try:
-        code, out, err = bounded_process(argv, env=env, input_bytes=payload, input_limit=MAX_PAYLOAD,
+        code, out, err = bounded_process(argv, env=env, input_bytes=payload, input_limit=MAX_PAYLOAD, copy_input=True,
                                          timeout=task_cgroup.RUNTIME + 5 if unit else 20, limit=32768)
         if check == "go-test" and code == 0:
             # go test also exits 0 when every package contains zero tests.

@@ -11,7 +11,11 @@ from pathlib import Path
 import resource
 import sys
 
-MAX_PAYLOAD = 640 * 1024
+# Keep these standalone bootstrap constants equal to copy_contract. The child
+# cannot import the installed application or project before confinement.
+MAX_PAYLOAD = 2 * 128 * 1024 * 1024 + 20000 * 1024 + 1024
+MAX_FILE = 32 * 1024 * 1024
+MEMORY_BYTES = 2 * 1024 * 1024 * 1024
 
 
 def materialize(data, root):
@@ -105,9 +109,10 @@ def main():
     if suite is not None and suite not in ("go-test", "npm-test"):
         raise ValueError("suite")
     limits = [(resource.RLIMIT_CORE, 0), (resource.RLIMIT_CPU, 75 if suite else 10),
-              (resource.RLIMIT_FSIZE, (64 if suite else 1) * 1024 * 1024), (resource.RLIMIT_NOFILE, 128 if suite else 64)]
+              (resource.RLIMIT_FSIZE, max(64 * 1024 * 1024 if suite else 0, MAX_FILE)),
+              (resource.RLIMIT_NOFILE, 128 if suite else 64)]
     if not suite:
-        limits.append((resource.RLIMIT_AS, 512 * 1024 * 1024))
+        limits.append((resource.RLIMIT_AS, MEMORY_BYTES))
     for key, limit in limits:
         resource.setrlimit(key, (limit, limit))
     lock(multiprocess=suite is not None)

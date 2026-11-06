@@ -84,9 +84,34 @@ class Controls:
         """The body of one Skill the model asked for. None for anything outside this conversation's selection."""
         try:
             _, _, chosen = self._assigned()
-            return profiles._skill(name) if name in chosen else None
+            from . import skills
+            if type(name) is not str or not skills.RESOURCE.fullmatch(name):
+                return None
+            owner = name.partition("/")[0]
+            if owner not in chosen:
+                return None
+            snapshot = skills.bundle(owner)
+            selected = execution.current()
+            if selected is not None and profiles.CATALOG_HEADER in selected["instructions"]:
+                if "bundle-sha256: " + snapshot["sha256"] not in selected["instructions"]:
+                    return None
+            from .skill_runtime import current_versions
+            return skills.resource_text(snapshot, name, versions=current_versions())
         except (profiles.ProfileError, OSError, ValueError, KeyError):
             return None
+
+    def check_skill(self, name, text):
+        """Recheck the bundle/assignment, independent of newer version observations."""
+        try:
+            from . import skills
+            owner = name.partition("/")[0]
+            _, _, chosen = self._assigned()
+            snapshot = skills.bundle(owner)
+            selected = execution.current()
+            return (owner in chosen and (selected is None or profiles.CATALOG_HEADER not in selected["instructions"]
+                    or "bundle-sha256: " + snapshot["sha256"] in selected["instructions"]))
+        except (profiles.ProfileError, OSError, ValueError, KeyError):
+            return False
 
     def handle(self, line, conversation=None, *, talk=None, consent=None, reader=input, run_test=None):
         """False: `line` is an ordinary question. True: handled here. EXIT: the owner ends the conversation."""

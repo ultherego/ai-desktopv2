@@ -12,7 +12,9 @@ import subprocess
 import sys
 
 PIDS = 48
-MEMORY = 768 * 1024 * 1024
+# Covers a maximum local copy, JSON decoding and tmpfs pages plus the fixed
+# suite runtime. This is a ceiling, not a reservation; copies default to 64 MiB.
+MEMORY = 2 * 1024 * 1024 * 1024
 RUNTIME = 90
 MULTIPROCESS = ("go-test", "npm-test")
 

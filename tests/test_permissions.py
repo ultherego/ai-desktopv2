@@ -94,15 +94,15 @@ class PolicyTests(unittest.TestCase):
         self.config.chmod(0o600)
         return p.load_policy()
 
-    def test_file_size_defaults_to_five_mib_and_accepts_bounded_integers_and_unit_strings(self):
-        self.assertEqual(self.policy().file_size(), 5 * 1024 * 1024)
+    def test_file_size_defaults_to_thirty_two_mib_and_accepts_bounded_integers_and_unit_strings(self):
+        self.assertEqual(self.policy().file_size(), 32 * 1024 * 1024)
         for literal, expected in (("2097152", 2097152), ('"2097152"', 2097152), ('"512KiB"', 512 * 1024), ('"5 MiB"', 5 * 1024 * 1024),
                                   ('" 16MiB "', 16 * 1024 * 1024), ('"4KiB"', 4096), ("4096", 4096), ('"8192B"', 8192)):
             with self.subTest(literal=literal):
                 self.assertEqual(self.with_file_size(literal).file_size(), expected)
 
     def test_invalid_file_size_values_are_a_policy_error_not_a_silent_default(self):
-        for literal in ("4095", '"3KiB"', '"17MiB"', "16777217", '"5MB"', '"5 mib"', '"-1"', '"five"', "true", "1.5", '"1e6"',
+        for literal in ("4095", '"3KiB"', '"65MiB"', "67108865", '"5MB"', '"5 mib"', '"-1"', '"five"', "true", "1.5", '"1e6"',
                         "-4096", '""', '"5MiB extra"', "[5]", '"9999999999"'):
             with self.subTest(literal=literal):
                 self.assertEqual(self.assert_code(lambda: self.with_file_size(literal)), "policy-invalid")
@@ -117,6 +117,18 @@ class PolicyTests(unittest.TestCase):
         for literal, expected in (('"64KiB"', 64 * 1024), ("30720", 30720), ('"512 KiB"', 512 * 1024), ('"30KiB"', 30 * 1024)):
             with self.subTest(literal=literal):
                 self.assertEqual(self.with_part_size(literal).part_size(), expected)
+
+    def test_local_copy_budgets_are_independent_and_bounded(self):
+        limits = p.parse_limits({"read_files": 1, "read_file_size": "1KiB", "read_total_size": "1KiB"})
+        self.assertEqual((limits.test_copy_files, limits.test_copy_file_size, limits.test_copy_total_size),
+                         (2000, 8 * 1024 * 1024, 64 * 1024 * 1024))
+        for values in ({"test_copy_files": 20001}, {"test_copy_file_size": "33MiB"},
+                       {"test_copy_total_size": "129MiB"}, {"test_copy_total_size": "1MiB"}):
+            with self.subTest(values=values), self.assertRaises(p._SettingError):
+                p.parse_limits(values)
+        configured = p.parse_limits({"test_copy_files": 20000, "test_copy_file_size": "32MiB",
+                                     "test_copy_total_size": "128MiB"})
+        self.assertEqual(configured.test_copy_files, 20000)
 
     def test_invalid_part_size_values_are_a_policy_error(self):
         for literal in ("30719", '"29KiB"', '"513KiB"', '"1MiB"', "true", '"big"', "[1]", "-1"):
@@ -497,20 +509,20 @@ class PolicyTests(unittest.TestCase):
         self.assert_code(lambda: p.read_selected(policy, (str(a),)))
         a.write_bytes(b"a\x1b[31m")
         self.assert_code(lambda: p.read_selected(policy, (str(a),)))
-        files = tuple(str(self.file("project/f" + str(i), "a" * 43691)) for i in range(3))
+        files = tuple(str(self.file("project/f" + str(i), "a" * (p.MAX_TOTAL_BYTES // 3 + 1))) for i in range(3))
         self.assertEqual(self.assert_code(lambda: p.read_selected(policy, files)), "files-total")
-        self.assert_code(lambda: policy.select(tuple("~/project/" + str(i) for i in range(65))))
+        self.assert_code(lambda: policy.select(tuple("~/project/" + str(i) for i in range(p.MAX_FILES + 1))))
 
     def test_readonly_utf8_file_and_total_boundaries_keep_all_bytes(self):
         policy = self.policy()
-        first = self.file("project/first.txt", "ą" * 32768)
-        second = self.file("project/second.txt", "ż" * 16384)
-        third = self.file("project/third.txt", "ź" * 16384)
+        first = self.file("project/first.txt", "ą" * (p.MAX_FILE_BYTES // 2))
+        second = self.file("project/second.txt", "ż" * (p.MAX_FILE_BYTES // 4))
+        third = self.file("project/third.txt", "ź" * (p.MAX_FILE_BYTES // 4))
         paths = (str(first), str(second), str(third))
         item = p.read_selected(policy, paths)
         self.assertEqual([entry["content"].encode("utf-8") for entry in item["files"]],
                          [first.read_bytes(), second.read_bytes(), third.read_bytes()])
-        self.assertEqual(sum(len(entry["content"].encode("utf-8")) for entry in item["files"]), 131072)
+        self.assertEqual(sum(len(entry["content"].encode("utf-8")) for entry in item["files"]), p.MAX_TOTAL_BYTES)
         second.write_bytes(second.read_bytes() + b"x")
         self.assertEqual(self.assert_code(lambda: p.read_selected(policy, paths)), "files-total")
         first.write_bytes(first.read_bytes() + b"x")
@@ -604,12 +616,12 @@ class PolicyTests(unittest.TestCase):
 
     def test_expand_never_silently_truncates_file_entry_or_depth_limits(self):
         policy = self.policy()
-        for i in range(64):
+        for i in range(p.MAX_FILES):
             self.file("project/" + str(i))
         selected = policy.expand((0,))
-        self.assertEqual(len(selected), 64)
-        self.assertEqual(len(p.read_selected(policy, selected)["files"]), 64)
-        self.file("project/64")
+        self.assertEqual(len(selected), p.MAX_FILES)
+        self.assertEqual(len(p.read_selected(policy, selected)["files"]), p.MAX_FILES)
+        self.file("project/" + str(p.MAX_FILES))
         self.assertEqual(self.assert_code(lambda: policy.expand((0,))), "files-count")
         for file in self.project.iterdir():
             file.unlink()
@@ -763,6 +775,19 @@ class PolicyTests(unittest.TestCase):
             self.assertEqual(policy.expand((0,)), (str(allowed),))
             self.assertEqual(self.assert_code(lambda: policy.expand_selected([(0, "private/**")])),
                              "files-empty")
+
+    def test_many_exact_selectors_share_one_scope_and_keep_independent_file_budget(self):
+        from ai_desktop import file_context
+        for index in range(129):
+            self.file("project/file%d.txt" % index)
+        policy = self.policy(read=["~/project/**"])
+        selectors = [{"id": "f0", "path": "file%d.txt" % index} for index in range(128)]
+        selection = file_context.resolve_paths(policy, selectors)
+        self.assertEqual(len(selection), 128)
+        with self.assertRaises(ValueError):
+            policy.expand_selected([(0, "file%d.txt" % index) for index in range(129)])
+        policy = self.policy(read=["~/project/**"], sections="read_files = 256\n")
+        self.assertEqual(len(policy.expand_selected([(0, "file%d.txt" % index) for index in range(129)])), 129)
 
     def test_selected_exact_from_home_does_not_scan_unselected_files_or_consume_budget(self):
         for index in range(p.MAX_FILES + 16):

@@ -170,12 +170,12 @@ class AssistantContractTests(unittest.TestCase):
         legal = {"id": "f0", "path": "ą" * 256}
         self.assertEqual(contract.parse_plan(wire(dict(READ, files=[legal])), ACCESS)["files"], [legal])
 
-    def test_duplicate_selector_refusal_and_eight_selection_limit_use_full_selector_identity(self):
-        selectors = [{"id": "f0", "path": f"folder/file{index}.txt"} for index in range(8)]
+    def test_duplicate_selector_refusal_and_selection_limit_use_full_selector_identity(self):
+        selectors = [{"id": "f0", "path": f"folder/file{index}.txt"} for index in range(contract.MAX_SELECTED_FILES)]
         self.assertEqual(contract.parse_plan(wire(dict(READ, files=selectors)), ACCESS)["files"], selectors)
         self.assertEqual(contract.selected_file_ids(selectors), ("f0",))
         for bad in ([selectors[0], dict(selectors[0])], ["f0", "f0"],
-                    selectors + [{"id": "f0", "path": "folder/ninth.txt"}]):
+                    selectors + [{"id": "f0", "path": "folder/extra.txt"}]):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 contract.parse_plan(wire(dict(READ, files=bad)), ACCESS)
         mixed = ["f0", selectors[0]]
@@ -200,10 +200,11 @@ class AssistantContractTests(unittest.TestCase):
         for value in cases:
             with self.subTest(value=value), self.assertRaises(ValueError):
                 contract.parse_plan(wire(value), ACCESS)
-        access = dict(EMPTY, files=[{"id": f"f{i}", "pattern": f"~/p{i}"} for i in range(9)])
-        plan = {"action": "read", "files": [f"f{i}" for i in range(8)], "systemd": [], "weather": None}
+        access = dict(EMPTY, files=[{"id": "f0", "pattern": "~/project/**"}])
+        plan = {"action": "read", "files": [{"id": "f0", "path": f"p{i}"}
+                  for i in range(contract.MAX_SELECTED_FILES)], "systemd": [], "weather": None}
         self.assertEqual(contract.parse_plan(wire(plan), access), plan)
-        plan["files"].append("f8")
+        plan["files"].append({"id": "f0", "path": "one-more"})
         with self.assertRaises(ValueError):
             contract.parse_plan(wire(plan), access)
 
@@ -222,8 +223,8 @@ class AssistantContractTests(unittest.TestCase):
                  '{"action":"answer","text":"\\u001b[2J"}',
                  wire({"action": "answer", "text": " "}),
                  wire({"action": "answer", "text": "text", "files": ["f0"]}),
-                 "[" * 1100 + "]" * 1100, "x" * 16385,
-                 wire({"action": "answer", "text": "ą" * 8192})]
+                 "[" * 1100 + "]" * 1100, "x" * (contract.MAX_PLAN_BYTES + 1),
+                 wire({"action": "answer", "text": "ą" * (contract.MAX_ANSWER_BYTES // 2 + 1)})]
         for raw in cases:
             with self.subTest(raw=repr(raw)[:90]), self.assertRaises(ValueError) as error:
                 contract.parse_plan(raw, ACCESS)

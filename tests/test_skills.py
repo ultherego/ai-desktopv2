@@ -57,8 +57,8 @@ class SkillTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             inspect_skill(ROOT, "../x")
 
-    def test_all_packaged_procedures_fit_a_real_workspace_request_together(self):
-        """Other modes still send full bodies: improving procedures must not break those requests."""
+    def test_explicit_legacy_full_instructions_fit_a_workspace_request(self):
+        """The compatibility helper stays bounded; every normal CLI now uses the shared catalog."""
         names = tuple(sorted(path.parent.name for path in ROOT.glob("*/SKILL.md")))
         selected = agent_profiles.Profile(instructions="r" * agent_profiles.MAX_INSTRUCTIONS, skills=names)
         instructions = agent_profiles.instructions_for(selected)

@@ -88,6 +88,12 @@ class SystemAccountPackagingTests(unittest.TestCase):
                 env=environment, check=False, capture_output=True, text=True, timeout=12,
             )
             self.assertEqual(staged.returncode, 0, staged.stderr[-1000:])
+            references = list((ROOT / "skills").glob("*/references/*.md"))
+            self.assertTrue(references)
+            for reference in references:
+                installed = package_root / "usr/lib/ai-desktop" / reference.relative_to(ROOT)
+                self.assertEqual(installed.read_bytes(), reference.read_bytes())
+                self.assertEqual(stat.S_IMODE(installed.stat().st_mode), 0o644)
             desktop = ROOT / "packaging/desktop"
             for name in ("ai-desktop.desktop", "ai-desktop-panel.desktop", "ai-desktop-login-claude.desktop",
                          "ai-desktop-login-codex.desktop", "ai-desktop-logout-claude.desktop",

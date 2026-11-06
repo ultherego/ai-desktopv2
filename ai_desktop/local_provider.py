@@ -6,7 +6,7 @@ import socket
 import threading
 import time
 
-from .analysis_contract import (AnalysisDenied, SYSTEM_PROMPT, canonical, request_seconds,
+from .analysis_contract import (AnalysisDenied, SYSTEM_PROMPT, MAX_PROPOSAL_TEXT, canonical, request_seconds,
                                 result_packet, read_result)
 from .e2_ipc import _unique_pairs
 from .execution import DEFAULT_LOCAL_PORT, LOCAL_MODEL, UNSET, valid_local_port
@@ -14,7 +14,9 @@ from .permissions import load_policy
 
 HOST = "127.0.0.1"
 PATH = "/v1/chat/completions"
-MAX_RESPONSE = 2 * 1024 * 1024  # includes JSON, escaped text and optional reasoning
+# Third-party servers may ASCII-escape Unicode: a two-byte UTF-8 character
+# becomes six JSON bytes. The decoded semantic response retains its own cap.
+MAX_RESPONSE = 3 * MAX_PROPOSAL_TEXT + 128 * 1024
 
 
 def endpoint(port=DEFAULT_LOCAL_PORT):

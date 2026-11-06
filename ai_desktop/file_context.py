@@ -54,13 +54,15 @@ _READ_HINTS = {
     "policy-identity": "Could not confirm the user's identity for the read.",
 }
 _SETTING_HINTS = {
-    "file_size": "Invalid file_size in [files] of permissions.toml: use 4KiB to 16MiB, for example \"5MiB\".",
+    "file_size": "Invalid file_size in [files] of permissions.toml: use 4KiB to 64MiB, for example \"32MiB\".",
     "part_size": "Invalid part_size in [files] of permissions.toml: use 30KiB to 512KiB, for example \"240KiB\".",
 }
 for _name, (_kind, _low, _high) in permissions.LIMIT_SPECS.items():
     _unit = " bytes (or for example \"24KiB\")" if _kind == "size" else ""
     _SETTING_HINTS[_name] = (f"Invalid {_name} in [files] of permissions.toml: use {_low} to {_high}{_unit}"
-                             + ("; read_file_size cannot be larger than read_total_size." if _name == "read_file_size" else "."))
+                             + ("; read_file_size cannot be larger than read_total_size." if _name == "read_file_size" else
+                                "; test_copy_file_size cannot be larger than test_copy_total_size."
+                                if _name == "test_copy_file_size" else "."))
 _READ_FALLBACK = "Could not verify access to, or read, the selected files."
 
 

@@ -5,17 +5,21 @@ import signal
 import subprocess
 import time
 
-from .analysis_contract import AnalysisDenied
+from .analysis_contract import AnalysisDenied, MAX_PACKET_LARGE
 
 
-MAX_INPUT_BYTES = 1024 * 1024
+MAX_INPUT_BYTES = MAX_PACKET_LARGE
 MAX_PRIVATE_INPUT_BYTES = MAX_INPUT_BYTES + 17 * 1024
 
 
 def bounded_process(argv, *, env, input_bytes=b"", timeout=120, limit=131072, cancelled=None,
-                    input_limit=32768, private_input=False, stdout_chunk=None):
+                    input_limit=32768, private_input=False, copy_input=False, stdout_chunk=None):
     ceiling = MAX_PRIVATE_INPUT_BYTES if private_input is True else MAX_INPUT_BYTES
-    if (type(private_input) is not bool or type(input_limit) is not int or not 0 <= input_limit <= ceiling
+    if copy_input is True:
+        from .copy_contract import MAX_PAYLOAD
+        ceiling = MAX_PAYLOAD
+    if (type(private_input) is not bool or type(copy_input) is not bool or (private_input and copy_input)
+            or type(input_limit) is not int or not 0 <= input_limit <= ceiling
             or type(input_bytes) is not bytes or len(input_bytes) > input_limit):
         raise AnalysisDenied("input")
     if cancelled is not None and cancelled():

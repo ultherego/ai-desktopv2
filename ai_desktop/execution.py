@@ -36,10 +36,10 @@ ACCESS = ("read-only", "changes")
 # protocol's own check; "default" omits the id and lets the client choose.
 CODEX_MODEL = re.compile(r"[a-z][a-z0-9._-]{0,95}\Z", re.ASCII)
 MAX_INSTRUCTIONS_BYTES = 104 * 1024   # same ceiling as agent_profiles.MAX_EXECUTION_INSTRUCTIONS
-MAX_HISTORY = 32         # `ask` conversation window (pairs); material/project keep their own, smaller windows
+MAX_HISTORY = 64         # `ask` conversation window (pairs); material/project keep their own, smaller windows
 HISTORY_QUESTION_BYTES = 128 * 1024  # a pasted text stays available for the follow-up questions about it
-HISTORY_ANSWER_BYTES = 8192 + 64  # bounded text plus the visible truncation suffix
-HISTORY_TOTAL_BYTES = 128 * 1024  # all pairs sent with one question; the oldest leave the window first
+HISTORY_ANSWER_BYTES = 32 * 1024 + 64  # bounded text plus the visible truncation suffix
+HISTORY_TOTAL_BYTES = 512 * 1024  # all pairs sent with one question; the oldest leave the window first
 _SLUG = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
 _FIELDS = frozenset({"provider", "model", "effort", "instructions", "profile", "access"})
 _active = ContextVar("ai_desktop_execution", default=None)
@@ -129,7 +129,7 @@ def validate_history(value):
     """Short prior turns are data; they never carry capabilities or commands."""
     if type(value) is not list or len(value) > MAX_HISTORY:
         raise ValueError("conversation")
-    result = []
+    result, total = [], 0
     for turn in value:
         if type(turn) is not dict or set(turn) != {"question", "answer"}:
             raise ValueError("conversation")
@@ -142,7 +142,10 @@ def validate_history(value):
             if (not valid or any(c not in "\n\t" and unicodedata.category(c) in ("Cc", "Cf", "Cs")
                                  for c in text)):
                 raise ValueError("conversation")
+            total += len(text.encode("utf-8"))
         result.append(dict(turn))
+    if total > HISTORY_TOTAL_BYTES:
+        raise ValueError("conversation")
     return result
 
 

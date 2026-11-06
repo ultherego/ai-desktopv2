@@ -1,6 +1,6 @@
 ---
 name: cachyos-diagnostics
-description: Identifies the cause of a CachyOS failure or slowdown and chooses further diagnostics. Use when the symptom is unclear, spans several subsystems, or a bug report must be prepared.
+description: Identifies CachyOS failures and slowdowns, including cachyos-settings, kerver, topmem and report helpers. Use when the symptom is unclear, spans subsystems or a bug report is needed.
 ---
 
 # CachyOS problem identification
@@ -44,3 +44,9 @@ Give: the symptom and scope, confirmed facts, the cause or a labeled hypothesis,
 ## Source
 
 [CachyOS FAQ: reporting bugs and collecting logs](https://wiki.cachyos.org/cachyos_basic/faq/#how-to-report-an-issue-or-bug-to-cachyos).
+
+## Tool references
+
+Load the matching reference when the task concerns these tools. Verify the installed version and help; a rolling source is not a verified version match.
+
+- [CachyOS Settings helpers and report boundaries](references/settings-tools.md).

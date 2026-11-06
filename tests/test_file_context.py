@@ -316,13 +316,13 @@ class FileContextTests(unittest.TestCase):
 
     def test_collection_refusals_explain_limits_and_causes_without_partial_context(self):
         cases = (
-            (self.policy.expand, "files-count", "more than 64 files"),
+            (self.policy.expand, "files-count", "more than 128 files"),
             (self.policy.expand, "files-entries", "1024 entries per directory or 4096 entries in total"),
             (self.policy.expand, "files-depth", "8 levels"),
             (self.policy.expand, "files-symlink", "symbolic link"),
             (self.policy.expand, "files-empty", "no files that may be read"),
-            (self.read, "files-size", "65536 bytes per file"),
-            (self.read, "files-total", "131072 bytes"),
+            (self.read, "files-size", "2097152 bytes per file"),
+            (self.read, "files-total", "4194304 bytes"),
             (self.read, "files-owner", "not owned by the current user"),
             (self.read, "files-links", "hard links"),
             (self.read, "files-mode", "setuid or setgid"),

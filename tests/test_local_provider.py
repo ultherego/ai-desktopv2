@@ -108,6 +108,22 @@ class LocalProviderTests(unittest.TestCase):
             self.assertEqual(json.loads(body["messages"][1]["content"]), {
                 "mode": "question", "question": "Synthetic question?", "context": []})
 
+    def test_large_ascii_escaped_unicode_workspace_response_keeps_semantic_limit(self):
+        text = "ż" * (contract.MAX_PROPOSAL_TEXT // 2)
+        self.assertEqual(len(text.encode()), contract.MAX_PROPOSAL_TEXT)
+        self.assertGreater(len(json.dumps(reply(text)).encode()), contract.MAX_RESPONSE_BYTES)
+        task = {"instruction": "Replace selected text", "files": [
+            {"path": "synthetic.txt", "content": "original", "writable": True}]}
+        with server(response(reply(text))) as (port, seen), ExitStack() as stack:
+            self.setup_transport(stack, port)
+            selected = dict(selection(port), access="changes")
+            with execution.using(selected):
+                gate = contract.AnalysisConsent(None, task=task)
+                approved = gate.authorize(None, task=task, nonce=gate.nonce, sha256=gate.sha256)
+                parsed, _ = contract.parse_request(approved.payload.encode())
+                self.assertEqual(local_provider.complete(json.loads(parsed), approved), text)
+            self.assertEqual(len(seen), 1)
+
     def test_settings_to_normal_ask_planner_and_offline_doctor(self):
         plan = json.dumps({"action": "answer", "text": "Synthetic planner answer"})
         with server(response(reply(plan))) as (port, seen), tempfile.TemporaryDirectory(dir=Path.home()) as folder:

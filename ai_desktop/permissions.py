@@ -17,13 +17,13 @@ import stat
 import tomllib
 import unicodedata
 
-from .file_context_contract import (plain_text, MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES,
+from .file_context_contract import (plain_text, MAX_FILES, MAX_FILE_BYTES, MAX_TOTAL_BYTES, CEILING_FILES,
                                     contains_private_key, validate_context)
 
 MAX_POLICY_BYTES = 16384
-DEFAULT_FILE_SIZE = 5 * 1024 * 1024       # largest file `material` imports unless `file_size` says otherwise
+DEFAULT_FILE_SIZE = 32 * 1024 * 1024       # largest file `material` imports unless `file_size` says otherwise
 MIN_FILE_SIZE = 4 * 1024
-MAX_FILE_SIZE = 16 * 1024 * 1024          # hard ceiling in code (also the ceiling of the request schema)
+MAX_FILE_SIZE = 64 * 1024 * 1024          # hard ceiling in code (also the ceiling of the request schema)
 MAX_ACCESS_BYTES = 8192
 MAX_RULES = 64
 MAX_DIRECTORY_ENTRIES = 1024
@@ -107,12 +107,15 @@ def parse_part_size(value):
 class Limits:
     """Resource budgets of ONE question, set by the owner in `[files]`; never permissions.
 
-    Defaults equal the former constants. Ceilings are hard limits in code that the request schema (client AND worker)
+    Read budgets bound model data; test-copy budgets only bound local test input. Ceilings are hard limits in code that the request schema (client AND worker)
     also enforces, so a policy can lower a budget or raise it only up to the ceiling.
     """
-    read_files: int = 64              # files read into one context
-    read_file_size: int = 65536       # bytes per file
-    read_total_size: int = 131072     # bytes of all file contents of one context
+    read_files: int = MAX_FILES              # files read into one context
+    read_file_size: int = MAX_FILE_BYTES       # bytes per file
+    read_total_size: int = MAX_TOTAL_BYTES     # bytes of all file contents of one context
+    test_copy_files: int = 2000       # local test copy, never added to the model context
+    test_copy_file_size: int = 8 * 1024 * 1024
+    test_copy_total_size: int = 64 * 1024 * 1024
     listing_entries: int = 128        # entries per list/find step
     discovery_bytes: int = 131072     # bytes of all discovery steps sent to the model during one question
     search_results: int = 40          # matches per find step
@@ -126,9 +129,12 @@ class Limits:
 
 # name -> (kind, minimum, maximum); kind "count" is an integer, "size" accepts "24KiB"-style strings too
 LIMIT_SPECS = {
-    "read_files": ("count", 1, 128),
-    "read_file_size": ("size", 1024, 131072),
-    "read_total_size": ("size", 1024, 262144),
+    "read_files": ("count", 1, 512),
+    "read_file_size": ("size", 1024, 8 * 1024 * 1024),
+    "read_total_size": ("size", 1024, 16 * 1024 * 1024),
+    "test_copy_files": ("count", 1, 20000),
+    "test_copy_file_size": ("size", 1024, 32 * 1024 * 1024),
+    "test_copy_total_size": ("size", 1024, 128 * 1024 * 1024),
     "listing_entries": ("count", 16, 512),
     "discovery_bytes": ("size", 2048, 262144),
     "search_results": ("count", 5, 200),
@@ -160,6 +166,8 @@ def parse_limits(files):
     limits = Limits(**values)
     if limits.read_file_size > limits.read_total_size:
         raise _SettingError("read_file_size")
+    if limits.test_copy_file_size > limits.test_copy_total_size:
+        raise _SettingError("test_copy_file_size")
     return limits
 
 
@@ -648,7 +656,7 @@ class Policy:
         return self._part_size
 
     def file_size(self):
-        """Largest single file `material` may import (owner's `file_size`, default 5 MiB, ceiling 16 MiB)."""
+        """Largest single file `material` may import (owner's `file_size`, default 32 MiB, ceiling 64 MiB)."""
         return self._file_size
 
     def sources(self):
@@ -795,7 +803,7 @@ class Policy:
         Each pair is (scope index, relative exact path or terminal /* or /**).
         None and the empty string select the complete configured scope.
         """
-        if type(selections) not in (list, tuple) or not 1 <= len(selections) <= MAX_RULES:
+        if type(selections) not in (list, tuple) or not 1 <= len(selections) <= CEILING_FILES:
             raise ValueError("files-scope")
         rules, seen, roots = [], set(), []
         for selection in selections:
@@ -1068,7 +1076,7 @@ def read_bounded(policy, path, limit, *, recheck=True, expected_identity=None):
     its per-file budget so a deliberately attached material can be larger. Content
     validation (encoding, control characters) is the caller's job.
     """
-    if type(policy) is not Policy or type(limit) is not int or not 1 <= limit <= 16 * 1024 * 1024:
+    if type(policy) is not Policy or type(limit) is not int or not 1 <= limit <= MAX_FILE_SIZE:
         raise ValueError("policy-type")
     (selected,) = policy.select([path])
     if recheck:

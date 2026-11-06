@@ -27,7 +27,11 @@ def build_parser():
 
 
 def _values(store):
-    return sorted(store.list(), key=lambda item: (item["updated"], item["id"]), reverse=True)
+    return sorted(store.summaries(), key=lambda item: (item["updated"], item["id"]), reverse=True)
+
+
+def _history_count(value):
+    return value["history_count"] if "history_count" in value else len(value["history"])
 
 
 def _safe(value, limit=1600):
@@ -43,16 +47,17 @@ def _entry(value, active=False):
     profile = value["execution"]["profile"] if value["execution"] is not None else "default"
     return "%s · %s · %s · %s · questions: %d%s" % (
         value["id"], value["kind"], recipient_label(value["execution"]), profile,
-        len(value["history"]), " [active]" if active else "")
+        _history_count(value), " [active]" if active else "")
 
 
 def thread_label(value, active=False):
     """One line for a saved thread: when it was last used, its title (the user's first message) and its size."""
-    first = value["history"][0]["question"] if value["history"] else value["id"]
+    history = value.get("history", [])
+    first = history[0]["question"] if history else value["id"]
     title = value.get("title") or " ".join(first.split())
     title = title if len(title) <= 60 else title[:59].rstrip() + "…"
     stamp = time.strftime("%d.%m %H:%M", time.localtime(value["updated"]))
-    return "%s · %s · exchanges: %d%s" % (stamp, _safe(title, 80).replace("\n", " "), len(value["history"]),
+    return "%s · %s · exchanges: %d%s" % (stamp, _safe(title, 80).replace("\n", " "), _history_count(value),
                                      " [active]" if active else "")
 
 
@@ -231,7 +236,7 @@ def main(argv=None, *, store=None, dispatch=None):
                 profile = value["execution"]["profile"] if value["execution"] is not None else "default"
                 print("%s  %s  %s  %s  questions: %d%s" % (
                     value["id"], value["kind"], recipient_label(value["execution"]), profile,
-                    len(value["history"]), "  [active]" if active else ""))
+                    _history_count(value), "  [active]" if active else ""))
             for ident in store.damaged():
                 print("%s  damaged record; delete it with: ai-desktop sessions remove %s" % (ident, ident))
             return 0
