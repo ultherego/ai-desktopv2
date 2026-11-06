@@ -1,4 +1,4 @@
-"""Metadata-only local readiness diagnostic; never runs native clients or commands.
+"""Local metadata by default, with explicit isolated offline client probes.
 
 Presence checks are not proof that a namespace or authenticated session works.
 The report intentionally contains no host paths, process output or credentials.
@@ -9,12 +9,11 @@ from pathlib import Path
 import shutil
 import sys
 
-from . import e2_account, launcher, skills, system_clients
+from . import e2_account, skills, system_clients
 
 MINIMUM_PYTHON = (3, 12)
 TOOLS = ("bwrap", "findmnt", "systemctl")
 SKILL = "cachyos-diagnostics"
-INSTALLED = Path("/usr/lib/ai-desktop")
 # Historical skill installation presence only; NOT an approved Claude/OAuth profile.
 PROFILE = Path.home() / ".local/state/ai-desktop/claude"
 
@@ -30,24 +29,14 @@ def inspect():
         # here covers file metadata only, never vendor or protocol verification.
         discovered[provider] = {
             "status": result.status,
+            "source": result.source,
             "detail": result.detail,
             "metadata_trusted": result.status == "present",
             "layout": "native-elf" if result.status == "present" else "unverified",
-            "active": False,
+            "runtime_candidate": result.status == "present",
             "version_checked": False,
             "protocol_checked": False,
         }
-
-    if INSTALLED.is_dir():
-        # An installed package only ever uses its own client, whatever else is on PATH. Its exact version is checked
-        # when the isolated session starts; this offline report does not run it.
-        claude_binary = (INSTALLED / "claude-code").is_file()
-    else:
-        try:
-            launcher.claude_binary()
-            claude_binary = True
-        except (OSError, ValueError):
-            claude_binary = False
 
     try:
         skills.inspect_skill(skills.ROOT, SKILL)
@@ -71,13 +60,8 @@ def inspect():
         "platform_linux": platform_supported,
         "python_supported": python_supported,
         "tools_available": tools,
-        "runtime_client_source": "bundled-package",
-        "bundled_clients_present": {
-            "claude": (INSTALLED / "claude-code").is_file(),
-            "codex": (INSTALLED / "codex").is_file(),
-        },
+        "runtime_client_source": "independent",
         "system_clients": discovered,
-        "claude_binary_valid": claude_binary,
         "claude_profile_directory": bool(profile_dir),
         "skill_source_valid": source_skill,
         "skill_profile_matches": installed_skill,
@@ -101,20 +85,26 @@ def system_client_summary(data):
         "changed": "changed during inspection",
         "unavailable": "metadata unavailable",
     }
-    return descriptions.get(data.get("status"), "metadata unavailable") + "; not active."
+    suffix = "; compatibility unchecked." if data.get("status") == "present" else "; unavailable for execution."
+    return descriptions.get(data.get("status"), "metadata unavailable") + suffix
 
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     verbose_flags = ("--v", "--verbose", "-v", "--details")
+    usage = "Usage: ai-desktop doctor [--clients] [--v]"
     if argv in (["--help"], ["-h"]):
-        print("Usage: ai-desktop doctor [--v]")
-        print("Checks local metadata without starting AI.")
+        print(usage)
+        print("Default: local metadata, without starting a client.")
+        print("--clients: probe the selected client offline, without login or AI requests.")
         print("--v, --verbose, -v, --details: full JSON report.")
         return 0
-    if argv and (len(argv) != 1 or argv[0] not in verbose_flags):
-        print("Usage: ai-desktop doctor [--v]")
+    if (any(arg not in (*verbose_flags, "--clients") for arg in argv)
+            or argv.count("--clients") > 1 or sum(arg in verbose_flags for arg in argv) > 1):
+        print(usage)
         return 2
+    verbose = any(arg in verbose_flags for arg in argv)
+    probe_requested = "--clients" in argv
     if hasattr(os, "geteuid") and os.geteuid() == 0:
         print("DOCTOR: REFUSED (root)")
         return 2
@@ -135,7 +125,7 @@ def main(argv=None):
         details = {"provider": "local", "endpoint": endpoint(policy.local_port if policy else DEFAULT_LOCAL_PORT),
                    "authorized": bool(policy and policy.provider_allowed("local")), "server_checked": False,
                    "python_supported": sys.version_info >= MINIMUM_PYTHON, "platform_linux": sys.platform == "linux"}
-        if argv:
+        if verbose:
             print(json.dumps(details, indent=2))
         else:
             print("Local inference endpoint: " + details["endpoint"])
@@ -143,26 +133,39 @@ def main(argv=None):
             print("Server availability is checked when you approve an inference request.")
         return 0
     data = inspect()
-    if argv:
+    outcome = None
+    if probe_requested:
+        if provider not in ("claude", "codex"):
+            print("DOCTOR: choose a service with ai-desktop agent use claude or codex first.")
+            return 2
+        from . import client_compat
+        outcome = client_compat.inspect(provider)
+        data["client_compatibility"] = outcome
+    if verbose:
         print("=== AI DESKTOP READINESS (READ-ONLY) ===")
         print(json.dumps(data, ensure_ascii=False, indent=2))
-        print("DOCTOR: PASS (requirements checked; AI not started)")
+        print("DOCTOR: " + ("REFUSED" if outcome is not None and not outcome["status"].startswith("compatible-")
+                            else "PASS") + " (checks completed; login and AI not checked)")
     else:
         print("Offline requirements (metadata): " + (
             "met." if data.get("offline_prerequisites_present") is True else "incomplete."))
-        bundled = data.get("bundled_clients_present", {})
-        print("Runtime source: bundled package clients (Claude %s; Codex %s)." % (
-            "found" if bundled.get("claude") is True else "missing",
-            "found" if bundled.get("codex") is True else "missing"))
+        print("Runtime sources: system packages or registered copies (ai-desktop clients list).")
         print("Isolated account metadata: " + (
             "valid." if data.get("isolated_account_metadata_valid") is True else "unconfirmed."))
-        for provider in ("claude", "codex"):
-            print("System " + provider.capitalize() + ": " + system_client_summary(
-                data.get("system_clients", {}).get(provider, {})))
-        print("System client vendor, version and protocol: not verified; runtime migration is pending.")
+        for name in ("claude", "codex"):
+            item = data.get("system_clients", {}).get(name, {})
+            source = item.get("source", "unknown")
+            print(name.capitalize() + " (" + source + "): " + system_client_summary(item))
+        if outcome is None:
+            print("Compatibility: ai-desktop doctor --clients (selected service, offline).")
+        else:
+            version = " " + outcome["version"] if outcome.get("version") else ""
+            print("Selected " + provider.capitalize() + version + ": " + outcome["status"] + ".")
+            if not outcome["status"].startswith("compatible-"):
+                print("Run ai-desktop clients list; check registration, source and supported layout in docs/AGENT_INSTALL.md.")
         print("Login and AI operation: not checked.")
         print("Details: ai-desktop doctor --v")
-    return 0
+    return 2 if outcome is not None and not outcome["status"].startswith("compatible-") else 0
 
 
 if __name__ == "__main__":

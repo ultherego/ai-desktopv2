@@ -2,6 +2,7 @@
 import os as _os
 _os.environ.setdefault("AI_DESKTOP_MODEL_CATALOG", "off")
 import io
+import json
 import os
 from contextlib import redirect_stdout
 from unittest.mock import patch
@@ -9,6 +10,7 @@ from unittest.mock import patch
 import unittest
 
 from ai_desktop import management_cli, model_catalog as catalog
+from system_client_fixtures import FakeBinding
 
 RESULT = {"data": [
     {"id": "gpt-6.1-sol", "displayName": "GPT-6.1-Sol", "hidden": False},
@@ -33,30 +35,121 @@ class ParseTests(unittest.TestCase):
 
 class FetchTests(unittest.TestCase):
     def fetch(self, run):
-        with patch.object(catalog, "trusted_file", return_value=None), patch("os.access", return_value=True):
-            return catalog.fetch(binary="/usr/lib/ai-desktop/codex", run=run)
+        with patch.object(catalog.codex_runtime, "runtime_ready"), \
+                patch.object(catalog.codex_runtime, "compatibility"), \
+                patch.object(catalog.client_binding, "bind", return_value=FakeBinding()):
+            return catalog.fetch(run=run)
 
     def test_command_is_closed_offline_and_carries_no_credentials(self):
         seen = []
-        self.fetch(lambda argv, timeout: seen.append(argv) or RESULT)
+        self.fetch(lambda argv, **kw: seen.append(argv) or (0, json.dumps(RESULT).encode(), b""))
         argv = seen[0]
-        self.assertEqual(argv[0], "bwrap")
-        for flag in ("--unshare-all", "--die-with-parent", "--cap-drop"):
+        self.assertEqual(argv[0], "/usr/bin/bwrap")
+        for flag in ("--unshare-user", "--unshare-net", "--unshare-pid", "--die-with-parent", "--cap-drop"):
             self.assertIn(flag, argv)
         self.assertNotIn("--share-net", argv)
-        self.assertEqual(argv[-1], "app-server")
+        self.assertEqual(argv[-2], "catalog")
         self.assertNotIn("--bind", argv)                    # only read-only /usr; HOME is an empty tmpfs
 
     def test_every_failure_is_catalog_unavailable(self):
         for error in (OSError("x"), ValueError("x"), KeyError("x"), catalog.CatalogUnavailable()):
-            def run(argv, timeout, error=error):
+            def run(argv, error=error, **kwargs):
                 raise error
             with self.subTest(error=error), self.assertRaises(catalog.CatalogUnavailable):
                 self.fetch(run)
 
     def test_untrusted_or_missing_binary_is_unavailable(self):
-        with self.assertRaises(catalog.CatalogUnavailable):
-            catalog.fetch(binary="/nonexistent/codex", run=lambda argv, timeout: RESULT)
+        from ai_desktop.analysis_contract import AnalysisDenied
+        with patch.object(catalog.codex_runtime, "runtime_ready", side_effect=AnalysisDenied("client-missing")), \
+                self.assertRaises(catalog.CatalogUnavailable):
+            catalog.fetch(run=lambda argv, **kw: (0, json.dumps(RESULT).encode(), b""))
+
+    def test_compatibility_and_bound_identity_precede_catalog_and_failure_blocks_it(self):
+        from ai_desktop.analysis_contract import AnalysisDenied
+        binding = FakeBinding(pass_fds=(71,))
+        calls = []
+        def compatible(directory, bound, **kwargs):
+            self.assertIs(bound, binding)
+            calls.append("compatibility")
+        def run(argv, **kwargs):
+            self.assertEqual(calls, ["compatibility"])
+            self.assertEqual(kwargs["pass_fds"], (71,))
+            return 0, json.dumps(RESULT).encode(), b""
+        with patch.object(catalog.codex_runtime, "runtime_ready"), \
+                patch.object(catalog.codex_runtime, "compatibility", side_effect=compatible), \
+                patch.object(catalog.client_binding, "bind", return_value=binding):
+            self.assertTrue(catalog.fetch(run=run))
+        self.assertTrue(binding.closed)
+        with patch.object(catalog.codex_runtime, "runtime_ready"), \
+                patch.object(catalog.codex_runtime, "compatibility", side_effect=AnalysisDenied("client-protocol")), \
+                patch.object(catalog.client_binding, "bind", return_value=FakeBinding()), \
+                self.assertRaises(catalog.CatalogUnavailable):
+            catalog.fetch(run=lambda *a, **k: self.fail("catalog must not run"))
+
+    def test_one_deadline_covers_compatibility_and_catalog(self):
+        now, binding = [0.0], FakeBinding()
+        def compatible(directory, bound, *, timeout):
+            self.assertEqual(timeout, .5)
+            now[0] = .51
+        with patch.object(catalog.codex_runtime, "runtime_ready"), \
+                patch.object(catalog.time, "monotonic", side_effect=lambda: now[0]), \
+                patch.object(catalog.codex_runtime, "compatibility", side_effect=compatible), \
+                patch.object(catalog.client_binding, "bind", return_value=binding), \
+                self.assertRaises(catalog.CatalogUnavailable):
+            catalog.fetch(timeout=.5, run=lambda *a, **k: self.fail("expired catalog must not start"))
+        self.assertTrue(binding.closed)
+
+    def test_slow_mount_metadata_prevents_catalog_start_after_deadline(self):
+        now, binding = [0.0], FakeBinding()
+        original = binding.mount_args
+        def mount_args():
+            result = original()
+            now[0] = .51
+            return result
+        with patch.object(catalog.codex_runtime, "runtime_ready"), \
+                patch.object(catalog.time, "monotonic", side_effect=lambda: now[0]), \
+                patch.object(catalog.codex_runtime, "compatibility"), \
+                patch.object(catalog.client_binding, "bind", return_value=binding), \
+                patch.object(binding, "mount_args", side_effect=mount_args), \
+                self.assertRaises(catalog.CatalogUnavailable):
+            catalog.fetch(timeout=.5, run=lambda *a, **k: self.fail("expired catalog must not start"))
+        self.assertTrue(binding.closed)
+
+    def test_final_metadata_recheck_over_deadline_discards_valid_catalog(self):
+        now, binding, calls = [0.0], FakeBinding(), []
+        original = binding.recheck
+        def recheck():
+            original()
+            if binding.rechecks == 2:
+                now[0] = .51
+        def run(*args, **kwargs):
+            calls.append(kwargs["timeout"])
+            return 0, json.dumps(RESULT).encode(), b""
+        with patch.object(catalog.codex_runtime, "runtime_ready"), \
+                patch.object(catalog.time, "monotonic", side_effect=lambda: now[0]), \
+                patch.object(catalog.codex_runtime, "compatibility"), \
+                patch.object(catalog.client_binding, "bind", return_value=binding), \
+                patch.object(binding, "recheck", side_effect=recheck), \
+                self.assertRaises(catalog.CatalogUnavailable):
+            catalog.fetch(timeout=.5, run=run)
+        self.assertEqual(calls, [.5])
+        self.assertTrue(binding.closed)
+
+    def test_protocol_budget_starts_after_initial_binding(self):
+        now = [0.0]
+        class SlowBinding(FakeBinding):
+            def __enter__(self):
+                now[0] = 3.0
+                return super().__enter__()
+        binding = SlowBinding()
+        def compatible(directory, bound, *, timeout):
+            self.assertEqual(timeout, .5)
+        with patch.object(catalog.codex_runtime, "runtime_ready"), \
+                patch.object(catalog.time, "monotonic", side_effect=lambda: now[0]), \
+                patch.object(catalog.codex_runtime, "compatibility", side_effect=compatible), \
+                patch.object(catalog.client_binding, "bind", return_value=binding):
+            self.assertTrue(catalog.fetch(timeout=.5, run=lambda *a, **k: (0, json.dumps(RESULT).encode(), b"")))
+        self.assertTrue(binding.closed)
 
     def test_the_real_client_is_never_started_when_disabled(self):
         with patch.dict(os.environ, {"AI_DESKTOP_MODEL_CATALOG": "off"}):

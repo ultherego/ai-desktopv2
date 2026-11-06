@@ -22,7 +22,7 @@ RuntimeMaxSec=980
 TimeoutStopSec=3
 KillMode=control-group
 TasksMax=96
-MemoryMax=1G
+MemoryMax=2G
 LimitCORE=0
 NoNewPrivileges=yes
 CapabilityBoundingSet=
@@ -32,7 +32,9 @@ PrivateTmp=yes
 ProtectSystem=strict
 ProtectHome=yes
 ReadWritePaths=/var/lib/ai-desktop
-InaccessiblePaths=-/mnt -/media -/opt -/srv
+# The trusted supervisor may read the fixed AUR native client in /opt.
+# The model's separate mount namespace receives only verified client snapshots.
+InaccessiblePaths=-/mnt -/media -/srv
 # Do not overmount pieces of the supervisor's /proc: Linux then refuses a
 # fresh procfs in bwrap's unprivileged PID namespace. The child remounts its
 # own entire /proc read-only after creating it and verifies that mount flag.

@@ -42,7 +42,7 @@ def main(argv):
         if len(argv) == 2 and argv[0] in ("quota-connect", "quota-read"):
             from .codex_quota_runtime import quota_child
             return quota_child(argv[0], json.loads(argv[1]))
-        if len(argv) != 2 or argv[0] not in ("version", "analyze"):
+        if len(argv) != 2 or argv[0] not in ("version", "compat-help", "compat-reject", "compat-rpc", "catalog", "analyze"):
             raise AnalysisDenied("input")
         with failure_stage("boundary"):
             check_boundary(json.loads(argv[1]))
@@ -56,6 +56,22 @@ def main(argv):
         if argv[0] == "version":
             with failure_stage("native-exec"):
                 os.execve(str(BINARY), [str(BINARY), "--version"], client_environment())
+        if argv[0] in ("compat-help", "compat-reject"):
+            from .codex_account_protocol import fixed_command
+            command = fixed_command(str(BINARY))
+            if argv[0] == "compat-reject":
+                command.append("--ai-desktop-invalid-compatibility-option")
+            command.append("--help")
+            with failure_stage("native-exec"):
+                os.execve(str(BINARY), command, client_environment())
+        if argv[0] in ("compat-rpc", "catalog"):
+            from .codex_compat import run as probe
+            with failure_stage("native-exec"):
+                models = probe(str(BINARY), client_environment())
+                result = models if argv[0] == "catalog" else {
+                    "initialize": True, "signed_out": True, "models": True}
+                print(canonical(result), flush=True)
+                return 0
         with failure_stage("input"):
             token, request, selected = private_input(sys.stdin.buffer.read(PRIVATE_PACKET_BYTES + 1))
         with failure_stage("bridge"), _Bridge(request_seconds(selected["effort"]) + 10,

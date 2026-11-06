@@ -4,19 +4,17 @@
 # Only the guarded package scriptlet may apply it during this approved install.
 pkgname=ai-desktop
 pkgver=0.1.0
-pkgrel=80
+pkgrel=81
 pkgdesc='Terminal AI assistant for CachyOS and Arch with an isolated client and approved changes'
 arch=('x86_64')
 url='https://github.com/ultherego/ai-desktopv2'
 license=('Apache-2.0')
 depends=('python>=3.12' 'bubblewrap' 'systemd' 'ca-certificates' 'libseccomp' 'sudo' 'python-rich>=13.7' 'python-cryptography')
-optdepends=('python-pytest: run the offline pytest recipe' 'go: run the offline go-test recipe' 'npm: run the offline npm-test recipe')
-options=('!strip')  # Preserve an optionally supplied official native binary.
+optdepends=('claude-code: independently installed native Claude client' 'openai-codex: independently installed native Codex client'
+            'python-pytest: run the offline pytest recipe' 'go: run the offline go-test recipe' 'npm: run the offline npm-test recipe')
 install=ai-desktop.install
 source=()
 sha256sums=()
-# The one official client this package may carry. A wrong file stops the build; it is never run during the build.
-_claude_code_sha256=4f4178ce41d83e23341ebfbaecdbcf8ea6bf7baea0690025abe49eeec3a5d01d
 
 package() {
     local root="${startdir}/../.."
@@ -66,41 +64,12 @@ package() {
     done
     [[ -f "${startdir}/../systemd/activated-worker.py" && ! -L "${startdir}/../systemd/activated-worker.py" ]] || return 1
     install -m644 "${startdir}/../systemd/activated-worker.py" "${target}/activated-worker.py"
-    for src in analysis-worker.py analysis-client.py analysis-session.py codex-auth.py codex-client.py codex-quota.py; do
+    for src in analysis-worker.py analysis-client.py analysis-session.py codex-auth.py codex-client.py codex-quota.py client-admin.py; do
         [[ -f "${startdir}/../systemd/${src}" && ! -L "${startdir}/../systemd/${src}" ]] || return 1
         install -m644 "${startdir}/../systemd/${src}" "${target}/${src}"
     done
-    # Optional local copy of the owner's official 2.1.312 executable. No fetch,
-    # updater, user HOME/profile, credentials, or native execution during build.
-    # Without this asset offline commands work; analyze refuses reason=runtime.
-    # A PUBLIC / distributable artifact must never carry the vendor binary: with AI_DESKTOP_PUBLIC_ARTIFACT=1 a local
-    # client file (even an ignored one) aborts the build instead of being packaged. The default stays the owner's private
-    # build, which may include their own local copy.
-    if [[ "${AI_DESKTOP_PUBLIC_ARTIFACT:-}" == 1 ]]; then
-        for vendor in claude-code codex; do
-            if [[ -e "${startdir}/${vendor}" || -L "${startdir}/${vendor}" ]]; then
-                echo "REFUSED: a public artifact must not contain the official client; remove ${startdir}/${vendor}" >&2
-                return 1
-            fi
-        done
-    fi
-    if [[ -e "${startdir}/claude-code" || -L "${startdir}/claude-code" ]]; then
-        [[ -f "${startdir}/claude-code" && ! -L "${startdir}/claude-code" ]] || return 1
-        [[ "$(head -c4 "${startdir}/claude-code" | od -An -tx1 | tr -d ' \n')" == 7f454c46 ]] || return 1
-        local digest
-        digest="$(sha256sum "${startdir}/claude-code")" || return 1
-        if [[ "${digest%% *}" != "${_claude_code_sha256}" ]]; then
-            echo "REFUSED: claude-code has the wrong SHA-256; remove the file and download it again" >&2
-            return 1
-        fi
-        install -m755 "${startdir}/claude-code" "${target}/claude-code"
-    fi
-    # Optional pinned official Codex client. Never fetch or execute at build time.
-    if [[ -e "${startdir}/codex" || -L "${startdir}/codex" ]]; then
-        [[ -f "${startdir}/codex" && ! -L "${startdir}/codex" ]] || return 1
-        [[ "$(head -c4 "${startdir}/codex" | od -An -tx1 | tr -d ' \n')" == 7f454c46 ]] || return 1
-        install -m755 "${startdir}/codex" "${target}/codex"
-    fi
+    # Clients are installed independently. Legacy ignored
+    # staging files are neither read nor included in this application artifact.
 
     # Optional launchers and examples. The package never changes a user's Niri or DMS configuration.
     local desktop="${root}/packaging/desktop" widget="dms/AiDesktop"
@@ -115,25 +84,6 @@ package() {
         [[ -f "${desktop}/${src}" && ! -L "${desktop}/${src}" ]] || return 1
         install -Dm644 "${desktop}/${src}" "${pkgdir}/usr/share/ai-desktop/${src}" || return 1
     done
-
-    # install_agents.py binds the selected clients to the bytes it just verified, including Codex's extracted ELF.
-    if [[ "${AI_DESKTOP_CHECK_CLIENTS:-}" == 1 ]]; then
-        local client expected actual
-        for client in claude-code codex; do
-            if [[ "$client" == claude-code ]]; then
-                expected="${AI_DESKTOP_EXPECT_CLAUDE:-}"
-            else
-                expected="${AI_DESKTOP_EXPECT_CODEX:-}"
-            fi
-            if [[ "$expected" == - ]]; then
-                [[ ! -e "${target}/${client}" ]] || return 1
-            else
-                [[ "$expected" =~ ^[0-9a-f]{64}$ ]] || return 1
-                actual="$(sha256sum "${target}/${client}")" || return 1
-                [[ "${actual%% *}" == "$expected" ]] || return 1
-            fi
-        done
-    fi
 
     install -d -m755 "${pkgdir}/usr/bin"
     # Linux shebangs pass everything after the interpreter path as ONE

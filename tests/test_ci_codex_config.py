@@ -43,6 +43,36 @@ class CodexConfigCheckTests(unittest.TestCase):
         self.assertEqual(command[command.index("--chdir") + 1], "/work")
         self.assertEqual(command.count("--ro-bind"), 4)  # /usr + private passwd/group/ELF
 
+    def test_system_compatibility_probe_uses_real_namespace_commands_and_negative_control(self):
+        calls = []
+        def run(command, **kwargs):
+            calls.append(command)
+            self.assertIn("--unshare-net", command)
+            self.assertNotIn("ACCESS_TOKEN", command)
+            self.assertNotIn("/run/egress.sock", command)
+            self.assertEqual(kwargs["env"], {"PATH": "/usr/bin", "LANG": "C.UTF-8"})
+            if command[-1] == "--version":
+                return 0, b"codex-cli 0.166.0\n", b""
+            self.assertIn("--strict-config", command)
+            self.assertIn('features.shell_tool=false', command)
+            self.assertEqual(command[-1], "--help")
+            if check.client_compat.INVALID_OPTION in command:
+                return 2, b"", b"unknown option"
+            return 0, b"app-server help", b""
+        with patch.object(check, "bounded_process", side_effect=run), \
+                patch.object(check.codex_protocol, "_exchange", return_value={"data": []}) as exchange:
+            check.compatibility_probe(Path("/fixture/codex"), Path("/fixture"))
+        self.assertEqual(len(calls), 3)
+        self.assertEqual(exchange.call_count, 2)
+        self.assertIn('model_provider="openai_chatgpt_plan"', exchange.call_args_list[0].args[0])
+        self.assertFalse(exchange.call_args_list[0].args[1].native_account)
+        self.assertIsInstance(exchange.call_args.args[1], check.codex_compat.ProbeProtocol)
+        self.assertTrue(exchange.call_args.kwargs["stop_after_reply"])
+        self.assertNotIn("ACCESS_TOKEN", exchange.call_args.kwargs["env"])
+        with patch.object(check, "bounded_process", return_value=(0, b"codex-cli 0.166.0\n", b"")), \
+                self.assertRaisesRegex(check.StartupDenied, "reason=protocol"):
+            check.compatibility_probe(Path("/fixture/codex"), Path("/fixture"))
+
     def test_only_initialize_is_sent_and_stdin_closes_after_response(self):
         code = '''
 import json,sys
@@ -246,10 +276,12 @@ assert sys.stdin.read() == ""
             return root / "packaging" / "arch" / "codex"
         with patch.object(check, "require_ci"), patch.object(check.asset, "prepare", side_effect=prepare), \
                 patch.object(check, "initialize_only") as initialize, patch.object(check, "offline_turn") as turn, \
+                patch.object(check, "compatibility_probe") as compatibility, \
                 patch.object(check, "offline_native_account") as native, \
                 patch.object(check, "fixture_native_quota") as quota:
             check.run()
         initialize.assert_called_once()
+        compatibility.assert_called_once_with(seen[0] / "packaging/arch/codex", seen[0])
         quota.assert_called_once_with(seen[0] / "packaging/arch/codex", seen[0])
         native.assert_called_once()
         self.assertIn('cli_auth_credentials_store="file"', native.call_args.args[0])

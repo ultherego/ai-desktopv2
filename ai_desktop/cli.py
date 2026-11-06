@@ -12,7 +12,7 @@ from . import __version__
 from . import agent, audit, compare, controller, diagnose, doctor, e2_handoff_cli, executor, launcher, sandbox, skill_mount, skills, validate_snapshot, workspace_cli
 
 PUBLIC_COMMANDS = ("ask", "material", "project", "task", "status", "stop", "settings",
-                   "agents", "agent", "account", "usage", "local", "panel", "sessions", "skills", "login", "doctor")
+                   "agents", "agent", "account", "usage", "local", "panel", "sessions", "skills", "login", "doctor", "clients")
 
 
 def build_parser():
@@ -28,6 +28,7 @@ def build_parser():
     commands.add_parser("settings", help="Service, agent, model, reasoning and Skills", add_help=False)
     commands.add_parser("claude", help="Compatibility: older Claude settings; use settings", add_help=False)
     commands.add_parser("codex", help="Compatibility: Codex administration; log in with login", add_help=False)
+    commands.add_parser("clients", help="List, register, refresh or remove independently installed client copies", add_help=False)
     commands.add_parser("agents", help="Create and choose agent profiles", add_help=False)
     commands.add_parser("sessions", help="List and resume saved conversations", add_help=False)
     commands.add_parser("task", help="Change chosen files, test them, approve the diff or undo the save")
@@ -36,6 +37,8 @@ def build_parser():
     diagnostic_status = commands.add_parser("doctor", help="Check requirements without starting AI")
     diagnostic_status.add_argument("--v", "--verbose", "-v", "--details", dest="details", action="store_true",
                                    help="Full requirements report as JSON")
+    diagnostic_status.add_argument("--clients", action="store_true",
+                                   help="Probe the selected system client offline, without login or AI")
     status = commands.add_parser("status", help="Show offline agent, policy and conversation status")
     status.add_argument("--json", action="store_true", help="Output machine-readable local status")
     commands.add_parser("panel", help="Open the interactive agent panel")
@@ -135,6 +138,7 @@ Run ai-desktop in a terminal to start a conversation.
   skills     List and preview the available Skills
   login      Log in to the default Claude or Codex account
   doctor     Check requirements without starting AI
+  clients    Inspect installed clients and manage their isolated copies
 
 Full command list, including internal and developer tools: ai-desktop --help-all
 Help for a command: ai-desktop COMMAND --help
@@ -180,6 +184,9 @@ def main(argv=None):
     if argv[0] == "local":
         from . import local_provider
         return local_provider.main(argv[1:])
+    if argv[0] == "clients":
+        from . import clients_cli
+        return clients_cli.main(argv[1:])
     if argv[0] == "usage":
         from . import account_cli
         return account_cli.usage_main(argv[1:])
@@ -225,7 +232,7 @@ def main(argv=None):
         print("\n".join(audit.audit_lines()))
         return 0
     if args.command == "doctor":
-        return doctor.main(["--v"] if args.details else [])
+        return doctor.main((["--clients"] if args.clients else []) + (["--v"] if args.details else []))
     if args.command == "analyze":
         from . import analysis_cli
         from .agent_profiles import resolve

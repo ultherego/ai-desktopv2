@@ -1,4 +1,4 @@
-"""E7 on synthetic data: (1) a public artifact can never carry the vendor client, even from an ignored local file;
+"""E7 on synthetic data: (1) every application artifact excludes independently installed clients and ignored local files;
 (2) a torn update of a real staged package is detected by file integrity, the protocol refuses the mix, the same artifact
 restores it, and user data never changes; (3) the hook's upgrade/removal paths are exercised, not just grepped."""
 import hashlib
@@ -20,7 +20,7 @@ def source_tree(destination, *, checkout=ROOT):
     """Copy only package inputs into a disposable fixture; never require the owner's checkout to lack a local client."""
     for name in ("ai_desktop", "skills", "packaging"):
         shutil.copytree(checkout / name, destination / name,
-                        ignore=shutil.ignore_patterns("__pycache__", "claude-code", "*.pkg.tar.*"))
+                        ignore=shutil.ignore_patterns("__pycache__", "claude-code", "codex", "*.pkg.tar.*"))
     return destination
 
 
@@ -59,56 +59,48 @@ class PublicArtifactTests(unittest.TestCase):
         path.write_bytes(FAKE_ELF)
         path.chmod(0o755)
 
-    def test_a_public_build_refuses_an_ignored_local_client_and_packages_nothing_of_it(self):
-        result = stage(self.tree, self.temp / "pkg", public=True, client=self.client)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("a public artifact must not contain the official client", result.stderr)
-        self.assertFalse((self.temp / "pkg/usr/lib/ai-desktop/claude-code").exists())
-
-    def test_a_public_build_refuses_a_local_codex_client_too(self):
+    def test_every_build_ignores_legacy_clients_and_has_the_same_application_manifest(self):
+        clean = self.temp / "clean"
+        self.assertEqual(stage(self.tree, clean).returncode, 0)
+        expected = manifest(clean)
         startdir = self.tree / "packaging/arch"
-        self.client(startdir / "codex")
-        result = stage(self.tree, self.temp / "pkg", public=True)
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("must not contain the official client", result.stderr)
-        self.assertFalse((self.temp / "pkg/usr/lib/ai-desktop/codex").exists())
-        (startdir / "codex").unlink()
-        (startdir / "codex").symlink_to("/nonexistent/codex")
-        self.assertNotEqual(stage(self.tree, self.temp / "pkg2", public=True).returncode, 0)
+        for name in ("claude-code", "codex"):
+            self.client(startdir / name)
+        before = {name: (startdir / name).read_bytes() for name in ("claude-code", "codex")}
+        for public in (False, True):
+            target = self.temp / ("public" if public else "default")
+            result = stage(self.tree, target, public=public)
+            self.assertEqual(result.returncode, 0, result.stderr[-600:])
+            self.assertEqual(manifest(target), expected)
+        self.assertEqual({name: (startdir / name).read_bytes() for name in before}, before)
+        for name in expected:
+            self.assertNotEqual((clean / name).read_bytes()[:4], b"\x7fELF", name)
+        self.assertNotIn("usr/lib/ai-desktop/claude-code", expected)
+        self.assertNotIn("usr/lib/ai-desktop/codex", expected)
+        self.assertNotIn("usr/bin/claude", expected)
+        self.assertNotIn("usr/bin/codex", expected)
 
-    def test_a_public_build_refuses_even_a_dangling_symlink_named_like_the_client(self):
-        result = stage(self.tree, self.temp / "pkg", public=True, client=lambda p: p.symlink_to("/nonexistent/claude"))
-        self.assertNotEqual(result.returncode, 0)
-        self.assertFalse((self.temp / "pkg/usr/lib/ai-desktop/claude-code").exists())
-
-    def test_a_public_build_without_a_local_client_succeeds_and_its_manifest_has_no_binary(self):
-        result = stage(self.tree, self.temp / "pkg", public=True)
+    def test_legacy_symlinks_and_special_files_are_never_followed_or_opened(self):
+        startdir = self.tree / "packaging/arch"
+        (startdir / "claude-code").symlink_to("/nonexistent/claude")
+        os.mkfifo(startdir / "codex", 0o600)
+        result = stage(self.tree, self.temp / "pkg")
         self.assertEqual(result.returncode, 0, result.stderr[-600:])
-        files = manifest(self.temp / "pkg")
-        self.assertNotIn("usr/lib/ai-desktop/claude-code", files)
-        for name in files:
-            self.assertNotEqual((self.temp / "pkg" / name).read_bytes()[:4], b"\x7fELF", name)    # no ELF anywhere in the artifact
+        self.assertTrue((startdir / "claude-code").is_symlink())
+        self.assertTrue(stat.S_ISFIFO((startdir / "codex").lstat().st_mode))
+        self.assertNotIn("usr/lib/ai-desktop/claude-code", manifest(self.temp / "pkg"))
+        self.assertNotIn("usr/lib/ai-desktop/codex", manifest(self.temp / "pkg"))
 
-    def test_the_default_private_build_keeps_the_owners_documented_local_copy_byte_for_byte(self):
-        recipe = self.tree / "packaging/arch/PKGBUILD"
-        recipe.write_text(re.sub(r"_claude_code_sha256=[0-9a-f]{64}",
-                                 "_claude_code_sha256=" + hashlib.sha256(FAKE_ELF).hexdigest(), recipe.read_text()))
-        result = stage(self.tree, self.temp / "pkg", client=self.client)
-        self.assertEqual(result.returncode, 0, result.stderr[-600:])
-        packaged = self.temp / "pkg/usr/lib/ai-desktop/claude-code"
-        self.assertEqual(packaged.read_bytes(), FAKE_ELF)                                       # unmodified bytes
-        self.assertEqual(stat.S_IMODE(packaged.stat().st_mode), 0o755)
-
-    def test_a_local_client_in_source_checkout_does_not_break_isolated_public_fixture(self):
-        # A private CachyOS build may legitimately keep an ignored official client in its checkout.
-        # Tests must use synthetic copies and must not assert on or modify that real local file.
+    def test_local_vendor_files_are_not_copied_into_the_isolated_source_fixture(self):
         checkout = source_tree(self.temp / "source-with-client")
         self.client(checkout / "packaging/arch/claude-code")
+        self.client(checkout / "packaging/arch/codex")
         isolated = source_tree(self.temp / "isolated-source", checkout=checkout)
         self.assertFalse((isolated / "packaging/arch/claude-code").exists())
-        result = stage(isolated, self.temp / "public-artifact", public=True)
+        self.assertFalse((isolated / "packaging/arch/codex").exists())
+        result = stage(isolated, self.temp / "artifact")
         self.assertEqual(result.returncode, 0, result.stderr[-600:])
-        self.assertNotIn("usr/lib/ai-desktop/claude-code", manifest(self.temp / "public-artifact"))
+
 
 
 WORKER = """
@@ -155,7 +147,9 @@ class TornUpdateTests(unittest.TestCase):
         self.user = self.temp / "user-data"                                       # synthetic config, history and OAuth profile
         for name, content in (("home/.config/ai-desktop/permissions.toml", b"version = 1\n"),
                               ("workspace/.ai-desktop-tasks/journal.json", b'{"synthetic": true}\n'),
-                              ("var-lib/ai-desktop/claude/.credentials.json", b"SYNTHETIC-NOT-A-TOKEN\n")):
+                              ("var-lib/ai-desktop/claude/.credentials.json", b"SYNTHETIC-NOT-A-TOKEN\n"),
+                              ("var-lib/ai-desktop-clients/claude/payload/bin/claude", FAKE_ELF),
+                              ("var-lib/ai-desktop-clients/claude/manifest.json", b'{"synthetic": true}\n')):
             path = self.user / name
             path.parent.mkdir(parents=True, exist_ok=True)
             path.write_bytes(content)

@@ -54,6 +54,19 @@ def provider_allowed(policy):
 
 def failure_hint(reason, fallback, *, config=execution.UNSET, diagnostic=None):
     selected = recipient_config(config)
+    provider = "codex" if selected is not None and selected["provider"] == "codex" else "claude"
+    package = "openai-codex" if provider == "codex" else "claude-code"
+    clients = {
+        "client-missing": "Install the system %s package yourself, then run ai-desktop doctor --clients." % package,
+        "client-unsafe": "The system client has unsafe ownership or permissions. Run ai-desktop doctor --clients.",
+        "client-layout": "The system client layout is unsupported. Use the documented native system package.",
+        "client-changed": "The system client changed during this operation. Check the package update, then start a new task.",
+        "client-unavailable": "The system client could not be inspected or bound. Run ai-desktop doctor --clients.",
+        "client-version": "The system client version is outside the supported adapter range. Run ai-desktop doctor --clients.",
+        "client-protocol": "The system client failed its offline compatibility check. No new account access was allowed.",
+    }
+    if reason in clients:
+        return clients[reason]
     if selected is not None and selected.get("account") and reason in ("auth-required", "auth-method"):
         provider, name = selected["provider"], selected["account"]
         return ("Check the account with ai-desktop account list. For its first login, run "
@@ -86,8 +99,8 @@ def failure_hint(reason, fallback, *, config=execution.UNSET, diagnostic=None):
         if code in specific:
             return specific[code]
         codex = {
-            "runtime": "The trusted Codex 0.166.0 client or its dependencies are missing from the ai-desktop package.",
-            "version": "The Codex client failed the version 0.166.0 check.",
+            "runtime": "The isolated Codex runtime is incomplete. Run ai-desktop doctor --clients.",
+            "version": "The system Codex client did not pass its isolated compatibility check.",
             "auth-required": "Connect your account: ai-desktop login (choose ChatGPT / Codex). Then approve a new task.",
             "auth-method": "AI Desktop needs its own Sign in with ChatGPT login.",
         }

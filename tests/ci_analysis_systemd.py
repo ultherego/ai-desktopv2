@@ -33,6 +33,7 @@ from ai_desktop.analysis_contract import AnalysisConsent, AnalysisDenied
 from ai_desktop.terminal_consent import PROMPTS
 
 NAMES = ("ai-desktop-analysis@.socket", "ai-desktop-analysis@.service")
+SYSTEM_CLIENT = Path("/usr/bin/claude")
 SYSTEMD_READ_MARKER = "SYNTHETIC SYSTEMD COLLECT"
 FILE_READ_MARKER = "SYNTHETIC FILE READ"
 ASK_SEND_MARKER = "SYNTHETIC ASK SEND"
@@ -63,6 +64,9 @@ def require_ci():
     if pwd.getpwnam("ai-desktop").pw_uid == os.geteuid():
         raise ValueError("identity")
     host._installed_matches()
+    for path in (SYSTEM_CLIENT, Path("/opt/claude-code/bin/claude"), Path("/var/lib/ai-desktop-clients/claude")):
+        if os.path.lexists(path):
+            raise ValueError("existing-system-client")
     for name in ("claude-code", "fixture-client.py", "analysis-worker.py", "analysis-client.py", "analysis-session.py", "codex-auth.py"):
         if os.path.lexists(prior.DEST / name):
             raise ValueError("existing-runtime")
@@ -104,7 +108,6 @@ def install(temp, file_home):
     source = temp / "shim.c"
     source.write_text(SHIM)
     prior._run("/usr/bin/cc", "-Wall", "-Werror", "-O2", str(source), "-o", str(temp / "client"))
-    prior._run("sudo", "-n", "/usr/bin/install", "-m755", str(temp / "client"), str(prior.DEST / "claude-code"))
     prior._run("sudo", "-n", "/usr/bin/install", "-m644", str(ROOT / "tests/analysis_fixture_diagnostic.py"),
                str(prior.DEST / "fixture-diagnostic.py"))
     for name in ("analysis-worker.py", "analysis-client.py", "analysis-session.py", "codex-auth.py"):
@@ -190,6 +193,9 @@ def install(temp, file_home):
                   "systemd_context.collect = collect\n"
                   "raise SystemExit(cli.main())\n")
     prior._run("sudo", "-n", "/usr/bin/install", "-m644", str(ui), str(prior.DEST / "fixture-ui.py"))
+    # Install the fixture at the exact system entry point used in production.
+    # The preflight forbids taking over an existing independently owned client.
+    prior._run("sudo", "-n", "/usr/bin/install", "-m755", str(temp / "client"), str(SYSTEM_CLIENT))
     return fixture
 
 
@@ -931,6 +937,14 @@ def main(argv=None):
             except (OSError, ValueError, subprocess.SubprocessError):
                 passed = False
                 print("CI ANALYSIS: FAIL stage=cleanup")
+        if installed:
+            try:
+                # Preflight required this exact fixed system name to be absent.
+                # It belongs only to the synthetic client in this disposable VM.
+                prior._run("sudo", "-n", "/usr/bin/rm", "-f", "--", str(SYSTEM_CLIENT))
+            except (OSError, ValueError, subprocess.SubprocessError):
+                passed = False
+                print("CI ANALYSIS: FAIL stage=system-client-cleanup")
     print("CI ANALYSIS: " + ("PASS manager=PID1 separate-uid=PASS mode-filter=PASS login-pty=PASS login-refusal=PASS result=PASS auth-refusal=PASS cleanup=PASS daily=PASS expired=PASS network-failure=PASS interrupt=PASS ui-kill=PASS manager-kill=PASS concurrent=PASS stop=PASS recovery=PASS native=false oauth=false upstream=false" if passed else "FAIL"))
     return 0 if passed else 2
 

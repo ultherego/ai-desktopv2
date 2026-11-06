@@ -4,9 +4,9 @@ A terminal assistant for diagnostics, configuration and file work on CachyOS and
 
 The interface and settings are in English, and the selected model answers in the language of your question.
 
-The working **0.1.0-79** runtime uses a privately prepared official Claude Code **2.1.312** client or the separate Codex subscription adapter. The cloud client runs under the `ai-desktop` system account in Bubblewrap, with network access through a filtering proxy. Local inference uses an approved request to your configured loopback server.
+AI Desktop uses a compatible **independently installed Claude Code or Codex client**. Install only the provider you choose; local inference needs neither. The application package contains adapters and isolation machinery, without vendor executables. Cloud clients run under the separate `ai-desktop` account in Bubblewrap, with network access through a filtering proxy. Local inference uses an approved request to your configured loopback server.
 
-The next runtime will use a compatible **system-installed Claude or Codex client**; either service must work without installing the other. AI Desktop will stop bundling vendor executables. Shared client discovery and preflight are the first migration step, not a replacement runtime: the installation and login instructions below still describe the working 0.1.0-79 path. See the [transition and trust requirements](docs/AGENT_INSTALL.md).
+Supported system packages are used directly. Clients installed in your home directory through the official installer or npm are registered explicitly as an administrator-approved copy; AI Desktop does not run a mutable HOME executable under its service account. Before credentials or model input are released, the selected native client and its private resources are bound to the operation and checked in an offline namespace. A compatible client update needs no AI Desktop rebuild; a registered client needs an explicit refresh to approve the new bytes. Your ordinary CLI login is not imported: connect an AI Desktop account separately. See [client installation and compatibility](docs/AGENT_INSTALL.md).
 
 **What this is not:**
 
@@ -25,6 +25,7 @@ The next runtime will use a compatible **system-installed Claude or Codex client
 | `/provider codex` inside `ask` | Review the destination and the context the new recipient would receive. Confirm to continue the same conversation there. |
 | `ai-desktop account list` / `ai-desktop usage` | See accounts and cached quota windows. After connecting native Codex limits in DankBar, click refresh or run `ai-desktop usage --refresh --provider codex` for a fresh reading. |
 | `ai-desktop panel` / `ai-desktop status --json` | Open the interactive panel or read local metadata for a desktop widget. |
+| `ai-desktop clients list` | Inspect installed sources and registrations without starting a client. |
 | `ai-desktop local models` | Explicitly query the model list of your configured local inference server. |
 
 For local inference, start your own trusted OpenAI-compatible server on `127.0.0.1`, enable `local = true` under `[network]` in your existing policy, then choose `ai-desktop agent use local`. The default port is 8080. Cloud accounts and the local service have independent permissions. There is no automatic recipient switch.
@@ -35,57 +36,51 @@ See [agent settings, accounts and sessions](docs/AGENT_MANAGEMENT.md), [verified
 
 This is a development version, not a 1.0 release.
 
-The current candidate package is **0.1.0-80** (changes: [CHANGELOG.md](CHANGELOG.md)).
+The current candidate package is **0.1.0-81** (changes: [CHANGELOG.md](CHANGELOG.md)).
 
-In 0.1.0-80, `ai-desktop doctor` also reports system-client file metadata; `doctor --v` includes structured results. It does not start either system client, check its version/protocol, change the active runtime or reuse a CLI login. `present` means a supported ELF file passed metadata checks, not that it is ready for a model request.
+Candidate 0.1.0-81 migrates the runtime and package to independent clients, including explicitly registered HOME installations. Its new execution paths still require the recorded CachyOS acceptance before merge. The accepted 0.1.0-79 result does not cover this migration.
+
+`ai-desktop doctor` and `doctor --v` inspect metadata without executing a client. `doctor --clients` explicitly probes the selected cloud client offline, without login, network or a model request. A successful probe checks adapter prerequisites; it does not certify the vendor or prove that authentication and inference work.
 
 What is still missing and what has not been checked is described in [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md). Read that file before using this on important data. The only roadmap and progress record is [docs/ROADMAP.md](docs/ROADMAP.md).
 
-## Transition: existing runtime installation (CachyOS / Arch x86_64)
+## Installation (CachyOS / Arch x86_64)
 
-Release 0.1.0-79 passed the recorded CachyOS acceptance; candidate 0.1.0-80 retains its runtime and installation method. Keep this path until the system-client runtime migration and its own CachyOS acceptance are complete. Detecting a system client alone does not make it usable by the existing adapters. The example installs and connects Claude for a regular user with a terminal and `sudo`. For Codex, use the verified client installer linked above. Local inference uses your running server and requires no subscription login.
+Keep the Claude/Codex installation you use: supported Arch/AUR packages, official native installers and current npm installations are covered. The example below uses the Arch Codex package. If you already installed through `curl` and a shell, omit `openai-codex` from the package command and register your existing client after installing AI Desktop. Local inference needs no cloud client. See [installation variants and migration](docs/AGENT_INSTALL.md).
 
 ```fish
-# 1. Dependencies and build tools
-sudo pacman -S --needed base-devel git fish python bubblewrap libseccomp sudo python-rich python-cryptography
+# 1. Application build tools and the selected system client (Codex example)
+sudo pacman -S --needed base-devel git fish python bubblewrap libseccomp sudo python-rich python-cryptography openai-codex
 
-# 2. Code
+# 2. Code and application installation; this does not download a provider client
 git clone https://github.com/ultherego/ai-desktopv2.git ~/ai-desktop
-cd ~/ai-desktop/packaging/arch
-
-# 3. Official Claude Code 2.1.312 client (once). With a wrong checksum the file will not be run,
-#    and the build in step 4 will refuse: then delete the file and download it again.
-curl -fL -o claude-code https://downloads.claude.ai/claude-code-releases/2.1.312/linux-x64/claude
-echo '4f4178ce41d83e23341ebfbaecdbcf8ea6bf7baea0690025abe49eeec3a5d01d  claude-code' | sha256sum -c -
-and chmod 755 claude-code
-and ./claude-code --version  # must print: 2.1.312 (Claude Code)
-
-# 4. Build and install the package (the version in the file name = pkgrel from PKGBUILD)
-makepkg --cleanbuild
-sudo pacman -U ai-desktop-0.1.0-80-x86_64.pkg.tar.zst
+cd ~/ai-desktop
+python3 -B scripts/install_agents.py codex --install
 sudo systemctl daemon-reload
 
-# 5. Log in to Claude (interactive, once)
-ai-desktop login
+# 3. Select and check the client, then connect a separate AI Desktop account
+ai-desktop agent use codex
+ai-desktop doctor --clients
+ai-desktop login --codex
 
-# 6. Your access policy: the program reads nothing you do not list here
+# 4. Your access policy (fresh installation)
 mkdir -p ~/.config/ai-desktop
 cp ~/ai-desktop/config/permissions.example.toml ~/.config/ai-desktop/permissions.toml
 chmod 600 ~/.config/ai-desktop/permissions.toml
-$EDITOR ~/.config/ai-desktop/permissions.toml     # fill in files.read; deny always wins
+$EDITOR ~/.config/ai-desktop/permissions.toml     # enable network.codex; fill in files.read; deny wins
 
-# 7. Check and start
+# 5. Check and start
 ai-desktop doctor
-ai-desktop ask --preview      # shows the permissions, without the model and without sending anything
+ai-desktop ask --preview      # permissions, without the model or sending data
 ai-desktop ask                # conversation
 ```
 
 Notes:
 
-- **Claude client (step 3).** The package does not download it itself. Without the `claude-code` file in `packaging/arch/` the Claude adapter is unavailable. Selected Codex and local adapters have their own prerequisites. Use of the client is subject to Anthropic's terms. Do not add this file to Git and do not redistribute it.
+- **Client installation.** Choose `claude`, `codex`, `both` or `local` for `install_agents.py`; the same application can be installed before a provider. The helper never downloads, upgrades or removes a client. For a HOME/native/npm installation, use `ai-desktop clients register claude` or `ai-desktop clients register codex`, review the proposed payload and approve the administrator action. `--path /absolute/path` handles a recognized native installation outside automatic discovery. After updating that source, use `clients refresh PROVIDER`. See the [registration and update boundary](docs/AGENT_INSTALL.md).
 - **Sudo.** The client session is started by a fixed helper with administrator rights, so `ask`, `material`, `project`, `task run`, `login` and `stop` may ask for your `sudo` password. The package adds no sudoers or polkit rules.
 - **Requirements.** Python 3.12 or newer, systemd, working unprivileged namespaces and a regular terminal: without one the program does not ask for consent, it refuses.
-- **Fresh system.** These steps have not yet been repeated on a completely fresh installation.
+- **Host acceptance.** Fresh installation, registration/refresh and upgrade through the new client paths remain release gates; automated CI is not a substitute for CachyOS testing.
 
 ## First run and permissions
 
@@ -306,23 +301,24 @@ ai-desktop sessions                                 # saved conversations
 
 Details: [docs/AGENT_MANAGEMENT.md](docs/AGENT_MANAGEMENT.md).
 
-## Codex in the retained runtime
+## Codex through a system package
 
-Choose Codex independently of Claude. This adapter remains experimental. The following private client preparation is a transition procedure; the system-client target removes it once runtime migration is complete.
+Choose Codex independently of Claude. The adapter remains experimental. Install `openai-codex` through your package manager, or register your existing native/npm installation with `ai-desktop clients register codex`, then use the existing separate account flow:
 
 ```fish
-cd ~/ai-desktop
-python3 -B scripts/fetch_codex_client.py     # downloads Codex 0.166.0 and checks the checksum; no login and no running
-# then rebuild and install the package as in step 4 of the installation
+ai-desktop agent use codex
+ai-desktop doctor --clients
 ai-desktop codex status
-ai-desktop login --codex                     # log in with a ChatGPT subscription and choose the service
+ai-desktop login --codex
 ```
 
-In `permissions.toml` set `codex = true` in `[network]`: the Claude and Codex permissions are separate, and Codex is blocked by default. Codex has no web search. Disconnecting the account: `ai-desktop codex logout --allow-chatgpt-logout`.
+In `permissions.toml` set `codex = true` in `[network]`: the Claude and Codex permissions are separate, and Codex is blocked by default. Codex has no web search. Disconnecting the account: `ai-desktop codex logout --allow-chatgpt-logout`. Removing the native client does not prevent disconnecting an existing SIWC account or a native quota grant.
 
 ## Updating
 
-For the retained 0.1.0-79 runtime in candidate 0.1.0-80, use the existing package update procedure below. The system-client target separates application and compatible client updates: an ordinary compatible client update must not require rebuilding AI Desktop. Unknown or incompatible versions will stop before sending data. Client identity must remain fixed for an approved task; a replacement or update during that task must refuse further execution. These are migration requirements, not behavior already supplied by the legacy runtime.
+Update the application and your Claude/Codex installations independently. A registered copy stays unchanged when its source updates; `ai-desktop clients list` exposes the source state, and `ai-desktop clients refresh PROVIDER` asks you to approve the replacement payload. Registration applies to the whole AI Desktop installation, so changing it affects every user of that provider. It takes priority over the system package until explicitly removed with `ai-desktop clients remove PROVIDER`. The adapter checks supported version ranges and required capabilities before account or model access. A newer client may pass those checks while remaining explicitly untested; an incompatible version or protocol is refused. One operation uses a fixed executable/resource snapshot, and a detected source change refuses further phases. Finish an operation before upgrading a client.
+
+When upgrading from 0.1.0-79/80, use a supported independent client: a system package or an explicitly registered existing installation. The application can be installed before registration. The new application package no longer owns or runs its old private vendor files; pacman handles removal of files from the old package manifest. Existing account profiles, policy, sessions and journals are retained. Ignored copies left in the source checkout are not packaged or used. Do not copy credentials into a user CLI profile or delete them to complete the migration.
 
 ```fish
 ai-desktop stop
@@ -348,6 +344,8 @@ Do not update during a task. An update is not atomic: files are replaced one aft
 
 | What | Where |
 |---|---|
+| Independently installed Claude/Codex clients | Their original system or user locations; not removed with AI Desktop |
+| Administrator-approved client copies | `/var/lib/ai-desktop-clients/`; remove explicitly with `clients remove PROVIDER` before uninstalling if no longer needed |
 | The `ai-desktop` system account | system |
 | Claude and Codex login profiles | `/var/lib/ai-desktop/claude`, `/var/lib/ai-desktop/codex` |
 | Policy, agents, your own Skills | `~/.config/ai-desktop/` |
@@ -369,8 +367,10 @@ The provider receives: your question, the instructions of the program and the ag
 
 | Symptom | What to do |
 |---|---|
-| `The trusted Claude Code 2.1.312 client is missing` | The package was built without `claude-code` or with another version. Repeat steps 3 and 4 of the installation. |
-| `doctor` says `Claude client: missing` | The package has no `claude-code` file. Add it according to step 3 of the installation and build the package again. |
+| `client-missing` or `doctor` reports a missing client | Run `ai-desktop clients list`; install a provider independently or register an existing HOME/native/npm installation. Rebuilding AI Desktop does not install a client. |
+| `client-unsafe` / `client-layout` | Check the source and supported native layout. HOME installations require registration. Arbitrary shell/JavaScript wrappers are not executed; point `clients register` at a recognized native payload. |
+| `client-version` / `client-protocol` | Run `ai-desktop doctor --clients` and use a compatible client version. Refresh a registered copy after updating its source. Do not edit version pins or bypass the adapter check. |
+| `client-changed` | Finish the update or registration refresh, then start a new operation so its selected payload is checked from the beginning. |
 | `status`: `auth=unchecked` | This is normal: `status` and `doctor` do not check login or network. |
 | Request to log in | `ai-desktop login`, then a new question. |
 | Service limit, network error, timeout | Nothing is retried by itself. Wait and ask the question again. The waiting time is 110 s, and for `xhigh` and `max` 15 minutes. |

@@ -22,9 +22,9 @@ def main(argv=None):
     from .analysis_sandbox import INSTALL, trusted_file
     try:
         if args.action in (None, "status"):
-            from .codex_runtime import runtime_ready, CLIENT_VERSION as CODEX_VERSION
+            from .codex_runtime import runtime_ready
             runtime_ready()
-            print("Codex %s: files ready; account and limits are not checked offline." % CODEX_VERSION)
+            print("System Codex: files ready; version, protocol, account and limits are not checked offline.")
             print("Log in: ai-desktop login (choose ChatGPT / Codex)")
             return 0
         allowed = getattr(args, "allow_chatgpt_" + args.action, False)
@@ -46,7 +46,8 @@ def main(argv=None):
         if os.getuid() != os.geteuid():
             raise AnalysisDenied("identity")
         from .codex_runtime import runtime_ready
-        runtime_ready()
+        if args.action == "login":
+            runtime_ready()
         entry = trusted_file(INSTALL / "codex-auth.py")
         action = args.action + ("-verbose" if args.details else "")
         def authenticate():

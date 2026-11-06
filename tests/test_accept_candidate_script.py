@@ -28,7 +28,7 @@ def tree_snapshot(root):
 class CandidateScriptTests(unittest.TestCase):
     def test_embedded_python_parses_without_executing_any_payload(self):
         snippets = re.findall(r"python3 -I -B -c '([^']*)'", SCRIPT.read_text(encoding="utf-8"))
-        self.assertEqual(len(snippets), 2)
+        self.assertEqual(len(snippets), 1)
         for snippet in snippets:
             ast.parse(snippet)
 

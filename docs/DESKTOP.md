@@ -4,7 +4,7 @@ The Arch package installs **AI Desktop** and **AI Desktop Panel** as desktop ent
 
 ## Runtime transition
 
-The launchers and widget use the selected service; they do not require both Claude and Codex. Candidate 0.1.0-80 retains the working 0.1.0-79 runtime and [current client installation procedure](AGENT_INSTALL.md). Its new metadata-only system-client discovery is exposed by `doctor`, not a new account or widget runtime. The agreed system-client migration changes where a compatible executable comes from, not the separate account profiles or the widget's authority. Discovery/preflight alone does not connect an account or make the new runtime available. DMS is optional for terminal conversations and client selection.
+The launchers and widget use the selected service and independently installed client; they do not require both Claude and Codex. System packages are selected directly; HOME/native/npm sources use the same explicitly registered runtime copy as the terminal. See [client installation and migration](AGENT_INSTALL.md). The widget still reads local account/usage metadata; selecting an approved executable does not reuse your ordinary CLI account or enlarge the widget's authority. Explicit native account/quota operations use the same bound-client compatibility checks as the terminal. DMS is optional for terminal conversations and client selection.
 
 ## Niri with kitty
 

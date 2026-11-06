@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-81: independent clients and explicit registration
+
+- Use independently installed Claude Code or Codex through the existing isolated adapters. Supported system packages work directly; official native/HOME/npm installations use explicit administrator-approved registration and refresh of their native payload. Freeze the selected native executable and client-private resources for one operation, check compatibility offline before account/model access, and refuse changed installations or unsupported protocols.
+- Inspect sources with `clients list`; register, refresh or remove an approved runtime copy explicitly. A source update never silently replaces its registered bytes. Remove vendor-client downloading and embedding from application installation. Claude, Codex, both or local-only setups are independent; upgrades retain the existing separate account data, and uninstalling AI Desktop leaves independent clients and separately retained registrations in place.
+- Keep ordinary `doctor` and panel status metadata-only. Add explicit `doctor --clients` for the selected provider's offline compatibility check, with a distinction between the tested baseline and newer compatible but untested versions.
+- The migrated runtime requires new CachyOS acceptance; acceptance of package 79 is not evidence for these changed boundaries.
+
 ## 0.1.0-80: system-client discovery and a single delivery roadmap
 
 - Add read-only metadata inspection of system Claude Code and Codex to `doctor`, with separate missing, unsafe, unsupported-layout and changed-file outcomes. Inspection does not execute a client, access credentials or certify vendor origin, version or protocol compatibility.

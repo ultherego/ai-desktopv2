@@ -3,7 +3,7 @@
 Finding a root-owned ELF does not authenticate its vendor, establish protocol
 compatibility or prove that its runtime dependencies are available. No client,
 shell, package manager, credential store or network operation is invoked here.
-The active bundled-client runtime remains separate until its migration is done.
+The launcher separately snapshots the selected installation before execution.
 """
 from dataclasses import dataclass, field
 import errno
@@ -14,7 +14,12 @@ from types import MappingProxyType
 
 
 _CANDIDATES = MappingProxyType({"claude": "/usr/bin/claude", "codex": "/usr/bin/codex"})
-_TRUSTED_ROOTS = ("/usr", "/opt")
+_NATIVE_ALTERNATES = MappingProxyType({"claude": "/opt/claude-code/bin/claude"})
+_REGISTERED_ROOTS = MappingProxyType({provider: "/var/lib/ai-desktop-clients/" + provider
+                                    for provider in ("claude", "codex")})
+_PACKAGE_ROOTS = MappingProxyType({"claude": ("/opt/claude-code", _REGISTERED_ROOTS["claude"] + "/payload"),
+                                 "codex": ("/usr/lib/openai-codex", _REGISTERED_ROOTS["codex"] + "/payload")})
+_TRUSTED_ROOTS = ("/usr", "/opt", "/var/lib/ai-desktop-clients")
 _BASELINES = MappingProxyType({"claude": (2, 1, 312), "codex": (0, 166, 0)})
 MAX_LINKS = 16
 MAX_COMPONENTS = 256
@@ -57,6 +62,7 @@ class Inspection:
     detail: str
     identity: Fingerprint | None = None
     _nodes: tuple[_Node, ...] = field(default=(), repr=False)
+    source: str = "system"
 
     def recheck(self):
         """Whether the fixed candidate still matches this complete snapshot.
@@ -68,7 +74,8 @@ class Inspection:
             return False
         fresh = inspect(self.provider)
         return (fresh.status == "present" and fresh.path == self.path
-                and fresh.identity == self.identity and fresh._nodes == self._nodes)
+                and fresh.identity == self.identity and fresh._nodes == self._nodes
+                and fresh.source == self.source)
 
 
 @dataclass(frozen=True)
@@ -154,7 +161,17 @@ def _native_elf(header):
             and int.from_bytes(header[52:54], "little") == 64)
 
 
-def _walk(candidate):
+def _capabilities(descriptor):
+    try:
+        os.getxattr(descriptor, "security.capability")
+    except OSError as exc:
+        if exc.errno in (errno.ENODATA, errno.ENOTSUP, errno.EOPNOTSUPP):
+            return
+        raise
+    raise _Denied("unsafe", "file-capabilities")
+
+
+def _walk(candidate, *, kind="native", capture=False):
     """Descriptor-relative inspection; symlinks are read and checked manually."""
     candidate = _target(candidate)
     descriptors = []
@@ -197,13 +214,18 @@ def _walk(candidate):
                     raise _Denied("unsupported", "not-regular")
                 descriptor = os.open(name, _DIR, dir_fd=current)
             else:
-                if not stat.S_ISREG(before.st_mode):
+                if kind == "directory":
+                    if not stat.S_ISDIR(before.st_mode):
+                        raise _Denied("unsupported", "not-directory")
+                    descriptor = os.open(name, _DIR, dir_fd=current)
+                elif not stat.S_ISREG(before.st_mode):
                     raise _Denied("unsupported", "not-regular")
-                if before.st_nlink != 1:
-                    raise _Denied("unsafe", "hardlink")
-                if not before.st_mode & 0o111:
-                    raise _Denied("unsupported", "not-executable")
-                descriptor = os.open(name, _FILE, dir_fd=current)
+                else:
+                    if before.st_nlink != 1:
+                        raise _Denied("unsafe", "hardlink")
+                    if kind == "native" and not before.st_mode & 0o111:
+                        raise _Denied("unsupported", "not-executable")
+                    descriptor = os.open(name, _FILE, dir_fd=current)
             descriptors.append(descriptor)
             opened = os.fstat(descriptor)
             if _node(path, opened) != _node(path, before):
@@ -212,12 +234,14 @@ def _walk(candidate):
             if pending:
                 current, parent = descriptor, path
                 continue
-            header = os.read(descriptor, 64)
+            if kind != "directory":
+                _capabilities(descriptor)
+            header = os.read(descriptor, 64) if kind == "native" else b""
             after = os.fstat(descriptor)
             linked = os.stat(name, dir_fd=current, follow_symlinks=False)
             if _node(path, before) != _node(path, after) or _node(path, before) != _node(path, linked):
                 raise _Denied("changed", "metadata-changed")
-            if not _native_elf(header):
+            if kind == "native" and not _native_elf(header):
                 raise _Denied("unsupported", "not-native-elf")
             if nodes[0] != _node("/", os.fstat(root)):
                 raise _Denied("changed", "metadata-changed")
@@ -231,39 +255,110 @@ def _walk(candidate):
                     raise _Denied("changed", "metadata-changed") from None
                 if _node(expected.path, observed) != expected:
                     raise _Denied("changed", "metadata-changed")
-            return path, _identity(after), tuple(nodes)
+            result = (path, _identity(after), tuple(nodes))
+            if capture:
+                os.lseek(descriptor, 0, os.SEEK_SET)
+                return (*result, os.dup(descriptor))
+            return result
         raise _Denied("unsupported", "not-regular")
     finally:
         for descriptor in reversed(descriptors):
             os.close(descriptor)
 
 
+def _registration_manifest(path, provider):
+    # Reuse the installer's closed schema, but never retain source metadata in
+    # the runtime result or expose the manifest to the model namespace.
+    from .client_registration import RegistrationError, validate_manifest
+    resolved, identity, nodes, descriptor = _walk(path, kind="raw", capture=True)
+    try:
+        if identity.size > 16384:
+            raise _Denied("unsafe", "registration-manifest")
+        data = os.read(descriptor, 16385)
+        if len(data) != identity.size or _identity(os.fstat(descriptor)) != identity:
+            raise _Denied("changed", "metadata-changed")
+        try:
+            validate_manifest(data, provider)
+        except RegistrationError:
+            raise _Denied("unsafe", "registration-manifest") from None
+        return resolved, identity, nodes
+    finally:
+        os.close(descriptor)
+
+
 def inspect(provider):
-    """Inspect only /usr/bin/claude or /usr/bin/codex, independent of PATH/HOME.
+    """Inspect the registered payload or system native, independent of PATH/HOME.
 
     Safe root-owned symlinks may resolve within /usr or /opt. Every traversed
     component is checked, and a second independent traversal detects replaced
-    ancestors/links. No version, vendor, complete ELF loadability, filesystem
-    capability, library closure, authentication or protocol claim is made.
+    ancestors/links. File capabilities are refused. No version, vendor, complete
+    ELF loadability, library closure, authentication or protocol claim is made.
     """
     provider = _provider(provider)
     candidate = _CANDIDATES[provider]
+    source = "system"
     try:
-        first = _walk(candidate)
-        if _walk(candidate) != first:
+        registered = False
+        manifest_snapshot = None
+        registration = _REGISTERED_ROOTS[provider]
+        try:
+            resolved, _, _ = _walk(registration, kind="directory")
+        except FileNotFoundError:
+            pass
+        except (OSError, _Denied):
+            source = "registered"
+            raise
+        else:
+            source = "registered"
+            # Presence of an explicit registration selects it exclusively.
+            # A damaged or unsafe registration never falls back to another
+            # client, including an otherwise valid system installation.
+            if resolved != registration:
+                raise _Denied("unsafe", "registration-layout")
+            registered = True
+            candidate = registration + "/payload/bin/" + provider
+            manifest_path = registration + "/manifest.json"
+            try:
+                manifest_snapshot = _registration_manifest(manifest_path, provider)
+            except FileNotFoundError:
+                raise _Denied("unsupported", "registration-incomplete") from None
+        chosen = candidate
+        try:
+            first = _walk(chosen)
+        except (FileNotFoundError, _Denied) as exc:
+            if registered:
+                if isinstance(exc, FileNotFoundError):
+                    raise _Denied("unsupported", "registration-incomplete") from None
+                raise
+            # Some system packages put a root-owned launcher at /usr/bin and
+            # the native ELF at this compiled location. Never execute or parse
+            # that launcher; an unsafe primary cannot trigger an alternate.
+            if (provider not in _NATIVE_ALTERNATES or isinstance(exc, _Denied)
+                    and (exc.status, exc.detail) != ("unsupported", "not-native-elf")):
+                raise
+            chosen = _NATIVE_ALTERNATES[provider]
+            try:
+                first = _walk(chosen)
+            except FileNotFoundError:
+                raise exc
+        if _walk(chosen) != first:
             raise _Denied("changed", "metadata-changed")
         path, identity, nodes = first
-        return Inspection(provider, "present", path, "vendor-unverified", identity, nodes)
+        if manifest_snapshot is not None:
+            if _walk(manifest_path, kind="raw") != manifest_snapshot:
+                raise _Denied("changed", "metadata-changed")
+            nodes = manifest_snapshot[2] + nodes
+        return Inspection(provider, "present", path, "vendor-unverified", identity, nodes, source)
     except _Denied as exc:
-        return Inspection(provider, exc.status, candidate, exc.detail)
+        return Inspection(provider, exc.status, candidate, exc.detail, source=source)
     except FileNotFoundError:
-        return Inspection(provider, "missing", candidate, "missing")
+        return Inspection(provider, "missing", candidate, "missing", source=source)
     except OSError as exc:
         if exc.errno == errno.ELOOP:
-            return Inspection(provider, "changed", candidate, "metadata-changed")
+            return Inspection(provider, "changed", candidate, "metadata-changed", source=source)
         if exc.errno == errno.ENOTDIR:
-            return Inspection(provider, "unsupported", candidate, "not-regular")
-        return Inspection(provider, "unavailable", candidate, "metadata-unavailable")
+            return Inspection(provider, "unsupported", candidate, "not-regular", source=source)
+        return Inspection(provider, "unavailable", candidate, "metadata-unavailable", source=source)
 
 
 def compatibility(provider, output):

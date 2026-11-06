@@ -6,12 +6,10 @@ import os
 import shutil
 import sys
 
-from . import agent_profiles, analysis_session, permissions, session_presence
+from . import agent_profiles, analysis_session, permissions, session_presence, system_clients
 from .account_cli import print_usage
 from .terminal_style import paint
-from .analysis_contract import CLIENT_VERSION, terminal_text
-from .analysis_sandbox import INSTALL
-from .codex_protocol import CLIENT_VERSION as CODEX_VERSION
+from .analysis_contract import terminal_text
 
 
 def snapshot():
@@ -38,10 +36,12 @@ def snapshot():
     except (ValueError, OSError):
         value["errors"].append("policy unavailable")
     providers = []
-    for name, binary, version in (("claude", "claude-code", CLIENT_VERSION), ("codex", "codex", CODEX_VERSION)):
-        path = INSTALL / binary
-        providers.append({"id": name, "client_present": path.is_file() and not path.is_symlink(),
-                          "pinned_version": version, "allowed": policy.provider_allowed(name) if policy else None})
+    for name in ("claude", "codex"):
+        client = system_clients.inspect(name)
+        providers.append({"id": name, "client_present": client.status == "present",
+                          "client_source": client.source, "client_status": client.status,
+                          "version_checked": False, "protocol_checked": False,
+                          "allowed": policy.provider_allowed(name) if policy else None})
     providers.append({"id": "local", "endpoint": endpoint(policy.local_port if policy else 8080),
                       "allowed": policy.provider_allowed("local") if policy else None})
     value["providers"] = providers
@@ -60,8 +60,8 @@ def _summary(data, *, interactive=False):
         for item in data["providers"]:
             mark = "*" if selected == item["id"] else " "
             access = {True: "allowed", False: "blocked", None: "no explicit policy"}[item["allowed"]]
-            details = item.get("endpoint") or (("installed" if item["client_present"] else "missing")
-                                              + ", pinned " + item["pinned_version"])
+            details = item.get("endpoint") or (item["client_source"] + " client: " + item["client_status"]
+                                              + ", compatibility unchecked")
             tone = {True: "green", False: "yellow", None: "muted"}[item["allowed"]]
             print("%s %-7s %s · %s" % (mark, item["id"], details, paint(access, tone)))
     if data["policy"]:

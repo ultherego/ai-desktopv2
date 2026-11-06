@@ -1,56 +1,102 @@
-# Client installation and runtime transition
+# Client installation, registration and compatibility
 
-## What candidate 0.1.0-80 adds
+Candidate **0.1.0-81** uses independently installed clients. The application package contains adapters and isolation machinery, not vendor executables. Choose **Claude Code**, **Codex**, both, or local inference with neither. This runtime and registration migration still needs its own CachyOS acceptance; the package-79 result does not cover it.
+
+## Supported installations
+
+| Installation | Native source | How AI Desktop uses it |
+|---|---|---|
+| Claude Arch/AUR package | Native `/usr/bin/claude`, a supported package symlink, or the maintained `claude-code` package's `/opt/claude-code/bin/claude` payload | Direct inspection and binding of the root-owned native payload; its known shell wrapper is never executed |
+| Codex Arch package | `/usr/bin/codex` and `/usr/lib/openai-codex/`, including native helpers and resources | Direct inspection and binding of the root-owned package payload |
+| Claude official native installer | `~/.local/bin/claude`, normally linked into `~/.local/share/claude/versions/` | Explicit registration of the native executable |
+| Codex official standalone installer | `~/.local/bin/codex`, normally linked through `~/.codex/packages/standalone/current/` to a versioned release | Explicit registration of the recognized native release bundle, including helpers/resources |
+| Current npm installation, including a custom prefix or nvm | Provider package and native platform dependency under that prefix's `lib/node_modules`; command under `bin` | Resolve the known package's native payload without executing Node or the wrapper, then register it |
+| Other native/custom-prefix installation | Explicit absolute path to a recognized native executable or Codex bundle | `clients register PROVIDER --path /absolute/path`; unknown wrappers or resource layouts are refused |
+| Local inference | Your configured loopback server | Neither cloud client nor registration is required |
+
+The official [Claude setup guide](https://code.claude.com/docs/en/setup) documents the native installer and current npm packages; current npm installs a native runtime, so npm is not categorically unsupported. The official [Codex installation guide](https://learn.chatgpt.com/docs/codex/cli), [standalone installer source](https://github.com/openai/codex/blob/main/scripts/install/install.sh) and [npm entry point](https://github.com/openai/codex/blob/main/codex-cli/bin/codex.js) describe its layouts. See also [npm prefix behavior](https://docs.npmjs.com/cli/using-npm/config/), the [Arch Codex file list](https://archlinux.org/packages/extra/x86_64/openai-codex/files/) and the [Claude AUR maintainer's recipe](https://github.com/fabifont/claude-code-aur/blob/main/PKGBUILD). These references were checked on 2026-11-06; installed files and runtime probes still determine compatibility.
+
+Review and install the provider through your chosen trusted source. AI Desktop never runs a provider installer, package manager or updater for you. Shell aliases and functions are not executable sources. Arbitrary shell/JavaScript wrappers and older JavaScript-only clients are not executed under the service account; when automatic discovery cannot resolve a known native layout, use an explicit native path. Merely finding a command in your PATH does not authorize it.
+
+Current Codex packages keep `bin/codex`, `codex-package.json`, `codex-path/` and `codex-resources/` in one relocatable bundle; registration preserves the supported helpers and resources. Older npm layouts with `vendor/TARGET/codex/codex` plus `path/rg`, and older standalone layouts with `release/codex` plus `codex-resources/`, are refused rather than copied incompletely or relocated by guesswork. Update Codex through the installer/package manager you already use, then register its current native bundle. A pacman reinstall is not required. This boundary follows the [minimum-version npm entry point](https://github.com/openai/codex/blob/rust-v0.166.0/codex-cli/bin/codex.js), [installer conversion code](https://github.com/openai/codex/blob/rust-v0.166.0/scripts/install/install.sh) and [runtime resource lookup](https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/install-context/src/lib.rs).
+
+## Install AI Desktop and register an existing client
+
+The application can be installed before a provider. From a checkout owned by your regular user:
 
 ```fish
+python3 -B scripts/install_agents.py codex --install
+```
+
+Use `claude`, `both` or `local` instead as appropriate. Without `--install`, the helper reports metadata. It never downloads or changes provider clients. The same general application package is built for every selection. Ignored legacy `packaging/arch/claude-code` and `packaging/arch/codex` files are never embedded or used. `scripts/fetch_codex_client.py` is retained only for explicitly invoked reproducible test fixtures.
+
+For a client installed through `curl` and a shell, npm or another user-owned native installation:
+
+```fish
+ai-desktop clients list
+ai-desktop clients register claude
+# Or: ai-desktop clients register codex
+# Custom location: ai-desktop clients register codex --path /absolute/path/to/codex
+ai-desktop agent use claude
+ai-desktop doctor --clients
+ai-desktop login
+```
+
+Registration shows the selected native payload and binds approval to its contents, including required resources. A fixed installed administrator helper captures the approved files into `/var/lib/ai-desktop-clients/PROVIDER/payload/`. It never executes the source as root. The manifest stays outside the runtime payload. The original installation, its configuration and its login are not copied or modified. Your ordinary CLI authentication does not become an AI Desktop account; the separate login remains necessary.
+
+This copy is an explicit trust decision: it does not prove vendor authenticity. Writable source files can be registered only through this approval and capture path; they are never run directly as `ai-desktop`. Unsafe file types, privileged attributes, unexpected layouts, mutation during capture and size-limit violations refuse registration. Registration does not bypass the offline compatibility probe before account/model access.
+
+Registrations are **system-wide**, with one active copy per provider. They take priority over a supported system package. A corrupt or incomplete registration is refused rather than silently bypassed. Review a replacement knowing it affects all users of that provider. Remove a registration explicitly to return to the system package, without removing the original client or account data:
+
+```fish
+ai-desktop clients remove claude
+```
+
+## Inspect and check compatibility
+
+```fish
+ai-desktop clients list
 ai-desktop doctor
 ai-desktop doctor --v
+ai-desktop doctor --clients
+ai-desktop doctor --clients --v
 ```
 
-The ordinary output and detailed JSON include metadata-only discovery for both system clients. The possible states are `present`, `missing`, `unsafe`, `unsupported`, `changed` and `unavailable`. `present` means a supported native ELF file passed the path/ownership/mode checks. It does not establish vendor authenticity, version compatibility or a working client protocol. The report marks the system client inactive, with version and protocol unchecked.
+`clients list` inspects discovery and registration metadata, including whether a source needs registration or refresh. Ordinary `doctor` and the panel inspect the selected runtime metadata without executing a client or loading credentials. They distinguish system and registered sources. Runtime states are `present`, `missing`, `unsafe`, `unsupported`, `changed` and `unavailable`. `present` means native metadata passed; it does not prove a complete installation or compatibility. Version and protocol remain unchecked.
 
-No system client is executed, no login is read or changed, and no network request is made by this discovery. The working runtime accepted in 0.1.0-79 remains in use. Its tested version baselines are Claude 2.1.312 and Codex 0.166.0; a pure version-policy comparison can label another version untested, but it cannot prove runtime compatibility or enable a client.
+`doctor --clients` explicitly probes the **selected** cloud provider in an offline namespace with a fresh empty home and no account profile, proxy or model request. It reports the shared runtime compatibility result and returns nonzero on refusal. Selecting local inference does not require or probe a cloud CLI.
 
-## System-installed clients: agreed target
+| Adapter | Minimum version | Supported version family | Test baseline |
+|---|---|---|---|
+| Claude Code | 2.1.312 | 2.x | 2.1.312 |
+| Codex | 0.166.0 | 0.x | 0.166.0 |
 
-AI Desktop will use a compatible system installation of **Claude or Codex**. One is sufficient; choosing Codex must not require Claude. Vendor executables will not be bundled in AI Desktop packages, and private package preparation will no longer be the normal installation route. This transition begins with shared discovery and preflight. The existing runtime, authentication and packaging are not migrated merely because discovery can identify a client.
+Version text alone is insufficient. Required command/configuration capabilities and protocol prerequisites must also pass the bounded offline probe. A baseline passing those checks is `compatible-tested`; a newer version in the supported family can be `compatible-untested`. That label does not claim every behavior of the new release was tested. The Claude option probe uses the actual adapter options with signed-out `auth status` in an empty offline profile and an unknown-option negative control; `--help` alone is not evidence that those options are accepted. Its actual parser behavior still needs native CachyOS acceptance. Actual replies remain subject to strict validation. Older versions, a different version family, invalid output, incompatible capabilities, missing isolation and timeouts refuse access before credentials or model input are released.
 
-The shared boundary must:
+## Updates and stable operations
 
-- inspect only explicitly supported absolute system paths, with root-owned files and parents that are not writable by other users;
-- validate the executable format and integrity, then determine the version and adapter compatibility through a controlled probe;
-- reject unknown or incompatible clients with an actionable result, without sending a question or falling back to another service;
-- bind the selected executable identity to a task and recheck it before execution, refusing replacement or an update during that task;
-- keep the existing isolated service account, separate authentication profiles, restricted model tools and controlled network access.
-
-The initial system-client boundary does not accept arbitrary `PATH` results, binaries in a user's HOME (including a per-user `~/.local` Claude installation), shell/npm wrappers or a user-selected executable. Detection never imports the user's existing CLI login. A supported system installation and a separately connected AI Desktop account are different prerequisites.
-
-Discovering an ELF does not validate its entire installation. For example, the [Arch `openai-codex` package file list](https://archlinux.org/packages/extra/x86_64/openai-codex/files/) includes `/usr/bin/codex`, a binary under `/usr/lib/openai-codex/bin/` and additional helpers. The future runtime must account for the supported package layout and required assets without opening broader filesystem access.
-
-Compatible client updates and AI Desktop updates will be independent. Compatibility describes a tested adapter protocol, not a promise that every future client version works. Installation instructions for supported system package layouts will replace the section below only after runtime migration, packaging tests and CachyOS acceptance. Do not move vendor binaries into guessed paths to bypass a refusal.
-
-## Transition: prepare clients for the retained runtime
-
-The following is the working 0.1.0-79 preparation method, retained by candidate 0.1.0-80. It is not the target system-client installation method.
-
-On x86_64 CachyOS or Arch, run the following from the root of your AI Desktop checkout as its regular owner. Select `claude`, `codex`, or `both`.
+Update the original client through its own installation method. Supported system packages are selected afresh for each operation. A registered copy retains its approved bytes after the original source updates; approve a replacement explicitly:
 
 ```fish
-python3 -B scripts/install_agents.py both --install
+ai-desktop clients list
+ai-desktop clients refresh claude
+# Or: ai-desktop clients refresh codex
+ai-desktop doctor --clients
 ```
 
-The helper asks for confirmation before downloading or invoking `/usr/bin/makepkg --cleanbuild -si`. Arch's ordinary dependency and package installation prompts follow. Install the Arch `base-devel` group first. Prepare the client files alone, with no package operation, by omitting `--install`.
+The application does not silently trust a new source digest or download a replacement. A compatible provider update needs no AI Desktop rebuild, application version pin or bundled fallback.
 
-```fish
-python3 -B scripts/install_agents.py claude
-```
+Each operation freezes the selected native executable and supported private helpers/resources into sealed read-only copies. Limits are 384 MiB per file, 512 MiB combined, 4,096 entries and 24 directory levels. Exceeding them refuses the operation rather than omitting resources. Analysis and native quota services have a 2 GiB memory ceiling including snapshots and client memory; project-test-copy budgets are separate. The same bytes are used across compatibility, account and execution phases. A detected change to the selected system installation or registered runtime copy returns `client-changed` before following phases. Updating the original HOME source does not mutate an already registered copy.
 
-| Selection | Verified source | Existing file |
-|---|---|---|
-| `claude` | Official Anthropic Linux x64 ELF, version 2.1.312. The SHA-256 must match the pin in the package recipe. | An identical regular `packaging/arch/claude-code` is reused without downloading. |
-| `codex` | Official OpenAI archive, version 0.166.0. The existing Codex preparation tool checks the pinned archive SHA-256 and extracts its one expected ELF. | The helper fetches the pinned archive to compare the actual ELF bytes even for an existing `packaging/arch/codex`. |
-| `both` | Both checks run before publishing the selected files. | A mismatch stops before package installation. |
+The root-managed operating-system libraries remain a distinct baseline and are not frozen by the client snapshot. The mechanism does not prove vendor provenance or protect against root/kernel compromise.
 
-Partial downloads stay in a private staging directory. Publishing a verified file never replaces an occupied name. If another process creates that name during preparation, rerun the helper after inspecting the collision. Existing invalid files and symlinks require manual review. If both clients are in the checkout, choose `both --install` so both are checked before inclusion.
+## Migration from packages 79/80
 
-The helper uses a fresh package output directory and checks the selected clients against the bytes staged in the private package. It leaves verified source assets in `packaging/arch/` for subsequent builds. It does not execute either vendor client, log into an account, send an AI request, or change network permissions. The resulting local package may contain vendor binaries and is for the owner's private use. Run `ai-desktop login` separately when ready to choose an account.
+1. Use your independently installed provider: a supported system package or an existing native/HOME/npm installation.
+2. Upgrade AI Desktop. Its package no longer owns vendor executables; pacman removes the old application-owned files through the ordinary package manifest update.
+3. If needed, register the existing native client explicitly, inspect `clients list`, select the provider and run `doctor --clients`.
+4. Keep existing policy, account profiles, conversations and task journals. Reconnect only when the actual account flow reports that it is needed.
+
+Do not manually delete or copy OAuth files to complete this migration. The separate account boundary remains in place. No fallback uses a user's executable without registration or an old embedded file. Ignored source-checkout leftovers are not packaged.
+
+Application upgrade and uninstall leave independent provider installations and existing account data intact. Registered copies are retained separately from package-owned files; use `clients remove PROVIDER` before removing the application if you want to remove a registration. That action does not uninstall the provider or erase accounts.

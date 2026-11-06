@@ -154,6 +154,13 @@ class CliTests(unittest.TestCase):
                 self.assertEqual(main(["doctor", flag]), 0)
             doctor.assert_called_once_with(["--v"])
 
+    def test_doctor_explicit_client_probe_routes_without_implicit_login(self):
+        for suffix in ([], ["--v"]):
+            with self.subTest(suffix=suffix), patch("ai_desktop.cli.doctor.main", return_value=2) as doctor, \
+                    patch("ai_desktop.login_flow.login", side_effect=AssertionError("probe is not login")):
+                self.assertEqual(main(["doctor", "--clients", *suffix]), 2)
+            doctor.assert_called_once_with(["--clients", *suffix])
+
     def test_version_does_not_start_agent(self):
         with patch("ai_desktop.cli.agent.main") as agent:
             with contextlib.redirect_stdout(io.StringIO()) as output:

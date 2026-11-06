@@ -74,8 +74,9 @@ class InstalledMatchTests(unittest.TestCase):
                     (skill / "SKILL.md").write_text(content)
             (root / "ai_desktop/a.py").write_text("x = 1\n")
             (installed / "ai_desktop/a.py").write_text("x = 2\n" if tamper else "x = 1\n")
-            helpers = ("analysis-client.py", "analysis-worker.py", "analysis-session.py", "codex-auth.py", "codex-client.py")
-            units = ("ai-desktop-analysis@.socket", "ai-desktop-analysis@.service")
+            helpers = ("analysis-client.py", "analysis-worker.py", "analysis-session.py", "codex-auth.py", "codex-client.py", "codex-quota.py", "client-admin.py")
+            units = ("ai-desktop-analysis@.socket", "ai-desktop-analysis@.service",
+                     "ai-desktop-codex-limits@.socket", "ai-desktop-codex-limits@.service")
             for name in helpers + units:
                 (root / "packaging/systemd" / name).write_text("u\n")
                 (installed / name).write_text("u\n")
@@ -111,9 +112,8 @@ class InstalledMatchTests(unittest.TestCase):
     def test_without_native_client_in_tree_the_code_check_still_passes(self):
         self.run_check(native=False)
 
-    def test_default_still_requires_the_native_client_in_the_tree(self):
-        with self.assertRaises(ValueError):
-            self.run_check(native=True)
+    def test_system_clients_never_need_a_copy_in_the_application_tree(self):
+        self.run_check(native=True)
         self.run_check(native=True, write_binary=True)
 
     def test_modified_installed_code_is_refused_in_both_modes(self):
@@ -123,7 +123,7 @@ class InstalledMatchTests(unittest.TestCase):
 
     def test_codex_bootstraps_are_required_and_compared_even_without_native_binaries(self):
         for native in (False, True):
-            for helper in ("codex-auth.py", "codex-client.py"):
+            for helper in ("codex-auth.py", "codex-client.py", "codex-quota.py", "client-admin.py"):
                 for change in ("missing", "modified"):
                     def mutate(root, installed):
                         target = installed / helper
@@ -134,7 +134,7 @@ class InstalledMatchTests(unittest.TestCase):
                     with self.subTest(native=native, helper=helper, change=change), self.assertRaises((ValueError, OSError)):
                         self.run_check(native=native, write_binary=native, mutate=mutate)
 
-    def test_optional_codex_binary_is_compared_when_staged(self):
+    def test_legacy_codex_staging_is_ignored_while_application_files_are_still_compared(self):
         self.run_check(native=True, write_binary=True, staged_codex=True)
         for change in ("missing", "modified", "source-symlink"):
             def mutate(root, installed):
@@ -146,7 +146,7 @@ class InstalledMatchTests(unittest.TestCase):
                     source = root / "packaging/arch/codex"
                     source.unlink()
                     source.symlink_to(root / "missing-codex")
-            with self.subTest(change=change), self.assertRaises((ValueError, OSError)):
+            with self.subTest(change=change):
                 self.run_check(native=True, write_binary=True, staged_codex=True, mutate=mutate)
 
     def test_native_false_skips_both_untracked_clients_but_keeps_bootstrap_checks(self):

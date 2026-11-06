@@ -4,7 +4,7 @@ Only the official child opens its OAuth files. The trusted supervisor owns the
 external CONNECT proxy; the child receives a Unix bridge, never a host uplink.
 """
 from contextlib import contextmanager
-from . import account_runtime
+from . import account_runtime, client_binding, client_compat, system_clients
 import fcntl
 import json
 import os
@@ -13,6 +13,7 @@ import stat
 import subprocess
 import tempfile
 import threading
+import time
 
 from .analysis_contract import (request_effort, request_seconds, ModelText, extract_meta, AnalysisDenied, CLIENT_VERSION, MAX_PACKET, MAX_PACKET_LARGE, SYSTEM_PROMPT, WEB_SYSTEM_PROMPT,
                                 REASONS, STAGES, result_text_limit)
@@ -27,7 +28,7 @@ from .execution import validate as validate_execution
 from .analysis_diagnostics import codex_diagnostic
 
 INSTALL = Path("/usr/lib/ai-desktop")
-BINARY = INSTALL / "claude-code"
+BINARY = Path(client_binding.binary("claude"))
 HOME = Path("/var/lib/ai-desktop")
 PROFILE = HOME / "claude"
 INNER_PROFILE = "/home/client/profile"
@@ -103,12 +104,11 @@ def cloud_transport_ready():
 
 
 def runtime_ready():
-    trusted_file(BINARY)
-    if not os.access(BINARY, os.X_OK):
-        raise AnalysisDenied("runtime")
-    with BINARY.open("rb") as source:
-        if source.read(4) != b"\x7fELF":
-            raise AnalysisDenied("runtime")
+    found = system_clients.inspect("claude")
+    if found.status != "present":
+        reason = {"missing": "client-missing", "unsafe": "client-unsafe", "unsupported": "client-layout",
+                  "changed": "client-changed"}.get(found.status, "client-unavailable")
+        raise AnalysisDenied(reason)
     trusted_file(INSTALL / "analysis-client.py")
     cloud_transport_ready()
 
@@ -179,6 +179,7 @@ def client_environment(action="analyze", effort=None):
               "NO_PROXY": "", "SSL_CERT_FILE": "/etc/ssl/certs/ca-certificates.crt",
               "ENABLE_CLAUDEAI_MCP_SERVERS": "false", "CLAUDE_CODE_ATTRIBUTION_HEADER": "0",
               "CLAUDE_CODE_MAX_RETRIES": "0",
+              "DISABLE_AUTOUPDATER": "1", "DISABLE_UPDATES": "1", "DISABLE_INSTALLATION_CHECKS": "1",
               # the client gives up on its own API call 20 s before the supervisor would: derived from the same table
               "API_TIMEOUT_MS": str((request_seconds(effort) - 20) * 1000)}
     for name in ("SAFE_MODE", "DISABLE_NONESSENTIAL_TRAFFIC", "DISABLE_OFFICIAL_MARKETPLACE_AUTOINSTALL",
@@ -201,6 +202,13 @@ def client_command(action, execution=None):
         raise AnalysisDenied("input") from None
     if action == "version":
         return [str(BINARY), "--version"]
+    if action in ("compat-options", "compat-web", "compat-reject"):
+        command = client_command("web" if action == "compat-web" else "analyze")
+        if action == "compat-reject":
+            command += [client_compat.INVALID_OPTION]
+        # Keep the full production flag set (including -p) and demand the
+        # read-only auth subcommand's JSON. Help can bypass option validation.
+        return command + ["auth", "status"]
     common = [str(BINARY), "--restricted", "--safe-mode", "--setting-sources", ""]
     if selected is not None:
         if selected["model"] != "default":
@@ -214,7 +222,7 @@ def client_command(action, execution=None):
                      "permissions or available tools.")
     if action == "login":
         return common + ["auth", "login"]
-    if action in ("status", "offline-status"):
+    if action in ("status", "offline-status", "compat-rpc"):
         return common + ["auth", "status"]
     if action == "offline-logout":
         return common + ["auth", "logout"]
@@ -232,10 +240,13 @@ def client_command(action, execution=None):
                      "--no-session-persistence", "--max-turns", "1", "--system-prompt", prompt]
 
 
-def namespace_command(action, directory, *, online, account_path=None):
-    if (action not in ("version", "status", "analyze", "web", "login", "offline-status", "offline-logout")
+def namespace_command(action, directory, *, online, account_path=None, bound=None):
+    if (action not in ("version", "status", "analyze", "web", "login", "offline-status", "offline-logout",
+                      "compat-options", "compat-web", "compat-reject", "compat-rpc")
             or online != (action in ("status", "analyze", "web", "login"))):
         raise AnalysisDenied("input")
+    if bound is None or bound.provider != "claude":
+        raise AnalysisDenied("client-unavailable")
     directory = Path(directory)
     command = base_command() + ["--disable-userns", "--assert-userns-disabled", "--hostname", "ai-desktop",
                                 "--remount-ro", "/proc"]
@@ -244,6 +255,7 @@ def namespace_command(action, directory, *, online, account_path=None):
     command += ["--ro-bind", str(directory / "passwd"), "/etc/passwd",
                 "--ro-bind", str(directory / "group"), "/etc/group",
                 "--ro-bind", str(CA.resolve(strict=True)), "/etc/ssl/certs/ca-certificates.crt"]
+    command += bound.mount_args()
     if online:
         command += ["--bind", str(PROFILE if account_path is None else account_path), INNER_PROFILE,
                     "--ro-bind", str(directory / "egress.sock"), "/run/egress.sock"]
@@ -419,22 +431,56 @@ def _identity_files(directory):
     (directory / "group").write_text("client:x:%d:\n" % os.getegid())
 
 
+def _bound_run(bound, action, directory, *, online=False, account_path=None, deadline=None, **kwargs):
+    command = namespace_command(action, directory, online=online, account_path=account_path, bound=bound)
+    if deadline is not None:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AnalysisDenied("timeout", stage="compatibility")
+        kwargs["timeout"] = min(kwargs.get("timeout", remaining), remaining)
+    result = bounded_process(command, env={"PATH": "/usr/bin", "LANG": "C.UTF-8"},
+                             pass_fds=bound.pass_fds, **kwargs)
+    bound.recheck()
+    if deadline is not None and time.monotonic() >= deadline:
+        raise AnalysisDenied("timeout", stage="compatibility")
+    return result
+
+
+def _check_client(bound, directory, *, cancelled=None):
+    # The probe set shares one deadline, including binding metadata rechecks
+    # and result validation. Snapshot creation happens before this budget.
+    # A blocking filesystem syscall still needs the outer service lifetime.
+    deadline = time.monotonic() + 20
+    def run(action):
+        return _bound_run(bound, action, directory, deadline=deadline,
+                          limit=client_compat.MAX_OUTPUT, cancelled=cancelled)
+    with failure_stage("compatibility"):
+        result = client_compat.check("claude", run)
+        if time.monotonic() >= deadline:
+            raise AnalysisDenied("timeout", stage="compatibility")
+        return result
+
+
+def probe_client():
+    """Explicit offline check, with no account lookup, profile lock or proxy."""
+    runtime_ready()
+    with client_binding.bind("claude") as bound, tempfile.TemporaryDirectory(prefix="ai-desktop-probe-") as temp:
+        directory = Path(temp)
+        _identity_files(directory)
+        return _check_client(bound, directory)
+
+
 def local_claude_session(account_path, *, logout=False):
     """Caller holds the service profile lock. Only the offline native client opens OAuth."""
     runtime_ready()
-    with tempfile.TemporaryDirectory(prefix="ai-desktop-account-") as temp:
+    with client_binding.bind("claude") as bound, tempfile.TemporaryDirectory(prefix="ai-desktop-account-") as temp:
         directory = Path(temp)
         _identity_files(directory)
 
         def run(action):
-            cmd = namespace_command(action, directory, online=False, account_path=account_path)
-            return bounded_process(cmd, env={"PATH": "/usr/bin", "LANG": "C.UTF-8"}, timeout=20, limit=16384)
+            return _bound_run(bound, action, directory, account_path=account_path, timeout=20, limit=16384)
 
-        code, output, errors = run("version")
-        if code:
-            raise child_failure(errors, "version")
-        if output.strip() != (CLIENT_VERSION + " (Claude Code)").encode("ascii"):
-            raise AnalysisDenied("version")
+        _check_client(bound, directory)
 
         def signed_in():
             code, output, errors = run("offline-status")
@@ -466,19 +512,15 @@ def run_client(action, report=b"", *, cancelled=None, mode="analysis"):
     result_text_limit(mode)
     with failure_stage("supervisor"):
         supervisor_ready()
-    with failure_stage("profile"), profile_lock(), tempfile.TemporaryDirectory(prefix="ai-desktop-", dir="/tmp") as temp:
-        account_path = account_runtime.directory(PROFILE, login=action == "login")
-        options = {} if account_path == PROFILE else {"account_path": account_path}
+    with failure_stage("profile"), profile_lock(), client_binding.bind("claude") as bound, \
+            tempfile.TemporaryDirectory(prefix="ai-desktop-", dir="/tmp") as temp:
         directory = Path(temp)
         _identity_files(directory)
         env = {"PATH": "/usr/bin", "LANG": "C.UTF-8"}
-        with failure_stage("version"):
-            code, out, errors = bounded_process(namespace_command("version", directory, online=False),
-                                               env=env, timeout=10, limit=4096, cancelled=cancelled)
-            if code != 0:
-                raise child_failure(errors, "version")
-            if out.strip() != (CLIENT_VERSION + " (Claude Code)").encode("ascii"):
-                raise AnalysisDenied("version")
+        _check_client(bound, directory, cancelled=cancelled)
+        bound.recheck()
+        account_path = account_runtime.directory(PROFILE, login=action == "login")
+        options = {} if account_path == PROFILE else {"account_path": account_path}
         with failure_stage("proxy"), _Proxy(str(directory / "egress.sock"), dial=open_public,
                                                                                        stream_seconds=request_seconds(request_effort(report)) + 10) as proxy:
             thread = threading.Thread(target=proxy.serve_forever, daemon=True)
@@ -490,14 +532,15 @@ def run_client(action, report=b"", *, cancelled=None, mode="analysis"):
                             raise AnalysisDenied("consent", stage="terminal")
                         # Official terminal flow, not parsed, captured, recorded or
                         # forwarded through IPC. No host callback/browser socket.
-                        done = subprocess.run(namespace_command("login", directory, online=True, **options),
-                                              env=env, close_fds=True, timeout=540, check=False)
+                        done = subprocess.run(namespace_command("login", directory, online=True, bound=bound, **options),
+                                              env=env, close_fds=True, pass_fds=bound.pass_fds, timeout=540, check=False)
+                        bound.recheck()
                         if done.returncode:
                             raise AnalysisDenied("client")
                 with failure_stage("auth-status"):
                     status_connection_failed = proxy.begin_phase()
-                    code, out, errors = bounded_process(namespace_command("status", directory, online=True, **options),
-                                                       env=env, timeout=20, limit=16384, cancelled=cancelled)
+                    code, out, errors = _bound_run(bound, "status", directory, online=True, **options,
+                                                  timeout=20, limit=16384, cancelled=cancelled)
                     if code:
                         failure = child_failure(errors, "client")
                         if failure.reason != "client":
@@ -510,8 +553,8 @@ def run_client(action, report=b"", *, cancelled=None, mode="analysis"):
                     return "claude.ai"
                 with failure_stage("analysis"):
                     analysis_connection_failed = proxy.begin_phase()
-                    code, out, errors = bounded_process(namespace_command(action, directory, online=True, **options),
-                                                       env=env, input_bytes=report, timeout=request_seconds(request_effort(report)),
+                    code, out, errors = _bound_run(bound, action, directory, online=True, **options,
+                                                       input_bytes=report, timeout=request_seconds(request_effort(report)),
                                                        limit=3 * MAX_PACKET_LARGE if mode == "workspace" else (131072 if action == "web" else 256 * 1024),
                                                        input_limit=MAX_PACKET_LARGE, cancelled=cancelled)
                     if code:

@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
-"""Prepare one pinned official Codex ELF for a private local package build.
+"""Pinned official Codex fixture for explicitly opted-in disposable CI only.
 
+AI Desktop uses independently installed system clients. This fixture is not an
+installation path and is never included in the application package. The CI
+driver calls prepare(root=its_private_temporary_directory) after its guards.
 No login, OAuth, AI request, binary execution, package installation or overwrite.
 The SHA-256 below was read from OpenAI's official rust-v0.166.0 release asset
 metadata on 2026-11-02. It is a pinned digest, not a separate signature claim.
@@ -228,21 +231,10 @@ def prepare(*, root=ROOT, fetch=None):
 def main(argv=None):
     argv = sys.argv[1:] if argv is None else argv
     if argv == ["--help"]:
-        print("Prepare the official Codex " + VERSION + " for a local package build; no login and no AI run.")
+        print("Pinned Codex " + VERSION + " is a disposable-CI fixture only. Install the system openai-codex package separately.")
         return 0
-    if argv:
-        print("CODEX ASSET: REFUSED reason=target", file=sys.stderr)
-        return 2
-    try:
-        prepare()
-    except KeyboardInterrupt:
-        print("CODEX ASSET: REFUSED reason=cancelled", file=sys.stderr)
-        return 2
-    except AssetDenied as failure:
-        print(str(failure), file=sys.stderr)
-        return 2
-    print("Codex " + VERSION + ": client prepared for the package build.")
-    return 0
+    print("CODEX ASSET: REFUSED standalone preparation retired; install the system openai-codex package separately.", file=sys.stderr)
+    return 2
 
 
 if __name__ == "__main__":

@@ -70,6 +70,7 @@ jobs:
           python -B -m ai_desktop claude --help
           python -B -m ai_desktop agents --help
           python -B -m ai_desktop sessions --help
+          python -B -m ai_desktop clients --help
           python -B -m ai_desktop codex --help
           python -B -m ai_desktop login --help
           python -B -m ai_desktop stop --help
@@ -119,6 +120,7 @@ jobs:
           fish --no-config --no-execute scripts/accept_home_candidate.fish
           fish --no-config --no-execute scripts/update_candidate.fish
           fish --no-config --no-execute scripts/accept_web_candidate.fish
+          fish --no-config --no-execute scripts/accept_system_clients_candidate.fish
           python -B -m unittest discover -s tests -p 'test_accept_*script.py' -v
       - name: Checkout pinned upstream Bubblewrap 0.13.1
         if: matrix.bubblewrap == '0.13.1'
@@ -152,6 +154,10 @@ jobs:
           }
           PROFILE
           sudo apparmor_parser -r "$RUNNER_TEMP/ai-desktop-bwrap.apparmor"
+      - name: Bound system client replacement and descriptor isolation (synthetic ELF)
+        run: python -B tests/ci_client_binding.py --allow-disposable-client-binding-test
+      - name: User native registration with actual root-owned copies (synthetic ELF, no execution)
+        run: python -B tests/ci_client_registration.py --allow-disposable-client-registration-test
       - name: Check out the button shipped with DMS 2.1.0
         if: matrix.bubblewrap == 'distro'
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

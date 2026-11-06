@@ -85,9 +85,9 @@ def run_cycle(temp, shim_source, terminal):
     siwc = Path("/var/lib/ai-desktop") / f"account-{uid}-codex-{ALIAS}"
     native = Path("/var/lib/ai-desktop") / f"quota-codex-{uid}"
     locks = Path("/run/ai-desktop-limits-admin")
-    installed = [*(prior.DEST / name for name in ("codex", FIXTURE, *ENTRIES)),
+    installed = [Path("/usr/bin/codex"), *(prior.DEST / name for name in (FIXTURE, *ENTRIES)),
                  *(prior.UNITS / name for name in UNITS)]
-    require_absent([*installed, siwc, native, locks, ipc.DIRECTORY,
+    require_absent([Path("/var/lib/ai-desktop-clients/codex"), *installed, siwc, native, locks, ipc.DIRECTORY,
                     Path("/etc/systemd/system/sockets.target.wants") / socket_unit])
 
     admin = ["sudo", "-n"]
@@ -99,7 +99,7 @@ def run_cycle(temp, shim_source, terminal):
         source.write_text(shim_source.replace("fixture-client.py", FIXTURE))
         binary = temp / "quota-client"
         prior._run("/usr/bin/cc", "-Wall", "-Werror", "-O2", str(source), "-o", str(binary))
-        prior._run(*admin, "/usr/bin/install", "-m755", str(binary), str(prior.DEST / "codex"))
+        prior._run(*admin, "/usr/bin/install", "-m755", str(binary), "/usr/bin/codex")
         prior._run(*admin, "/usr/bin/install", "-m644", str(prior.ROOT / "tests/quota_fixture_client.py"),
                    str(prior.DEST / FIXTURE))
         for name in ENTRIES:

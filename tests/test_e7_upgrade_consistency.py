@@ -92,12 +92,14 @@ class HookRetentionTests(unittest.TestCase):
 
 
 class NoBundledClientTests(unittest.TestCase):
-    def test_the_package_has_no_remote_sources_and_the_optional_client_is_a_local_untracked_file(self):
+    def test_the_package_has_no_remote_sources_and_legacy_staging_stays_untracked(self):
         package = PKGBUILD.read_text()
         self.assertIn("source=()", package)
         self.assertIn("sha256sums=()", package)
         ignored = subprocess.run(["git", "check-ignore", "packaging/arch/claude-code"], cwd=ROOT, capture_output=True, text=True)
         self.assertEqual(ignored.returncode, 0)                                   # ignored, so it cannot be committed by accident
+        self.assertNotIn("_claude_code_sha256", package)
+        self.assertNotIn("AI_DESKTOP_CHECK_CLIENTS", package)
         for artifact in ("packaging/arch/*.pkg.tar.*",):
             self.assertIn(artifact, (ROOT / ".gitignore").read_text())
 

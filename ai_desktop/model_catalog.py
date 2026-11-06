@@ -1,4 +1,4 @@
-"""Model choices reported by the pinned Codex client itself, read in a closed sandbox.
+"""Model choices reported by the system Codex client itself, read in a closed sandbox.
 
 The catalog is the client's own (`model/list` of its app-server), so it follows the client instead of a list baked into
 this program. The query needs no account: the client runs with an empty private HOME, every namespace unshared (no
@@ -7,18 +7,19 @@ menus, never authority: a chosen id is still shape-checked and the client alone 
 """
 import json
 import os
-import selectors
-import signal
-import subprocess
-import sys
+import math
+from pathlib import Path
+import tempfile
 import time
+import sys
 import unicodedata
 
 from .analysis_contract import AnalysisDenied
-from .analysis_sandbox import INSTALL, trusted_file
+from .analysis_sandbox import _identity_files
+from . import client_binding, codex_runtime
+from .process_io import bounded_process
 from .execution import CODEX_MODEL, MODELS
 
-BINARY = INSTALL / "codex"
 MAX_ENTRIES = 64
 MAX_LABEL = 64
 MAX_OUTPUT = 256 * 1024
@@ -27,21 +28,6 @@ TIMEOUT = 20.0
 
 class CatalogUnavailable(Exception):
     """No usable catalog; callers fall back to automatic selection and free-text ids."""
-
-
-def command(binary):
-    return ["bwrap", "--unshare-all", "--die-with-parent", "--new-session", "--cap-drop", "ALL",
-            "--ro-bind", "/usr", "/usr", "--symlink", "usr/lib", "/lib", "--symlink", "usr/lib", "/lib64",
-            "--symlink", "usr/bin", "/bin", "--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
-            "--dir", "/tmp/home/.codex", "--setenv", "HOME", "/tmp/home", "--setenv", "CODEX_HOME", "/tmp/home/.codex",
-            "--setenv", "PATH", "/usr/bin", "--setenv", "LANG", "C.UTF-8", str(binary), "app-server"]
-
-
-REQUESTS = b"".join(json.dumps(item, separators=(",", ":")).encode() + b"\n" for item in (
-    {"id": 0, "method": "initialize", "params": {"clientInfo": {"name": "AI Desktop", "title": "AI Desktop",
-                                                                  "version": "catalog"}}},
-    {"method": "initialized", "params": {}},
-    {"id": 1, "method": "model/list", "params": {"limit": MAX_ENTRIES, "includeHidden": False}}))
 
 
 def _label(value, fallback):
@@ -71,55 +57,38 @@ def parse(response):
     return tuple(entries)
 
 
-def _exchange(argv, timeout):
-    process = subprocess.Popen(argv, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                               env={"PATH": "/usr/bin", "LANG": "C.UTF-8"}, start_new_session=True)
-    try:
-        process.stdin.write(REQUESTS)
-        process.stdin.flush()
-        selector = selectors.DefaultSelector()
-        selector.register(process.stdout, selectors.EVENT_READ)
-        buffer, deadline = b"", time.monotonic() + timeout
-        while True:
-            left = deadline - time.monotonic()
-            if left <= 0 or not selector.select(left):
-                raise CatalogUnavailable()
-            chunk = os.read(process.stdout.fileno(), 65536)
-            if not chunk:
-                raise CatalogUnavailable()
-            buffer += chunk
-            if len(buffer) > MAX_OUTPUT:
-                raise CatalogUnavailable()
-            *lines, buffer = buffer.split(b"\n")
-            for line in lines:
-                try:
-                    value = json.loads(line)
-                except ValueError:
-                    raise CatalogUnavailable() from None
-                if type(value) is dict and value.get("id") == 1:
-                    if "result" not in value:
-                        raise CatalogUnavailable()
-                    return value["result"]
-    finally:
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except OSError:
-            pass
-        process.stdout.close()
-        process.stdin.close()
-        process.wait()
-
-
-def fetch(*, binary=BINARY, run=_exchange, timeout=TIMEOUT):
-    """The client's model choices, or CatalogUnavailable. Never raises anything else."""
-    if run is _exchange and (os.environ.get("AI_DESKTOP_MODEL_CATALOG") == "off"
-                             or "unittest" in sys.modules and os.environ.get("AI_DESKTOP_MODEL_CATALOG") != "on"):
+def fetch(*, run=None, timeout=TIMEOUT):
+    """Read a compatible bound system client's catalog, or CatalogUnavailable."""
+    if run is None and (os.environ.get("AI_DESKTOP_MODEL_CATALOG") == "off"
+                         or "unittest" in sys.modules and os.environ.get("AI_DESKTOP_MODEL_CATALOG") != "on"):
         raise CatalogUnavailable()          # tests and CI must never start the real client
     try:
-        trusted_file(binary)
-        if not os.access(binary, os.X_OK):
+        if (type(timeout) not in (int, float) or not math.isfinite(timeout)
+                or not 0 < timeout <= TIMEOUT):
             raise CatalogUnavailable()
-        return parse(run(command(binary), timeout))
+        codex_runtime.runtime_ready()
+        with client_binding.bind("codex") as binding, tempfile.TemporaryDirectory(prefix="ai-desktop-models-") as temp:
+            # The protocol budget starts after the initial immutable binding.
+            # Filesystem operations themselves cannot be interrupted here.
+            deadline = time.monotonic() + timeout
+            def remaining():
+                value = deadline - time.monotonic()
+                if value <= 0:
+                    raise CatalogUnavailable()
+                return value
+            directory = Path(temp)
+            _identity_files(directory)
+            codex_runtime.compatibility(directory, binding, timeout=remaining())
+            command = codex_runtime.namespace_command("catalog", directory, binding=binding)
+            code, output, errors = (run or bounded_process)(command,
+                env={"PATH": "/usr/bin", "LANG": "C.UTF-8"}, pass_fds=binding.pass_fds,
+                timeout=remaining(), limit=MAX_OUTPUT)
+            if code:
+                raise CatalogUnavailable()
+            binding.recheck()
+            result = parse(json.loads(output))
+            remaining()
+            return result
     except CatalogUnavailable:
         raise
     except (AnalysisDenied, OSError, ValueError, TypeError, KeyError, RecursionError):

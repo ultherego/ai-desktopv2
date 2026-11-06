@@ -5,7 +5,7 @@ if test (count $argv) -eq 1; and test "$argv[1]" = --help
     printf 'Usage: fish scripts/accept_web_candidate.fish MODE SHA REPO_ROOT [BRANCH]\n'
     printf '  --local-only                 CI + LOCAL; no installation or Claude\n'
     printf '  --allow-install              CI + LOCAL + package installation; no Claude request\n'
-    printf '  --allow-codex-install        also fetch pinned official Codex (SHA-256 verified); no OAuth or AI request\n'
+    printf '  --allow-codex-install        compatibility alias for app installation only; never installs Codex\n'
     printf '  --allow-cachyos-acceptance    installation + separately confirmed native WebSearch\n'
     printf '  --part-profile-acceptance     installation + bounded native 240/512 KiB benchmark (4 runs, hard request caps)\n'
     printf 'Default branch: feature/ask-web-search. SHA must match its fetched HEAD.\n'
@@ -126,41 +126,7 @@ function __aid18_cycle --argument-names aid_expected aid_repo aid_tmp aid_script
     if test "$aid_mode" = --local-only
         return 0
     end
-    __aid18_step NATIVE_COPY python3 -I -B -c '
-import os, shutil, stat, sys
-from pathlib import Path
-source, target = Path("/usr/lib/ai-desktop/claude-code"), Path(sys.argv[1])
-for path in reversed(source.parents):
-    info = path.lstat()
-    if not stat.S_ISDIR(info.st_mode) or info.st_uid != 0 or info.st_mode & 0o022:
-        raise SystemExit("NATIVE COPY: REFUSED parent")
-with os.fdopen(os.open(source, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC), "rb") as src:
-    before = os.fstat(src.fileno())
-    if (not stat.S_ISREG(before.st_mode) or before.st_uid != 0 or before.st_gid != 0
-            or before.st_nlink != 1 or before.st_mode & 0o022 or not before.st_mode & 0o111
-            or src.read(4) != b"\x7fELF"):
-        raise SystemExit("NATIVE COPY: REFUSED source")
-    src.seek(0)
-    fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o700)
-    with os.fdopen(fd, "wb") as dst:
-        shutil.copyfileobj(src, dst)
-        dst.flush()
-        os.fchmod(dst.fileno(), 0o755)
-        os.fsync(dst.fileno())
-    after = os.fstat(src.fileno())
-    fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
-    if any(getattr(before, key) != getattr(after, key) for key in fields):
-        raise SystemExit("NATIVE COPY: REFUSED changed source")
-print("Native client copied from the accepted package; not run, no OAuth.")
-' "$aid_tree/packaging/arch/claude-code"
-    or return $status
-    __aid18_step NATIVE_MATCH cmp /usr/lib/ai-desktop/claude-code "$aid_tree/packaging/arch/claude-code"
-    or return $status
-    if test "$aid_mode" = --allow-codex-install
-        cd "$aid_tree"; or return $status
-        __aid18_step CODEX_ASSET python3 -B scripts/fetch_codex_client.py
-        or return $status
-    end
+    # Native clients are independently installed system packages; never copy them into this build.
     cd "$aid_tree/packaging/arch"; or return $status
     __aid18_logged BUILD "$aid_tmp/build.log" makepkg --cleanbuild --clean --noconfirm
     or return $status
@@ -172,7 +138,7 @@ print("Native client copied from the accepted package; not run, no OAuth.")
     test -f "$aid_package"; and not test -L "$aid_package"; or return 2
     set -l aid_package_info (/usr/bin/pacman -Qp "$aid_package")
     or return $status
-    __aid18_step PACKAGE_VERSION test "$aid_package_info" = 'ai-desktop 0.1.0-80'
+    __aid18_step PACKAGE_VERSION test "$aid_package_info" = 'ai-desktop 0.1.0-81'
     or return $status
     bsdtar -xOf "$aid_package" .INSTALL > "$aid_tmp/package.install"
     or return $status
@@ -185,7 +151,7 @@ print("Native client copied from the accepted package; not run, no OAuth.")
     __aid18_step RELOAD sudo /usr/bin/systemctl daemon-reload
     or return $status
     cd "$aid_tree"; or return $status
-    __aid18_step INSTALLED python3 -I -B -c 'import sys; sys.path.insert(0, sys.argv[1] + "/tests"); import host_analysis_acceptance as check; check.installed_matches(); print("INSTALLED MATCH: PASS")' "$aid_tree"
+    __aid18_step INSTALLED python3 -I -B -c 'import sys; sys.path.insert(0, sys.argv[1] + "/tests"); import host_analysis_acceptance as check; check.installed_matches(native=False); print("INSTALLED MATCH: PASS")' "$aid_tree"
     or return $status
     if contains -- "$aid_mode" --allow-install --allow-codex-install
         return 0

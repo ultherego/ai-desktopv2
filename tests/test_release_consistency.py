@@ -22,8 +22,10 @@ class ReleaseConsistencyTests(unittest.TestCase):
     def test_acceptance_runners_check_exactly_the_pkgbuild_version(self):
         expected = "ai-desktop " + pkgbuild_version()
         runner = (ROOT / "scripts/accept_web_candidate.fish").read_text()
+        clients = (ROOT / "scripts/accept_system_clients_candidate.fish").read_text()
         host = (ROOT / "tests/host_analysis_acceptance.py").read_text()
         self.assertEqual(re.findall(r"ai-desktop \d+\.\d+\.\d+-\d+", runner), [expected])
+        self.assertEqual(re.findall(r"ai-desktop \d+\.\d+\.\d+-\d+", clients), [expected])
         self.assertEqual(re.findall(r"ai-desktop \d+\.\d+\.\d+-\d+", host), [expected])
 
     def test_readme_names_the_current_candidate(self):
