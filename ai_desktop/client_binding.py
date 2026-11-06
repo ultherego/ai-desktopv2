@@ -4,6 +4,9 @@ Only compiled installation layouts are supported. Root-owned source metadata
 is not vendor authentication. The ordinary read-only /usr mount remains the OS
 runtime baseline; private client resources are snapshotted in their entirety.
 The memfds contain no credentials, and only bwrap receives their descriptors.
+Bwrap copies them into linked files on private tmpfs mounts made read-only
+before execution. This preserves a live canonical executable path for clients
+that discover their resources through /proc/self/exe.
 """
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -256,6 +259,9 @@ class BoundClient:
 
     def mount_args(self):
         self.recheck()
+        # --ro-bind resolves source paths and cannot resolve an unlinked memfd;
+        # --ro-bind-data unlinks its temporary backing file. Keep --file copies
+        # linked inside our tmpfs so current_exe().canonicalize() still works.
         args = ["--tmpfs", INNER_ROOT, "--dir", INNER_ROOT + "/payload"]
         mounted = set()
         for tree in self._trees:
@@ -271,13 +277,13 @@ class BoundClient:
                 else:
                     descriptor, mode = self._capture.files[entry.path]
                     os.lseek(descriptor, 0, os.SEEK_SET)
-                    args += ["--ro-bind", "/proc/self/fd/" + str(descriptor), entry.path]
+                    args += ["--perms", format(mode, "o"), "--file", str(descriptor), entry.path]
                     mounted.add(entry.path)
             args += ["--remount-ro", tree.root]
         if self._inspection.path not in mounted:
             descriptor, mode = self._capture.files[self._inspection.path]
             os.lseek(descriptor, 0, os.SEEK_SET)
-            args += ["--ro-bind", "/proc/self/fd/" + str(descriptor), self._executable]
+            args += ["--perms", format(mode, "o"), "--file", str(descriptor), self._executable]
         args += ["--symlink", self._executable, self.binary, "--remount-ro", INNER_ROOT]
         return args
 

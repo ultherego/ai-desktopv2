@@ -155,8 +155,12 @@ jobs:
           PROFILE
           sudo apparmor_parser -r "$RUNNER_TEMP/ai-desktop-bwrap.apparmor"
       - name: User native registration with actual root-owned copies (synthetic ELF, no execution)
+        id: client_registration
         run: python -B tests/ci_client_registration.py --allow-disposable-client-registration-test
       - name: Bound system client replacement and descriptor isolation (synthetic ELF)
+        # These two fixtures are independent and clean up their own roots.
+        # A registration failure remains fatal but must not hide binding evidence.
+        if: success() || (failure() && steps.client_registration.conclusion == 'failure')
         run: python -B tests/ci_client_binding.py --allow-disposable-client-binding-test
       - name: Check out the button shipped with DMS 2.1.0
         if: matrix.bubblewrap == 'distro'

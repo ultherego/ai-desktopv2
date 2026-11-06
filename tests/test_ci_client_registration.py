@@ -2,6 +2,7 @@
 from contextlib import redirect_stdout
 import io
 from pathlib import Path
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -47,10 +48,39 @@ class ClientRegistrationCiGuardTests(unittest.TestCase):
             context.assert_not_called()
 
     def test_privileged_command_is_fixed_and_contains_only_action_and_reviewed_hashes(self):
-        with patch.object(driver, "checked", return_value=b'{"provider":"codex","status":"registered","digest":"' + b"a" * 64 + b'"}\n') as run:
+        completed = SimpleNamespace(returncode=0, stdout=b'{"provider":"codex","status":"registered","digest":"' + b"a" * 64 + b'"}\n', stderr=b"PRIVATE")
+        with patch.object(driver, "invoke", return_value=completed) as run, redirect_stdout(io.StringIO()):
             driver.privileged("refresh", "a" * 64, "b" * 64)
         run.assert_called_once_with(["/usr/bin/sudo", "-n", "--", "/usr/bin/python3", "-I", "-B", str(driver.HELPER),
-                                     "--root-fixture", "refresh", "a" * 64, "b" * 64], expected=0)
+                                     "--root-fixture", "refresh", "a" * 64, "b" * 64])
+
+    def test_unexpected_root_refusal_exposes_only_closed_reason_action_and_return_code(self):
+        for output, exposed in ((b"ROOT FIXTURE: REFUSED reason=guard-fixture-ownership\n", "guard-fixture-ownership"),
+                                (b"ROOT FIXTURE: REFUSED reason=source-unsafe\n", "source-unsafe"),
+                                (b"ROOT FIXTURE: REFUSED reason=/PRIVATE/path\n", "unrecognized"),
+                                (b"PRIVATE secret\n" + b"x" * 4096, "unrecognized")):
+            with self.subTest(exposed=exposed), patch.object(driver, "invoke", return_value=SimpleNamespace(
+                    returncode=2, stdout=output, stderr=b"PRIVATE native or source detail")), redirect_stdout(io.StringIO()) as log:
+                with self.assertRaisesRegex(ValueError, "wrong-refusal"):
+                    driver.privileged("register", "0" * 64, reason="source-changed")
+                self.assertEqual(log.getvalue(), "CI REGISTRATION ROOT: action=register expected=source-changed exit=2 reason=" + exposed + "\n")
+                self.assertNotIn("PRIVATE", log.getvalue())
+
+    def test_root_guard_errors_emit_only_closed_diagnostic_codes(self):
+        for error, expected in ((ValueError("fixture-source"), "guard-fixture-source"),
+                                (ValueError("PRIVATE source"), "guard-input"),
+                                (PermissionError("PRIVATE path"), "guard-access"),
+                                (FileNotFoundError("PRIVATE path"), "guard-missing"),
+                                (ImportError("PRIVATE import"), "guard-import")):
+            with patch.object(driver, "root_context", side_effect=error), redirect_stdout(io.StringIO()) as log:
+                self.assertEqual(driver.root_action(["register", "a" * 64]), 2)
+                self.assertEqual(log.getvalue(), "ROOT FIXTURE: REFUSED reason=" + expected + "\n")
+
+    def test_unexpected_exit_keeps_diagnostics_without_releasing_captured_streams(self):
+        with patch.object(driver, "invoke", return_value=SimpleNamespace(returncode=1, stdout=b"PRIVATE", stderr=b"PRIVATE")), \
+                redirect_stdout(io.StringIO()) as log, self.assertRaisesRegex(ValueError, "fixture-command"):
+            driver.privileged("refresh", "a" * 64, "b" * 64)
+        self.assertEqual(log.getvalue(), "CI REGISTRATION ROOT: action=refresh expected=success exit=1 reason=unrecognized\n")
 
 
 if __name__ == "__main__":

@@ -31,6 +31,7 @@ SOURCE = r'''
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #ifndef MARKER
 #define MARKER "ORIGINAL"
@@ -58,6 +59,11 @@ int main(int argc, char **argv) {
   fd = open(argv[1], O_WRONLY);
   if (fd >= 0) { close(fd); return 7; }
   if (errno != EROFS && errno != EACCES) return 8;
+  fd = open(argv[2], O_WRONLY);
+  if (fd >= 0) { close(fd); return 9; }
+  if (errno != EROFS && errno != EACCES) return 10;
+  if (chmod(argv[1], 0600) == 0 || errno != EROFS) return 11;
+  if (chmod(argv[2], 0700) == 0 || errno != EROFS) return 12;
   puts(MARKER);
   return 0;
 }

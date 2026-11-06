@@ -82,7 +82,10 @@ class ClientBindingTests(unittest.TestCase):
                     operation()
             first = bound.mount_args()
             self.assertEqual(first, bound.mount_args())
-            self.assertIn("/proc/self/fd/" + str(fd), first)
+            self.assertIn(str(fd), first)
+            self.assertIn("--file", first)
+            self.assertNotIn("--ro-bind", first)
+            self.assertFalse(any(argument.startswith("/proc/self/fd/") for argument in first))
             self.assertIn(binding.INNER_ROOT + "/payload/codex", first)
             self.assertNotIn(str(self.native), first)
             self.assertNotIn("--preserve-fds", first)
@@ -103,6 +106,38 @@ class ClientBindingTests(unittest.TestCase):
             self.assertEqual(len(bound.pass_fds), 3)
             self.assertEqual({stat.S_IMODE(os.fstat(fd).st_mode) for fd in bound.pass_fds}, {0o444, 0o555})
             self.assertIn(b'{"fixture":true}', {os.pread(fd, 1000, 0) for fd in bound.pass_fds})
+
+    def test_linked_tmpfs_copy_rewinds_every_payload_for_repeated_sequential_phases(self):
+        self.package()
+        with binding.bind("codex") as bound:
+            copies = []
+            previous = None
+            for phase in range(2):
+                args = bound.mount_args()
+                if previous is not None:
+                    self.assertEqual(args, previous)
+                previous = args
+                copied = {}
+                last_file = 0
+                for index, value in enumerate(args):
+                    if value != "--file":
+                        continue
+                    self.assertEqual(args[index - 2], "--perms")
+                    mode = int(args[index - 1], 8)
+                    descriptor, destination = int(args[index + 1]), args[index + 2]
+                    self.assertIn(descriptor, bound.pass_fds)
+                    self.assertEqual(os.lseek(descriptor, 0, os.SEEK_CUR), 0)
+                    data = os.read(descriptor, 4096)
+                    self.assertTrue(data)
+                    self.assertEqual(os.read(descriptor, 1), b"")
+                    self.assertEqual(mode, 0o555 if destination.endswith(("/codex", "/rg")) else 0o444)
+                    copied[destination] = data
+                    last_file = index
+                self.assertEqual(len(copied), 3)
+                self.assertGreater(args.index("--remount-ro"), last_file)
+                self.assertEqual(args[-2:], ["--remount-ro", binding.INNER_ROOT])
+                copies.append(copied)
+            self.assertEqual(copies[0], copies[1])
 
     def test_registered_payload_binds_native_and_resources_without_source_manifest(self):
         self.package()
@@ -135,7 +170,7 @@ class ClientBindingTests(unittest.TestCase):
             args = bound.mount_args()
             self.write(self.native, elf() + b"replacement", 0o755)
             self.assertEqual(os.pread(fd, 1000, 0), elf())
-            self.assertIn("/proc/self/fd/" + str(fd), args)
+            self.assertIn(str(fd), args)
             self.denied("client-changed", bound.recheck)
             self.denied("client-changed", bound.mount_args)
 

@@ -24,6 +24,13 @@ CACHE = FIXTURE / "cache"
 ENV = {"PATH": "/usr/bin", "LANG": "C.UTF-8"}
 FLAG = "--allow-disposable-client-registration-test"
 HASH = re.compile(r"[0-9a-f]{64}\Z", re.ASCII)
+GUARD_REASONS = frozenset({"root-fixture-only", "disposable-platform", "caller", "fixture-ownership",
+                           "fixture-metadata", "fixture-source"})
+ROOT_REASONS = frozenset({"already-registered", "authorization", "busy", "changed-cache", "cleanup-incomplete",
+                         "input", "not-registered", "published-cleanup-incomplete", "registration-changed",
+                         "source-changed", "source-unsafe", "source-unsupported", "source-unavailable", "source-missing",
+                         "storage", "unsafe-cache", "unsafe-source", "guard-access", "guard-missing", "guard-io",
+                         "guard-import", "guard-input", "unrecognized"}) | frozenset("guard-" + value for value in GUARD_REASONS)
 NATIVE_SOURCE = r'''
 #include <stdio.h>
 #ifndef MARKER
@@ -48,9 +55,13 @@ def require_ci():
         raise ValueError("existing-fixture")
 
 
+def invoke(arguments):
+    return subprocess.run(arguments, env=ENV, stdin=subprocess.DEVNULL, capture_output=True,
+                          check=False, timeout=60)
+
+
 def checked(arguments, *, expected=0):
-    result = subprocess.run(arguments, env=ENV, stdin=subprocess.DEVNULL, capture_output=True,
-                            check=False, timeout=60)
+    result = invoke(arguments)
     if result.returncode != expected:
         raise ValueError("fixture-command")
     return result.stdout
@@ -116,21 +127,49 @@ def root_action(arguments):
                                         expected_digest=arguments[1],
                                         previous_digest=arguments[2] if len(arguments) == 3 else None)
         except registration.RegistrationError as error:
-            print("ROOT FIXTURE: REFUSED reason=" + error.reason)
+            print("ROOT FIXTURE: REFUSED reason=" + (error.reason if error.reason in ROOT_REASONS else "unrecognized"))
             return 2
         print(json.dumps(result, sort_keys=True))
         return 0
-    except (OSError, ValueError, KeyError, TypeError):
-        print("ROOT FIXTURE: REFUSED reason=guard")
+    except (OSError, ValueError, KeyError, TypeError, ImportError) as error:
+        if isinstance(error, ValueError) and str(error) in GUARD_REASONS:
+            reason = "guard-" + str(error)
+        elif isinstance(error, PermissionError):
+            reason = "guard-access"
+        elif isinstance(error, FileNotFoundError):
+            reason = "guard-missing"
+        elif isinstance(error, OSError):
+            reason = "guard-io"
+        elif isinstance(error, ImportError):
+            reason = "guard-import"
+        else:
+            reason = "guard-input"
+        print("ROOT FIXTURE: REFUSED reason=" + reason)
         return 2
 
 
 def privileged(action, digest, previous=None, *, reason=None):
+    if (action not in ("register", "refresh", "remove") or not HASH.fullmatch(digest)
+            or previous is not None and not HASH.fullmatch(previous)
+            or reason is not None and reason not in ROOT_REASONS):
+        raise ValueError("fixture-action")
     arguments = ["/usr/bin/sudo", "-n", "--", "/usr/bin/python3", "-I", "-B", str(HELPER),
                  "--root-fixture", action, digest]
     if previous is not None:
         arguments.append(previous)
-    output = checked(arguments, expected=2 if reason is not None else 0)
+    completed = invoke(arguments)
+    output = completed.stdout
+    observed = "unrecognized"
+    if type(output) is bytes and len(output) <= 192:
+        for candidate in ROOT_REASONS:
+            if output == ("ROOT FIXTURE: REFUSED reason=" + candidate + "\n").encode():
+                observed = candidate
+                break
+    code = completed.returncode if type(completed.returncode) is int and -128 <= completed.returncode <= 255 else "invalid"
+    print("CI REGISTRATION ROOT: action=" + action + " expected=" + (reason or "success")
+          + " exit=" + str(code) + " reason=" + observed, flush=True)
+    if completed.returncode != (2 if reason is not None else 0):
+        raise ValueError("fixture-command")
     if reason is not None:
         if output != ("ROOT FIXTURE: REFUSED reason=" + reason + "\n").encode():
             raise ValueError("wrong-refusal")
