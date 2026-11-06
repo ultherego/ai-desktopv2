@@ -309,9 +309,10 @@ def bind(provider):
             bundled = bool(matching)
             if not bundled and inspection.path != clients._CANDIDATES[provider]:
                 raise AnalysisDenied("client-layout")
-            roots = matching if matching else tuple(root for root in roots
-                if not _inside(clients._REGISTERED_ROOTS[provider], root))
-            trees = tuple(_tree(root, capture) for root in roots)
+            # A flat native is self-contained. Only the selected executable's
+            # recognized package root belongs to this binding; another install
+            # may be absent or unsafe without becoming part of its payload.
+            trees = tuple(_tree(root, capture) for root in matching)
             executable = inspection.path if bundled else INNER_ROOT + "/payload/" + provider
             if inspection.path not in capture.files:
                 path, identity, nodes, descriptor = clients._walk(inspection.path, capture=True)

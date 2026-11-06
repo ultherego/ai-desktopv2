@@ -206,14 +206,42 @@ class ClientBindingTests(unittest.TestCase):
                 change()
                 self.denied("client-changed", bound.recheck)
 
-    def test_new_package_root_and_replaced_ancestor_are_refused(self):
+    def test_unused_package_changes_do_not_change_flat_binding_but_selected_ancestor_does(self):
         with binding.bind("codex") as bound:
             self.payload.mkdir()
-            self.denied("client-changed", bound.recheck)
+            bound.recheck()
+            self.payload.chmod(0o777)
+            bound.recheck()
         with binding.bind("codex") as bound:
             (self.usr / "bin").rename(self.usr / "old-bin")
             self.write(self.native, elf(), 0o755)
             self.denied("client-changed", bound.recheck)
+
+    def test_flat_clients_do_not_inspect_unsafe_unselected_installations(self):
+        self.write(self.usr / "bin/claude", elf(), 0o755)
+        self.payload.mkdir()
+        self.payload.chmod(0o777)
+        self.opt.chmod(0o777)
+        # The registration directory is independently selected metadata. Keep
+        # it outside the unused /opt tree, as in the production /var/lib layout.
+        with patch.object(clients, "_REGISTERED_ROOTS", {
+                provider: str(self.usr / "registry" / provider) for provider in ("claude", "codex")}), \
+                patch.object(binding, "_tree", side_effect=AssertionError("unselected installation read")):
+            for provider in ("claude", "codex"):
+                with self.subTest(provider=provider), binding.bind(provider) as bound:
+                    args = bound.mount_args()
+                    self.assertEqual(len(bound.pass_fds), 1)
+                    self.assertNotIn(str(self.payload), args)
+                    self.assertNotIn(str(self.opt / "claude-code"), args)
+                    bound.recheck()
+
+    def test_selected_package_root_and_resource_permissions_still_refuse(self):
+        self.package()
+        self.payload.chmod(0o777)
+        self.denied("client-unsafe", lambda: binding.bind("codex").__enter__())
+        self.payload.chmod(0o755)
+        (self.payload / "codex-package.json").chmod(0o666)
+        self.denied("client-unsafe", lambda: binding.bind("codex").__enter__())
 
     def test_missing_unsafe_unknown_layout_and_special_resource_refusals(self):
         self.native.unlink()
@@ -225,12 +253,12 @@ class ClientBindingTests(unittest.TestCase):
         self.denied("client-layout", lambda: binding.bind("codex").__enter__())
         self.native.unlink()
         self.write(self.native, elf(), 0o755)
-        self.payload.mkdir()
+        self.package()
         os.mkfifo(self.payload / "fifo", 0o600)
         self.denied("client-layout", lambda: binding.bind("codex").__enter__())
 
     def test_package_outside_links_dangling_links_and_loops_are_refused(self):
-        self.payload.mkdir()
+        self.package()
         link = self.payload / "link"
         for target in (str(self.native), "missing", "link"):
             link.symlink_to(target)
@@ -245,7 +273,7 @@ class ClientBindingTests(unittest.TestCase):
                 self.denied("client-layout", lambda: binding.bind("codex").__enter__())
 
     def test_directory_enumeration_stops_at_remaining_entry_budget(self):
-        self.payload.mkdir()
+        self.package()
         yielded = []
         class Scan:
             def __enter__(self):

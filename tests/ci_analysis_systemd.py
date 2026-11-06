@@ -911,10 +911,11 @@ def main(argv=None):
                               if key in {"MESSAGE_ID", "UNIT", "JOB_TYPE", "JOB_RESULT", "EXIT_CODE", "EXIT_STATUS", "CODE_FUNC"}
                               and type(item) is str and re.fullmatch(r"[a-zA-Z0-9@_.:-]{1,100}", item)}
                     print("CI EVENT: " + json.dumps(fields, sort_keys=True))
-        if installed and (stage in ("login-pty", "login-wrong-auth") or
+        if installed and (stage in ("account-credentials", "login-pty", "login-wrong-auth") or
                           (stage == "approved-analysis" and isinstance(exc, AnalysisDenied)
-                           and exc.reason in ("version", "sandbox"))):
-            # Offline version only, with our synthetic executable, no profile or
+                           and exc.reason in ("version", "sandbox", "client-version", "client-protocol",
+                                              "client-unsafe", "client-layout", "client-changed", "client-unavailable"))):
+            # Offline compatibility only, with our synthetic executable, no profile or
             # proxy mounted. The exact production service properties still apply.
             try:
                 command = analysis_admin.login_command()[:-5]
