@@ -1,4 +1,4 @@
-"""Metadata-only local readiness diagnostic; never runs Claude or shell commands.
+"""Metadata-only local readiness diagnostic; never runs native clients or commands.
 
 Presence checks are not proof that a namespace or authenticated session works.
 The report intentionally contains no host paths, process output or credentials.
@@ -9,7 +9,7 @@ from pathlib import Path
 import shutil
 import sys
 
-from . import e2_account, launcher, skills
+from . import e2_account, launcher, skills, system_clients
 
 MINIMUM_PYTHON = (3, 12)
 TOOLS = ("bwrap", "findmnt", "systemctl")
@@ -23,6 +23,20 @@ def inspect():
     tools = {name: shutil.which(name) is not None for name in TOOLS}
     platform_supported = sys.platform == "linux"
     python_supported = sys.version_info >= MINIMUM_PYTHON
+    discovered = {}
+    for provider in ("claude", "codex"):
+        result = system_clients.inspect(provider)
+        # Keep paths and filesystem identities local to the inspector. Trust
+        # here covers file metadata only, never vendor or protocol verification.
+        discovered[provider] = {
+            "status": result.status,
+            "detail": result.detail,
+            "metadata_trusted": result.status == "present",
+            "layout": "native-elf" if result.status == "present" else "unverified",
+            "active": False,
+            "version_checked": False,
+            "protocol_checked": False,
+        }
 
     if INSTALLED.is_dir():
         # An installed package only ever uses its own client, whatever else is on PATH. Its exact version is checked
@@ -57,6 +71,12 @@ def inspect():
         "platform_linux": platform_supported,
         "python_supported": python_supported,
         "tools_available": tools,
+        "runtime_client_source": "bundled-package",
+        "bundled_clients_present": {
+            "claude": (INSTALLED / "claude-code").is_file(),
+            "codex": (INSTALLED / "codex").is_file(),
+        },
+        "system_clients": discovered,
         "claude_binary_valid": claude_binary,
         "claude_profile_directory": bool(profile_dir),
         "skill_source_valid": source_skill,
@@ -70,6 +90,18 @@ def inspect():
         # Readiness metadata (including the separate UID) cannot authorize live Claude.
         "diagnose_prerequisites_present": False,
     }
+
+
+def system_client_summary(data):
+    descriptions = {
+        "present": "trusted file metadata, native ELF",
+        "missing": "missing",
+        "unsafe": "unsafe file metadata",
+        "unsupported": "unsupported layout",
+        "changed": "changed during inspection",
+        "unavailable": "metadata unavailable",
+    }
+    return descriptions.get(data.get("status"), "metadata unavailable") + "; not active."
 
 
 def main(argv=None):
@@ -118,9 +150,16 @@ def main(argv=None):
     else:
         print("Offline requirements (metadata): " + (
             "met." if data.get("offline_prerequisites_present") is True else "incomplete."))
-        print("Claude client: %s; isolated account metadata: %s." % (
-            "found" if data.get("claude_binary_valid") is True else "missing",
-            "valid" if data.get("isolated_account_metadata_valid") is True else "unconfirmed"))
+        bundled = data.get("bundled_clients_present", {})
+        print("Runtime source: bundled package clients (Claude %s; Codex %s)." % (
+            "found" if bundled.get("claude") is True else "missing",
+            "found" if bundled.get("codex") is True else "missing"))
+        print("Isolated account metadata: " + (
+            "valid." if data.get("isolated_account_metadata_valid") is True else "unconfirmed."))
+        for provider in ("claude", "codex"):
+            print("System " + provider.capitalize() + ": " + system_client_summary(
+                data.get("system_clients", {}).get(provider, {})))
+        print("System client vendor, version and protocol: not verified; runtime migration is pending.")
         print("Login and AI operation: not checked.")
         print("Details: ai-desktop doctor --v")
     return 0

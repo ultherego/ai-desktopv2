@@ -43,7 +43,7 @@ even after the interface dies. The channel to it carries no data or credentials.
 **The analysis service** runs as `ai-desktop`, with no login shell and no supplementary groups. It has `NoNewPrivileges`, an empty capability set, `ProtectSystem=strict`, `ProtectHome`, limits on memory,
 tasks and time, and restricted socket activation. Before use it checks its own identity, the permissions of the login directory and the owner of the program's files.
 
-**The client** is the official executable from a root-owned directory, in the exact reported version 2.1.312. It gets a clean environment, its own writable login directory, and an empty HOME and working directory. It has no access to the user's
+**The Claude client in the working 0.1.0-79 runtime** is the official executable from a root-owned package-private directory, in the exact reported version 2.1.312. It gets a clean environment, its own writable login directory, and an empty HOME and working directory. It has no access to the user's
 home directory or desktop sockets. Normal mode: `--tools ""`, an empty MCP configuration, one turn, no session saving. Web mode: `WebSearch` only, at most 4 turns and 2 calls. A seccomp filter forbids setting SUID/SGID bits. There is no general system call filter.
 
 **The proxy** handles only CONNECT to `api.anthropic.com`, `claude.ai`, `platform.claude.com` (for Codex inference, separately `api.openai.com`; for an explicitly connected native quota session, `auth.openai.com` and `chatgpt.com` on HTTPS). It resolves the name once, checks all addresses, rejects non-public ones (including localhost and metadata addresses) and connects to the checked address. Before connecting it requires
@@ -54,6 +54,16 @@ a ClientHello with SNI equal to the host name, and rejects ECH. It does not use 
 **Weather** is a controller collector to two fixed Open-Meteo hosts. **systemd:** only unit names and states.
 
 Rejected option: a token broker hiding OAuth from the client, once marked "PREFERRED, TO BE VERIFIED IN E2". It is not the current architecture or a fallback plan. The old entry points `diagnose ask` and `controller ask` refuse and do not start the model.
+
+### System-client transition: target, not current runtime
+
+The replacement architecture uses either a compatible system-installed Claude client or a compatible system-installed Codex client. Neither provider is a prerequisite for the other. AI Desktop packages will contain the adapters and isolation machinery, not vendor executables. Candidate 0.1.0-80 adds shared metadata-only discovery to `doctor`; it does not execute the system binary or check its version/protocol. A `present` result is not vendor authentication or runtime readiness. The existing adapters continue to use their current installation paths until explicitly changed and accepted.
+
+Discovery must examine supported absolute system paths, ownership and modes of the executable and its parents, executable format, integrity and version compatibility. Arbitrary `PATH`, HOME binaries and shell/npm wrappers are outside the initial supported set. A future controlled version probe must remain separate from inference and authentication; no such probe runs in this foundation. A pure version-policy comparison against the tested 2.1.312/0.166.0 baselines is not a capability test. Unknown compatibility is a refusal, not permission to try the model.
+
+The execution path must bind its verified client identity to the task and recheck before launching it. A replacement or update during the task must stop further execution. Compatible updates between tasks should not require an AI Desktop rebuild. The service account, separate account profiles, namespaces, restricted tools and egress policy remain separate mandatory boundaries. Discovery must never reuse the user's native CLI credentials or expand mounts to accommodate an untrusted wrapper. Runtime validation must cover the supported installation layout and required helpers, not just the first ELF found.
+
+Risks to test before runtime migration ships: symlink/path substitution, writable parents, a changed executable between validation and launch, a misleading version result, unsupported protocols and a provider-only installation. A passing discovery unit test is not evidence for the migrated authentication or namespace path.
 
 ## 3. Data flow and consent
 
@@ -66,6 +76,8 @@ Rejected option: a token broker hiding OAuth from the client, once marked "PREFE
 7. **Write.** A proposal applies only to files marked as writable. Test on a copy, full diff, consent, re-check of the policy and file state, then journal and publication.
 
 **Fail-closed rule:** a missing sandbox, a wrong version, an exhausted budget, a state change or an unconfirmed session stop end the operation with a refusal. No retries and no fallback.
+
+The next consent design will cover a declared plan, its bounded stages and copy tests with one approval. This must retain the per-request immutable payload, live source/policy checks and budget accounting; it is not blanket consent for later model suggestions. Final diff approval before publication remains separate. The working 0.1.0-79 flow still asks separately for project stages and copy tests.
 
 The output of `--v`, `doctor` and `status` authorizes nothing. `status` is offline: it does not start the client and does not prove login.
 
@@ -146,12 +158,12 @@ Deletion moves to `.ai-desktop-tasks/trash-*` after consent bound to the exact p
 
 Synthetic tests use a mock client and do not prove the behavior of the real client or OAuth refresh. There is no test for a hostile process of the same UID or for power loss. There is no independent review. The result of one commit or computer does not attest another. Changing these boundaries requires describing the trade-off here and a test on a real system.
 
-### Larger task data and knowledge (candidate 0.1.0-79)
+### Larger task data and knowledge (0.1.0-79)
 
 The model wire ceiling (36 MiB) accounts for up to 16 MiB selected UTF-8 data plus JSON escaping and bounded metadata; it is not a new file grant or proof of provider token capacity. Generated workspace text has a separate 4.25 MiB ceiling; anchored replacements can reconstruct larger results locally. Complete restored bytes, including BOM/CRLF, remain subject to edit and rollback bounds.
 
 Analysis opts into a 96 MiB aggregate TLS tunnel budget, including both directions and protocol overhead. Account/login tunnels retain the 4 MiB default. The limit is compiled into the minimal proxy module so its sandbox does not gain controller dependencies. Existing destination, SNI, timeout and connection checks remain in force.
 
-Local project-test copies have an independent contract: default 2,000 files / 8 MiB per file / 64 MiB combined; hard 20,000 / 32 MiB / 128 MiB. The copy pipe is opt-in and unavailable to ordinary model calls. The sandbox bounds memory to 2 GiB, writable work to 160 MiB and individual files to 32 MiB. This increases resource consumption and needs the real namespace/cgroup fixtures and CachyOS acceptance. Copy membership is never added to model context simply because tests need it.
+Local project-test copies have an independent contract: default 2,000 files / 8 MiB per file / 64 MiB combined; hard 20,000 / 32 MiB / 128 MiB. The copy pipe is opt-in and unavailable to ordinary model calls. The sandbox bounds memory to 2 GiB, writable work to 160 MiB and individual files to 32 MiB. This increases resource consumption; the existing namespace/cgroup fixtures and the recorded 0.1.0-79 CachyOS acceptance cover that implementation, not a future runtime migration. Copy membership is never added to model context simply because tests need it.
 
 On-demand procedure and reference selection in all modes is controller-managed. The knowledge envelope is canonically bound to consent and reconstructed without inheriting a worker's ambient catalog. Bundled references have source/version provenance and hashes but remain untrusted evidence. Package-version evidence comes only from a successful, untruncated exact allowed query and is reset with the task. No new command grant, network route, desktop detection/download or shell tool is implied by loading documentation.

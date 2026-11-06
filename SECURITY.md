@@ -28,6 +28,14 @@ The optional native Codex quota session is a distinct credential. The owner sele
 
 Explicit setup enables the systemd quota socket for that UID. Its path is controlled by root, its mode is 0600, and the service authenticates the kernel peer UID. Any process running as that same desktop UID can request an enrolled slot’s limits. The desktop command checks its local network policy; network enforcement in the worker is the fixed native operation and compiled egress allowlist. Disconnecting removes the local credential. When no native links remain for that UID the administrative action removes the socket activation.
 
+## System-client migration boundary
+
+Candidate 0.1.0-80 retains the working 0.1.0-79 adapters, package-private client paths and version checks documented below. Its `doctor` discovery inspects supported system-client ELF metadata without executing the binary or checking its version/protocol. A `present` result establishes neither vendor authenticity nor runtime readiness. The agreed replacement uses a compatible system-installed Claude or Codex executable, with neither client required by the other. Shared discovery/preflight is the first step; it does not authorize execution, transfer credentials or prove that runtime migration is complete.
+
+The replacement must validate a supported absolute system path, root ownership and safe parent modes, executable format, file identity/integrity and adapter-compatible version. Initial discovery excludes arbitrary `PATH`, HOME installations and shell/npm wrappers. A task must bind and recheck the selected client identity before execution; replacement or an incompatible update invalidates it. A compatible update between tasks must not require repackaging AI Desktop. No discovery result grants network, model tools, desktop sockets or access to the user's CLI authentication. Existing separate profiles and namespace restrictions remain required.
+
+Until the runtime consumes that verified identity through every execution path, the legacy version checks and limitations below remain in force. See [the transition instructions](docs/AGENT_INSTALL.md).
+
 ## Trust boundaries
 
 | Element | Runs as | What it sees and can do |
@@ -35,7 +43,7 @@ Explicit setup enables the systemd quota socket for that UID. Its path is contro
 | The `ai-desktop` program (controller) | your regular user, refuses to work as root | Reads the policy and files within its limits, asks for consent, performs approved writes. |
 | Session helper | root, through `sudo`, a fixed file from the package | Only starts and stops the units of your session. It gets no questions, data or credentials. |
 | Analysis service | system account `ai-desktop`, with no login and no privileges | A restricted systemd unit, holds the proxy and starts the client. |
-| Claude Code 2.1.312 client | the same account, in Bubblewrap | Its own login directory `/var/lib/ai-desktop/claude`, empty HOME and working directory, no tools (except `WebSearch` in web mode), no direct network. |
+| Claude Code 2.1.312 client (retained runtime) | the same account, in Bubblewrap | Its own login directory `/var/lib/ai-desktop/claude`, empty HOME and working directory, no tools (except `WebSearch` in web mode), no direct network. |
 | Proxy | service, outside the client sandbox | Passes only TLS on port 443 to `api.anthropic.com`, `claude.ai`, `platform.claude.com`, to public addresses. |
 | Local model server | your configured loopback service | Receives the approved prompt, history and authorized material. The user who operates the service controls its logging. |
 | Model | at the provider | Returns text and proposals. This is untrusted data. |
@@ -58,7 +66,7 @@ The model's response is checked against a closed list of actions. The response t
 
 **It can propose:**
 
-- listing and searching **names** in directories from `read`, within budgets;
+- listing and searching names in directories from `read`, and bounded content searches and line reads in authorized files;
 - reading files from `read`, but only those shown by discovery or typed by you;
 - running a command matching your template from `allow`;
 - writing or creating a file in `write`, deleting to the trash, a change from the `change` list with a test and an undo;
@@ -86,7 +94,10 @@ Important: **the content of a file or the output of a command can lead the model
 | Change from `change` | The change, test and undo shown, typing the whole word `yes`. An undo after a failure also requires `yes`. |
 | Undo and restore | A separate `[y/n]`. |
 | `material`, `project` | Consent per question. Whole-file analysis: one consent per task, valid for 30 minutes. Next project stage: a separate `[y/n]`. |
-| `task run` | Sending and writing separately. |
+| `task run` | Sending and writing separately; multi-process suites also require their copy-test approval. |
+| Project suites in `ask`/`project` | Current runtime: a separate approval for the permitted local copy and fixed recipe, before the final write decision. |
+
+The agreed next flow binds one approval to the declared plan, stage budgets and copy tests. It must not silently add a test, widen data access or reuse approval after a relevant change. Final diff approval, live system changes, deletion and undo remain separate. This simplification is not yet the current prompt flow.
 
 The consent prompt clears previously typed characters from the terminal, so pasted text does not approve an action you have not yet seen.
 Without a terminal there is no consent: the program refuses. There is no unattended mode. Consent does not protect against another process controlling the same terminal.
@@ -99,7 +110,7 @@ consent.
 The chosen provider (Anthropic, and with Codex OpenAI) receives:
 
 - your question and pastes;
-- the fixed instructions of the program and the agent's instructions with the content of assigned Skills, including your own;
+- the fixed instructions, the agent's instructions, assigned Skill metadata and the procedures/references actually loaded, including your own;
 - the patterns of `read` and `write` rules, the `allow` and `change` templates, the availability of systemd, weather and the Internet. `deny` rules are not sent;
 - names, types and sizes from discovery steps;
 - the content of files read with **absolute paths**, which may contain the user name;
@@ -123,7 +134,7 @@ Data that was sent cannot be withdrawn.
 - **Safety of the `allow` list.** The sandbox does not isolate host Unix sockets, so a command able to change state through D-Bus or Docker is not stopped,
   and it runs without asking. List only read-only commands here.
 - **Recognition of secrets.** In `version = 2` there is no hidden name filter or private key scanner. A secret in an allowed tree without `deny` can go to the provider.
-- **Immutability of the client.** The reported version is checked, not the checksum of the file in the package. You check the checksum when downloading.
+- **Immutability of the legacy client.** In the working 0.1.0-79 runtime the reported version is checked, not the checksum of the file in the package. Download-time checksum verification is separate. The system-client migration requires task-bound identity/integrity checks, but discovery alone does not supply that runtime guarantee.
 - **Correctness of changes.** A test on a copy concerns only the chosen check, `text` does not examine syntax or behaviour.
 - **Atomicity.** A multi-file task and a package update are not one transaction. There is no guarantee in case of power loss.
 - **Truthfulness of the model's answers, search results or sources.**

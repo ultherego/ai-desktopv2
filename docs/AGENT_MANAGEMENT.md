@@ -2,6 +2,10 @@
 
 An agent never adds permissions. Files, commands and network are decided by `~/.config/ai-desktop/permissions.toml`, and writing by your consent.
 
+## Client transition
+
+Candidate 0.1.0-80 retains the working 0.1.0-79 runtime and login flows below. Its `doctor` report adds system-client file metadata, with version and protocol unchecked and the discovered client inactive. The agreed target uses compatible system-installed Claude or Codex clients independently, with shared discovery/preflight and no vendor binaries in the AI Desktop package. Detection alone does not switch adapters or reuse an existing user CLI login. See [client installation and transition](AGENT_INSTALL.md) for the current path and the requirements for the replacement.
+
 ## Settings and login
 
 `ai-desktop settings` opens a menu in the terminal: arrows and Enter select, Esc goes back. The menu covers the service, agent, model, reasoning level, access, instructions and Skills.
@@ -46,11 +50,11 @@ ai-desktop agents use default
 ai-desktop agents remove python-review   # only inactive, not the default
 ```
 
-After `agents setup`:
+New configurations expose the default, diagnostic, programmer and reviewer catalogs immediately. Explicit `agents setup` adds missing predefined roles and fills empty predefined selections; it preserves non-empty custom assignments and the other role fields. The resulting presets are:
 
 | Profile | Skill | Access |
 |---|---|---|
-| `default` | `concise-assistant` | `changes` |
+| `default` | 21 general Arch/CachyOS, diagnostics and development Skills, including `concise-assistant` | `changes` |
 | `diagnostic` | CachyOS diagnostic, desktop documentation and Arch procedures (17 for an empty selection) | `read-only` |
 | `programmer` | `code-development` | `changes` |
 | `reviewer` | `code-review` | `read-only` |
@@ -71,17 +75,17 @@ ai-desktop skills new NAME        # ~/.config/ai-desktop/skills/NAME/SKILL.md
 ```
 
 A Skill is a procedure of up to 96 KiB, without executable tools or scripts. It may include bounded documentation under `references/`, loaded individually on demand. The package contains general Skills for CachyOS (`cachyos-*`) and Arch Linux (`arch-*`), for programming and analysis, and `desktop-documentation`, which points to desktop documentation; the CachyOS Skills deliberately do not describe desktops and compositors. Your own Skill lives outside the repository and the package, and with the same name it takes priority over the general one.
-A name consists of lowercase letters, digits and hyphens. Do not put secrets in it: the content of an assigned Skill goes to the model. A path written in the main Skill procedure or in an agent's instructions counts as given by you, so the model can read it without discovery; the policy and `deny` still decide.
+A name consists of lowercase letters, digits and hyphens. Do not put secrets in it: assigned metadata goes to the model, and a selected procedure or reference sends its content. A path written in the main Skill procedure or in an agent's instructions counts as given by you, so the model can read it without discovery; the policy and `deny` still decide.
 
 Reference documents do not ground local paths or grant reads. New configurations expose the general catalog; existing saved assignments, including an empty list, are preserved.
 
-Changing assigned Skills may require a new conversation, because a saved conversation is tied to the agent's configuration.
+Changing assigned Skills may require a new conversation, because a saved conversation is tied to the agent's configuration. Loaded resources can be reused in a running conversation after revalidation, but their loaded state is not restored from a saved session. Version-specific reference text is withheld when the installed version is unknown or mismatched; rolling references remain explicitly unverified for that version.
 
 ## Conversation in `ask`
 
 Run `ai-desktop ask` once and keep working: after an answer, `>` comes back. Arrows edit the line and recall earlier messages. An empty line or two Ctrl-D end the conversation. Ctrl-C while waiting stops only the current turn. `ask --question "..."` is a single question.
 
-**Consent.** One `Send this request to Claude? [y/n]:` per conversation. Asked again after a change of permissions, service or agent. It lives only in the process's memory, so after a conversation is resumed the program asks again. Writes and changes have their own consents.
+**Consent.** One `Send this request to Claude? [y/n]:` per conversation. Asked again after a change of permissions, service or agent. It lives only in the process's memory, so after a conversation is resumed the program asks again. Writes and changes have their own consents. Current project suites also ask before running the permitted local copy. The next flow will approve a declared plan, its stages and copy tests once, with separate final diff/write approval; this simplification is not implemented by client discovery.
 
 **Memory has two layers:**
 
@@ -114,7 +118,8 @@ You do not have to name files. Within one consent the model carries out a finite
 
 1. `list`: entries (name, type, size) from up to four directories.
 2. `find`: search by a fragment of the name, without content.
-3. `read`: only paths shown in the steps above or typed by you. A guessed path is `discovery-required`.
+3. `search-content` / `read-range`: bounded content matches or line ranges from authorized, grounded paths, with hashes and coverage.
+4. `read`: selected files from paths shown above or typed by you. A guessed path is `discovery-required`.
 
 `deny` acts first: a name covered by `deny` is not listed, counted or sent. Refusals have fixed codes and contain no system text. Exceeding a budget names the key; the program does not send a selected part as if it were the whole. The budgets are in the table in [README](../README.md#first-run-and-permissions). Every step and correction is an additional request to the model.
 
@@ -124,7 +129,7 @@ In `version = 2` there is no hidden list of names. If `read` covers `~/.config/a
 
 ## Codex through a ChatGPT subscription
 
-Codex is optional and enabled separately. Treat it as experimental. The package uses the official **Codex 0.166.0** client ([release](https://github.com/openai/codex/releases/tag/rust-v0.166.0)).
+Codex is selected and enabled independently of Claude. Treat this adapter as experimental. The working 0.1.0-79 package path uses the official **Codex 0.166.0** client ([release](https://github.com/openai/codex/releases/tag/rust-v0.166.0)). The preparation below remains a transition procedure until the system-client runtime is accepted.
 
 ```fish
 cd ~/ai-desktop
