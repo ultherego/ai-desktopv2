@@ -1,6 +1,6 @@
 """Disposable-CI kernel proof for sealed native payloads; no real AI client.
 
-The only root writes are to a freshly created, fixed /opt fixture directory.
+The only root writes are to a freshly created, fixed /usr/lib fixture directory.
 Never run this installer on a developer host. The ELF is compiled here from
 the synthetic source below and never has credentials or an egress bridge.
 """
@@ -8,6 +8,7 @@ from contextlib import contextmanager
 import errno
 import os
 from pathlib import Path
+import stat
 import subprocess
 import sys
 import tempfile
@@ -23,7 +24,7 @@ from ai_desktop.e2_subscription_boundary import base_command
 from ai_desktop.process_io import bounded_process
 
 
-FIXTURE = Path("/opt/ai-desktop-client-binding-fixture")
+FIXTURE = Path("/usr/lib/ai-desktop-client-binding-fixture")
 NATIVE = FIXTURE / "bin/codex"
 RESOURCE = FIXTURE / "resources/payload"
 SOURCE = r'''
@@ -74,7 +75,9 @@ _STAGES = frozenset(("preflight", "compile", "install", "snapshot", "mount", "fi
                      "update", "updated-exec", "source-recheck", "fd-close", "cleanup"))
 _REASONS = frozenset(("assertion", "os-error", "command", "client-missing", "client-unsafe",
                       "client-layout", "client-unavailable", "client-changed", "input", "client",
-                      "timeout", "output-limit", "other"))
+                      "timeout", "output-limit", "owner", "permissions", "special-mode",
+                      "fixture-parent", "other"))
+_SITES = frozenset(("none", "root", "usr", "usr-lib"))
 
 
 def stderr_kind(raw):
@@ -96,17 +99,18 @@ def stderr_kind(raw):
 
 
 class FixtureFailure(ValueError):
-    def __init__(self, stage, *, reason="assertion", code=None, errors=b"", number=None):
+    def __init__(self, stage, *, reason="assertion", code=None, errors=b"", number=None, site="none"):
         self.stage = stage if stage in _STAGES else "preflight"
         self.reason = reason if reason in _REASONS else "other"
         self.code = str(code) if type(code) is int and -255 <= code <= 255 else "none"
         self.stderr = stderr_kind(errors)
         self.errno = errno.errorcode.get(number, "none") if type(number) is int else "none"
+        self.site = site if site in _SITES else "none"
         super().__init__(self.stage)
 
     def diagnostic(self):
         return ("stage=" + self.stage + " reason=" + self.reason + " exit=" + self.code
-                + " stderr=" + self.stderr + " errno=" + self.errno)
+                + " stderr=" + self.stderr + " errno=" + self.errno + " site=" + self.site)
 
 
 @contextmanager
@@ -133,6 +137,19 @@ def checked_result(stage, result):
         raise FixtureFailure(stage, code=code, errors=errors)
 
 
+def require_parent_trust():
+    # Hosted /opt may be writable by the runner. Never weaken production
+    # ancestor checks or repair an existing directory to accommodate a fixture.
+    for site, path in (("root", "/"), ("usr", "/usr"), ("usr-lib", "/usr/lib")):
+        info = os.stat(path, follow_symlinks=False)
+        if not stat.S_ISDIR(info.st_mode):
+            raise FixtureFailure("preflight", reason="fixture-parent", site=site)
+        try:
+            clients._trusted(info)
+        except clients._Denied as exc:
+            raise FixtureFailure("preflight", reason=exc.detail, site=site) from None
+
+
 def require_ci():
     if (os.environ.get("GITHUB_ACTIONS") != "true" or os.environ.get("RUNNER_OS") != "Linux"
             or os.getuid() <= 0 or os.getuid() != os.geteuid() or os.getgid() != os.getegid()):
@@ -140,6 +157,7 @@ def require_ci():
     release = Path("/etc/os-release").read_text().splitlines()
     if "ID=ubuntu" not in release or 'VERSION_ID="24.04"' not in release:
         raise ValueError("disposable Ubuntu runner required")
+    require_parent_trust()
     if FIXTURE.exists() or FIXTURE.is_symlink():
         raise ValueError("fixture already exists")
 

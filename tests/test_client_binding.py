@@ -335,13 +335,30 @@ class ClientBindingTests(unittest.TestCase):
         with self.assertRaises(fixture.FixtureFailure):
             fixture.checked_result("first-exec", (3, b"", b"FIXTURE: executable=expected-deleted\n"))
         output = io.StringIO()
-        failure = fixture.FixtureFailure("snapshot", reason="PRIVATE", code=999999,
+        failure = fixture.FixtureFailure("snapshot", reason="PRIVATE", code=999999, site="/home/PRIVATE",
             errors=b"bwrap: PRIVATE /home/secret\nPermission denied")
         with patch.object(fixture, "run", side_effect=failure), contextlib.redirect_stdout(output):
             self.assertEqual(fixture.main(["--allow-disposable-client-binding-test"]), 2)
         self.assertIn("stderr=bwrap-permission", output.getvalue())
         self.assertNotIn("PRIVATE", output.getvalue())
         self.assertNotIn("/home", output.getvalue())
+
+    def test_kernel_fixture_refuses_untrusted_ancestors_without_changing_them(self):
+        import ci_client_binding as fixture
+        safe = SimpleNamespace(st_uid=0, st_mode=stat.S_IFDIR | 0o755)
+        for unsafe, reason in (
+            (SimpleNamespace(st_uid=2345, st_mode=stat.S_IFDIR | 0o755), "owner"),
+            (SimpleNamespace(st_uid=0, st_mode=stat.S_IFDIR | 0o775), "permissions"),
+            (SimpleNamespace(st_uid=0, st_mode=stat.S_IFLNK | 0o777), "fixture-parent"),
+        ):
+            with self.subTest(reason=reason), \
+                    patch.object(fixture.os, "stat", side_effect=(safe, safe, unsafe)), \
+                    patch.object(fixture.subprocess, "run") as launch:
+                with self.assertRaises(fixture.FixtureFailure) as raised:
+                    fixture.require_parent_trust()
+                self.assertEqual((raised.exception.stage, raised.exception.site, raised.exception.reason),
+                                 ("preflight", "usr-lib", reason))
+                launch.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -1,7 +1,7 @@
 """Disposable kernel-CI proof of real user-to-root native registration.
 
 Only synthetic bytes in a fresh runner-HOME directory and a freshly claimed
-fixed /opt fixture are used. The native ELF is compiled but never executed.
+fixed /usr/lib fixture are used. The native ELF is compiled but never executed.
 The root fixture command accepts no paths or commands: its source UID/path is
 frozen in root-owned fixture metadata, and its cache is fixed below FIXTURE.
 """
@@ -18,7 +18,7 @@ import sys
 import tempfile
 
 ROOT = Path(__file__).resolve().parents[1]
-FIXTURE = Path("/opt/ai-desktop-client-registration-fixture")
+FIXTURE = Path("/usr/lib/ai-desktop-client-registration-fixture")
 HELPER = FIXTURE / "driver.py"
 CACHE = FIXTURE / "cache"
 ENV = {"PATH": "/usr/bin", "LANG": "C.UTF-8"}
@@ -51,6 +51,10 @@ def require_ci():
             or os.getuid() <= 0 or os.getuid() != os.geteuid() or os.getgid() != os.getegid()):
         raise ValueError("disposable-ci")
     ubuntu()
+    try:
+        _trusted(FIXTURE.parent, directory=True)
+    except (OSError, ValueError):
+        raise ValueError("fixture-ancestor") from None
     if os.path.lexists(FIXTURE):
         raise ValueError("existing-fixture")
 

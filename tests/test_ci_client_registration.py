@@ -39,6 +39,19 @@ class ClientRegistrationCiGuardTests(unittest.TestCase):
         trusted.assert_not_called()
         execute.assert_not_called()
 
+    def test_fixture_ancestors_must_be_trusted_before_any_root_write_or_claim(self):
+        with patch.dict(driver.os.environ, {"GITHUB_ACTIONS": "true", "RUNNER_OS": "Linux"}), \
+                patch.object(driver.os, "getuid", return_value=1001), patch.object(driver.os, "geteuid", return_value=1001), \
+                patch.object(driver.os, "getgid", return_value=1001), patch.object(driver.os, "getegid", return_value=1001), \
+                patch.object(driver, "ubuntu"), patch.object(driver, "checked") as execute, \
+                patch.object(driver, "_trusted", side_effect=ValueError("fixture-ownership")) as trust, \
+                patch.object(driver.os.path, "lexists") as exists, redirect_stdout(io.StringIO()) as output:
+            self.assertEqual(driver.main([driver.FLAG]), 2)
+            trust.assert_called_once_with(Path("/usr/lib"), directory=True)
+            execute.assert_not_called()
+            exists.assert_not_called()
+        self.assertIn("check=fixture-ancestor", output.getvalue())
+
     def test_root_action_rejects_paths_commands_or_invalid_digest_before_context(self):
         cases = ([], ["shell", "a" * 64], ["register", "/tmp/source"], ["remove", "a" * 64, "b" * 64],
                  ["refresh", "a" * 64], ["refresh", "a" * 64, "invalid"], ["register", "a" * 64, "/bin/sh"])
