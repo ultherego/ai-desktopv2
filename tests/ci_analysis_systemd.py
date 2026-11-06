@@ -38,6 +38,9 @@ SYSTEMD_READ_MARKER = "SYNTHETIC SYSTEMD COLLECT"
 FILE_READ_MARKER = "SYNTHETIC FILE READ"
 ASK_SEND_MARKER = "SYNTHETIC ASK SEND"
 ASK_SESSION_MARKER = "SYNTHETIC ASK SESSION"
+TASK_SEND_MARKER = "SYNTHETIC TASK SEND"
+TASK_COPY_MARKER = "SYNTHETIC TASK COPY"
+NPM_COPY_MARKER = "SYNTHETIC NPM COPY PASS"
 SHIM = r'''
 #include <stdlib.h>
 #include <unistd.h>
@@ -159,7 +162,7 @@ def install(temp, file_home):
     prior._run("sudo", "-n", "/usr/bin/install", "-m644", str(client), str(prior.DEST / "fixture-client.py"))
     ui = temp / "fixture-ui.py"
     ui.write_text("import sys\nfrom pathlib import Path\nsys.path.insert(0, '/usr/lib/ai-desktop')\n"
-                  "from ai_desktop import cli, analysis_cli, ask_cli, systemd_context, permissions, agent_profiles\n"
+                  "from ai_desktop import cli, analysis_cli, ask_cli, systemd_context, permissions, agent_profiles, task_cli, task_sandbox\n"
                   "analysis_cli.diagnose.collect = lambda: " + repr(report_fixture()) + "\n"
                   "permissions._home = lambda uid: " + repr(str(file_home)) + "\n"
                   "profile_store = agent_profiles.Store\n"
@@ -186,6 +189,14 @@ def install(temp, file_home):
                   "    print(" + repr(ASK_SESSION_MARKER) + ", flush=True)\n"
                   "    return original_session(*args, **kwargs)\n"
                   "ask_cli.send_once, ask_cli.managed_session = send, session\n"
+                  "original_task_send, original_copy = task_cli.send_once, task_sandbox.run_copy\n"
+                  "def task_send(*args, **kwargs):\n"
+                  "    print(" + repr(TASK_SEND_MARKER) + ", flush=True)\n"
+                  "    return original_task_send(*args, **kwargs)\n"
+                  "def run_copy(*args, **kwargs):\n"
+                  "    print(" + repr(TASK_COPY_MARKER) + ", flush=True)\n"
+                  "    return original_copy(*args, **kwargs)\n"
+                  "task_cli.send_once, task_sandbox.run_copy = task_send, run_copy\n"
                   "original_collect = systemd_context.collect\n"
                   "def collect(*args, **kwargs):\n"
                   "    print(" + repr(SYSTEMD_READ_MARKER) + ", flush=True)\n"
@@ -281,6 +292,7 @@ def daily_pty(action, *, expected=0, refusal=False, interrupt=None, reason=None,
               write_refusal=False, entrypoint=None, project_test=False):
     asking = action[:1] == ["ask"] and "--preview" not in action
     analyzing = action[:1] == ["analyze"] and "--preview" not in action
+    tasking = action[:2] == ["task", "run"] and "--preview" not in action
     master, slave = pty.openpty()
     command = (["/usr/bin/python3", "-I", "-B", str(prior.DEST / "fixture-ui.py"), *action]
                if entrypoint is None else ["/usr/bin/python3", "-I", "-B", str(entrypoint)])
@@ -301,12 +313,12 @@ def daily_pty(action, *, expected=0, refusal=False, interrupt=None, reason=None,
                 if not raw:
                     break
                 output.extend(raw)
-            transfer_prompt = PROMPTS["ask-question"] if asking else PROMPTS["transfer"]
+            transfer_prompt = PROMPTS["ask-question"] if asking else PROMPTS["task-scope"] if tasking else PROMPTS["transfer"]
             if asking and any(PROMPTS[name].encode() in output
                               for name in ("ask-transfer", "systemd-read", "files-read", "weather")):
                 raise ValueError("ask-extra-consent")
             if output.count(transfer_prompt.encode()) > transfers:
-                if asking and transfers:
+                if (asking or tasking) and transfers:
                     raise ValueError("ask-repeated-consent")
                 transfers += 1
                 os.write(master, b"no\n" if refusal else b"yes\n")
@@ -337,7 +349,7 @@ def daily_pty(action, *, expected=0, refusal=False, interrupt=None, reason=None,
                 break
         process.wait(timeout=3)
         if (process.returncode != expected
-                or ((analyzing or asking) and not answered) or (asking and transfers != 1)
+                or ((analyzing or asking) and not answered) or ((asking or tasking) and transfers != 1)
                 or tests != int(project_test)
                 or (interrupt and not interrupted) or b"SYNTHETIC-PRIVATE" in output
                 or (reason and ("reason=" + reason).encode() not in output)):
@@ -378,28 +390,31 @@ def compact_analysis(output, question):
         raise ValueError("compact-analysis")
 
 
-def compact_task(output, *, rollback=False):
+def compact_task(output, *, rollback=False, recipe="python-unittest", files=2):
     """A short task exposes the full fenced diff and separate decisions."""
     if rollback:
         required = (b"Changes undone.", PROMPTS["rollback"].encode())
     else:
-        required = (b"Test on a copy: passed (python-unittest); 2 selected file(s).",
+        required = (("Declared test: %s, once on a copy of the %d selected file(s)." % (recipe, files)).encode(),
+                    ("Test on a copy: passed (%s); %d selected file(s)." % (recipe, files)).encode(),
                     b"=== Changes to save ===", b"```diff\n", b"\n```\n", b"--- a/calc.py",
                     b"+++ b/calc.py", b"-    return a - b", b"+    return a + b",
-                    b"Changes saved.", PROMPTS["transfer"].encode(), PROMPTS["write"].encode())
+                    b"Changes saved.", PROMPTS["task-scope"].encode(), PROMPTS["write"].encode())
     forbidden = (b"APPLICATION INSTRUCTIONS", b"RULES AND RECIPIENT", b"New content as JSON:",
                  b"TASK:", b"TASK TEST:", b"TASK ROLLBACK:", b"SESSION: STOPPED", b"SHA256",
-                 b"Checking the changes", b"The test covers", b"Only the changes shown will be saved")
+                 b"Checking the changes", b"The test covers", b"Only the changes shown will be saved",
+                 PROMPTS["project-test"].encode(), PROMPTS["transfer"].encode())
     output = output.replace(b"\r\n", b"\n")
     if (any(item not in output for item in required) or any(item in output for item in forbidden)
             or re.search(rb"\b[0-9a-f]{64}\b", output)):
         raise ValueError("compact-task")
     if output.count(b"Test on a copy:") != (0 if rollback else 1):
         raise ValueError("compact-task-result")
-    prompts = ("rollback",) if rollback else ("transfer", "write")
+    prompts = ("rollback",) if rollback else ("task-scope", "write")
     if any(output.count(PROMPTS[prompt].encode()) != 1 for prompt in prompts):
         raise ValueError("compact-task-consent")
-    if not rollback and not (output.index(PROMPTS["transfer"].encode())
+    if not rollback and not (output.index(("Declared test: " + recipe).encode())
+                            < output.index(PROMPTS["task-scope"].encode())
                             < output.index(b"Test on a copy:") < output.index(b"```diff\n") < output.index(b"--- a/calc.py")
                             < output.index(b"\n```\n") < output.index(PROMPTS["write"].encode())):
         raise ValueError("compact-task-order")
@@ -524,6 +539,62 @@ def task_cycle():
         if (path / "calc.py").read_text() != original or task_workspace.status(root)[0][1] != "rolled-back":
             raise ValueError("task-undo")
         print("CI TASK: PASS transfer-refusal=PASS write-refusal=PASS test=PASS apply=PASS rollback=PASS compact=PASS details=PASS cleanup=PASS")
+
+
+def multiprocess_task_cycle():
+    """One declared npm copy test through real PTY, cgroup, namespace and write review."""
+    from ai_desktop import task_workspace
+    # This fixture runs before the standalone host suite's user-manager setup.
+    # A missing cgroup controller remains a hard failure in task_cgroup.py.
+    prior._run("sudo", "-n", "/usr/bin/systemctl", "start", "user@%d.service" % os.geteuid())
+    with tempfile.TemporaryDirectory(prefix="ai-npm-task-ci-", dir="/tmp") as root:
+        path = Path(root)
+        original = "def add(a, b):\n    return a - b\n"
+        updated = original.replace("a - b", "a + b")
+        contexts = {
+            "package.json": json.dumps({"private": True, "scripts": {"test": "node test-copy.cjs"}}) + "\n",
+            "test-copy.cjs": (
+                'const fs = require("node:fs");\n'
+                'const assert = require("node:assert/strict");\n'
+                'const cp = require("node:child_process");\n'
+                'assert.equal(fs.readFileSync("calc.py", "utf8"), ' + json.dumps(updated) + ');\n'
+                'assert.equal(fs.existsSync("/run/user"), false);\n'
+                'assert.equal(fs.existsSync("/sys/fs/cgroup"), false);\n'
+                'cp.execFileSync("/usr/bin/true");\n'
+                'console.log(' + json.dumps(NPM_COPY_MARKER) + ');\n'),
+        }
+        (path / "calc.py").write_text(original)
+        for name, content in contexts.items():
+            (path / name).write_text(content)
+        args = ["task", "run", "SYNTHETIC: fix addition", "--workspace", root,
+                "--file", "calc.py", "--context", "package.json", "--context", "test-copy.cjs",
+                "--test", "npm-test"]
+        refused = daily_pty(args, expected=2, refusal=True)
+        if (any(marker in refused for marker in (TASK_SEND_MARKER.encode(), TASK_COPY_MARKER.encode(),
+                                                NPM_COPY_MARKER.encode(), PROMPTS["write"].encode()))
+                or (path / "calc.py").read_text() != original or task_workspace.status(root)):
+            raise ValueError("npm-task-scope-refusal")
+        diagnostic = daily_pty(args + ["--details"], expected=2, write_refusal=True)
+        if (b"TASK TEST: PASS check=npm-test" not in diagnostic or NPM_COPY_MARKER.encode() not in diagnostic
+                or diagnostic.count(TASK_SEND_MARKER.encode()) != 1
+                or diagnostic.count(TASK_COPY_MARKER.encode()) != 1
+                or (path / "calc.py").read_text() != original or task_workspace.status(root)):
+            raise ValueError("npm-task-write-refusal")
+        output = daily_pty(args)
+        compact_task(output, recipe="npm-test", files=3)
+        if output.count(TASK_SEND_MARKER.encode()) != 1 or output.count(TASK_COPY_MARKER.encode()) != 1:
+            raise ValueError("npm-task-once")
+        records = task_workspace.status(root)
+        if len(records) != 1 or records[0][1] != "applied" or (path / "calc.py").read_text() != updated:
+            raise ValueError("npm-task-apply")
+        compact_task(daily_pty(["task", "rollback", "--workspace", root]), rollback=True)
+        if ((path / "calc.py").read_text() != original
+                or task_workspace.status(root) != [(records[0][0], "rolled-back")]
+                or any((path / name).read_text() != content for name, content in contexts.items())):
+            raise ValueError("npm-task-rollback")
+    print("CI NPM TASK: PASS scope-refusal-no-execution=PASS scope-approvals=1 extra-test-approvals=0 "
+          "real-cgroup-copy=PASS assertion=PASS write-refusal=PASS write-approvals=1 apply=PASS rollback=PASS "
+          "native=false oauth=false upstream=false")
 
 
 def large_task_cycle():
@@ -856,6 +927,8 @@ def main(argv=None):
             file_cycle(temp, fixture)
             stage = "task-cycle"
             task_cycle()
+            stage = "npm-task-cycle"
+            multiprocess_task_cycle()
             stage = "large-task"
             large_task_cycle()
             stage = "ask-edit"

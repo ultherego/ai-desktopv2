@@ -4,6 +4,8 @@ For project maintainers. Tick items for a specific commit: the result of another
 
 Candidate 82 evidence: on `0f0bcb6a0b77e52fcf29b46d4f8e1c56d112659f`, CachyOS CI/LOCAL, upgrade 81 to 82, retained Claude registration, complete Codex registration and both native offline probes passed. All five GitHub jobs also passed for this SHA. These results did not exercise login, token renewal or model inference; see [ROADMAP.md](ROADMAP.md) for scope and later changes. Unchecked wider release requirements below remain open.
 
+PR #20 subsequently merged as `700a609` after the candidate-83 widget/quota flow was accepted; its own main/push CI passed five jobs. Candidate 84 passed focused offline CachyOS CI/LOCAL, build, upgrade and installed-file checks on `457118d5e3b1d5224ecdb00b88a847ab6c7ccc65`, which also passed five GitHub jobs. Its new mandatory host scenario exercises a real Python copy test, scoped approval, write and separate rollback with a synthetic provider. Go/npm execution is proved separately by the real CI fixtures; the host summary alone does not prove optional toolchains ran. Explicit PR #21 merge approval remains outstanding. It does not require repeating unchanged native client registration/compatibility checks.
+
 ## Version
 
 - [ ] The `pkgver-pkgrel` number in `packaging/arch/PKGBUILD` is new.
@@ -41,6 +43,8 @@ Client gates apply before merging/releasing the migrated runtime (S8); the conse
 - [x] On candidate-82 head `0f0bcb6`, native Claude 2.1.319 rejects the appended invalid option after the full analyze/web option sets, demonstrates first-error ordering with two invalid options, and independently returns signed-out `auth status` JSON in an empty offline profile. Print and auth modes are not combined; help-only or synthetic parser tests are not this native evidence.
 - [ ] Separate authentication, restricted tools, model transport, namespace and egress checks pass through the actual migrated runtime on CachyOS.
 - [ ] A declared plan/stage/copy-test approval cannot authorize an undeclared operation; the final diff still requires a separate write decision.
+- [x] Candidate 84 (offline acceptance on `457118d`): one project approval covers only the declared stage/request/data/time budgets; a changed file (including within a stage), manifest, policy, recipient or expired scope stops the next transfer or automatic edit handoff. Ctrl+C stops continuation.
+- [x] Candidate 84 (offline acceptance on `457118d`): standalone task approval shows the selected workspace/files and exact test before execution; Go/npm run once without a duplicate prompt. Changed scope/recipe, replay and failure refuse, while the full diff, write refusal and rollback remain independent. Ordinary ask/project-edit test approvals are unchanged.
 - [ ] Cleanup removes only proven-unused experiments. Production modules, fixtures and checks are not removed merely because their names start with `e2_`.
 
 ## Repository content

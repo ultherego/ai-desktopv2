@@ -78,8 +78,13 @@ class ManagementIntegrationTests(unittest.TestCase):
         session.history, session.tasks = [], []
         session.progress = ""
         session.name = "project"
-        session.project = Mock()
         session.binding = project_cli.Binding("a" * 32, "b" * 64)
+        session.policy = SimpleNamespace(fingerprint=Mock(return_value="policy"), recheck=Mock())
+        session.project = SimpleNamespace(
+            project_id=session.binding.material_id, root="/selected/project", policy=session.policy,
+            manifest_sha256=Mock(return_value=session.binding.sha256),
+            files=(SimpleNamespace(path="a.py", identity=(1, 2, 3, 4)),),
+            stats={"scanned": 1, "indexed": 1}, complete=True, reason=None, scan=Mock())
         session._clock = lambda: 0
         session.reader = lambda _: "y"
         session.conversation = None
@@ -99,6 +104,9 @@ class ManagementIntegrationTests(unittest.TestCase):
             session.question("Zmień a.py")
         edit_plan.assert_not_called()
         delete_plan.assert_not_called()
+        session._deliver.assert_called_once()
+        session.project.scan.assert_called()
+        session.policy.recheck.assert_called()
         self.assertEqual(confirm.call_count, 1)  # Only read-task approval; no write approval is requested.
         session._close_section.assert_called()
 
@@ -196,12 +204,15 @@ class RecipientPresentationTests(unittest.TestCase):
         selected = {**self.codex(), "access": "changes"}
         output = io.StringIO()
         with execution.using(selected), patch.object(task_cli, "selection", return_value=(None, source)), redirect_stdout(output):
-            code = task_cli.run_task(SimpleNamespace(preview=True, details=False), lambda _: "n")
+            code = task_cli.run_task(SimpleNamespace(preview=True, details=False,
+                                                    workspace="/synthetic/Claude-project", test="text"), lambda _: "n")
         self.assertEqual(code, 0)
         self.assertIn("To Codex: the instruction", output.getvalue())
         self.assertIn("Task: Popraw opis Claude w pliku.", output.getvalue())
         self.assertIn("Claude_notes.txt", output.getvalue())
         self.assertNotIn("Codex_notes.txt", output.getvalue())
+        self.assertIn("Workspace: /synthetic/Claude-project", output.getvalue())
+        self.assertIn("Declared test: text, once", output.getvalue())
 
     def test_model_answer_is_never_relabelled(self):
         session = material_cli.Session.__new__(material_cli.Session)
@@ -224,7 +235,8 @@ class RecipientPresentationTests(unittest.TestCase):
         output = io.StringIO()
         with execution.using({**self.codex(), "access": "changes"}), \
                 patch.object(task_cli, "selection", return_value=(None, source)), redirect_stdout(output):
-            code = task_cli.run_task(SimpleNamespace(preview=True, details=True, test="text"), lambda _: "n")
+            code = task_cli.run_task(SimpleNamespace(preview=True, details=True, test="text",
+                                                    workspace="/synthetic/project"), lambda _: "n")
         self.assertEqual(code, 0)
         self.assertIn("Recipient: OpenAI through the official Codex", output.getvalue())
         self.assertNotIn("Recipient: Anthropic", output.getvalue())

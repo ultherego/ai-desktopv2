@@ -1,18 +1,127 @@
-"""Real kernel test executor checks. Synthetic data only, no AI/OAuth or host writes."""
+"""Real kernel checks; no AI/OAuth, with writes only to disposable synthetic files."""
+import contextlib
 import json
 import os
 from pathlib import Path
+import pty
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from ai_desktop import task_contract, task_sandbox, task_workspace
+from ai_desktop import task_cli, task_contract, task_sandbox, task_workspace
 from ai_desktop.task_plan import TaskPlan
+from ai_desktop.terminal_consent import PROMPTS
+from tests.profile_fixture import DEFAULT_PROFILE
 
 
 class TaskKernelTests(unittest.TestCase):
     def check(self, files, check="python-unittest"):
         source = {"instruction": "synthetic", "files": [{"path": p, "content": None, "writable": True} for p in files]}
         return task_sandbox.run(source, [{"path": p, "content": c} for p, c in files.items()], check)
+
+    def test_real_declared_task_scope_refusal_write_and_separate_rollback(self):
+        self.assertNotEqual(os.geteuid(), 0, "Run host acceptance as the ordinary desktop user")
+        self.assertEqual(os.getuid(), os.geteuid())
+        original = b"def add(a, b):\n    return a - b\n"
+        changed = b"def add(a, b):\n    return a + b\n"
+        test_bytes = (b"import unittest\nfrom calc import add\nclass T(unittest.TestCase):\n"
+                      b" def test_add(self): self.assertEqual(add(2, 3), 5)\n")
+        with tempfile.TemporaryDirectory(prefix="ai-task-consent-", dir=Path.home()) as directory:
+            root = Path(directory)
+            target, context = root / "calc.py", root / "test_calc.py"
+            target.write_bytes(original)
+            target.chmod(0o640)
+            context.write_bytes(test_bytes)
+            context.chmod(0o600)
+            run = ["run", "Synthetic addition fix", "--workspace", directory,
+                   "--file", "calc.py", "--context", "test_calc.py", "--test", "python-unittest"]
+            proposal = json.dumps({"summary": "Synthetic addition fix", "files": [
+                {"path": "calc.py", "content": changed.decode("utf-8")}]})
+            # Exercise the real terminal guard using a PTY. The explicit reader
+            # supplies only the declared decisions, never an implicit extra yes.
+            master, slave = pty.openpty()
+            with contextlib.ExitStack() as stack:
+                stack.callback(os.close, master)
+                terminal_out = stack.enter_context(os.fdopen(slave, "w", encoding="utf-8", buffering=1))
+                terminal_in = stack.enter_context(os.fdopen(os.dup(slave), "r", encoding="utf-8"))
+                os.set_blocking(master, False)
+                stack.enter_context(patch.object(task_cli.sys, "stdin", terminal_in))
+                stack.enter_context(contextlib.redirect_stdout(terminal_out))
+                stack.enter_context(patch("ai_desktop.agent_profiles.resolve",
+                                          side_effect=lambda *a, **kw: dict(DEFAULT_PROFILE)))
+                stack.enter_context(patch("ai_desktop.agent_profiles.Store",
+                                          side_effect=AssertionError("Host fixture must not read private settings")))
+                stack.enter_context(patch.object(task_cli, "installation_ready"))
+                runtime = stack.enter_context(patch.object(task_cli, "managed_session",
+                                                           return_value=contextlib.nullcontext()))
+                model = stack.enter_context(patch.object(task_cli, "send_once", return_value=proposal))
+                # Observe calls while executing the actual sandbox and its kernel guards.
+                sandbox = stack.enter_context(patch.object(task_sandbox, "run", wraps=task_sandbox.run))
+
+                def drain():
+                    terminal_out.flush()
+                    data = bytearray()
+                    while True:
+                        try:
+                            data.extend(os.read(master, 4096))
+                        except BlockingIOError:
+                            return data.decode("utf-8").replace("\r\n", "\n")
+
+                def invoke(arguments, decisions):
+                    expected = iter(decisions)
+                    prompts, chunks = [], []
+                    def reader(prompt):
+                        chunks.append(drain())
+                        wanted, answer = next(expected)
+                        self.assertEqual(prompt, PROMPTS[wanted])
+                        prompts.append(prompt)
+                        terminal_out.write(prompt)
+                        return answer
+                    code = task_cli.main(arguments, reader=reader)
+                    chunks.append(drain())
+                    self.assertEqual(list(expected), [], "A required decision was not requested")
+                    return code, "".join(chunks), prompts
+
+                code, output, prompts = invoke(run, [("task-scope", "no")])
+                self.assertEqual(code, 2, output)
+                self.assertEqual(prompts, [PROMPTS["task-scope"]])
+                model.assert_not_called()
+                runtime.assert_not_called()
+                sandbox.assert_not_called()
+                self.assertEqual(target.read_bytes(), original)
+                self.assertFalse((root / task_workspace.STATE).exists())
+
+                code, output, prompts = invoke(run, [("task-scope", "yes"), ("write", "yes")])
+                self.assertEqual(code, 0, output)
+                self.assertEqual(prompts, [PROMPTS["task-scope"], PROMPTS["write"]])
+                self.assertLess(output.index("Declared test: python-unittest"), output.index(PROMPTS["task-scope"]))
+                self.assertLess(output.index("Test on a copy: passed (python-unittest)"), output.index("```diff\n"))
+                self.assertLess(output.index("```diff\n"), output.index(PROMPTS["write"]))
+                self.assertEqual(target.read_bytes(), changed)
+                self.assertEqual(target.stat().st_mode & 0o777, 0o640)
+                self.assertEqual(context.read_bytes(), test_bytes)
+                self.assertEqual(context.stat().st_mode & 0o777, 0o600)
+                records = task_workspace.recovery_records(directory)
+                self.assertEqual(len(records), 1)
+                self.assertEqual(records[0]["status"], "applied")
+
+                undo = ["rollback", "--workspace", directory]
+                code, output, prompts = invoke(undo, [("rollback", "no")])
+                self.assertEqual(code, 2, output)
+                self.assertEqual(prompts, [PROMPTS["rollback"]])
+                self.assertEqual(target.read_bytes(), changed)
+                code, output, prompts = invoke(undo, [("rollback", "yes")])
+                self.assertEqual(code, 0, output)
+                self.assertEqual(prompts, [PROMPTS["rollback"]])
+                self.assertIn("Changes undone.", output)
+                self.assertEqual(target.read_bytes(), original)
+                self.assertEqual(target.stat().st_mode & 0o777, 0o640)
+                self.assertEqual(context.read_bytes(), test_bytes)
+                self.assertEqual(task_workspace.recovery_records(directory)[0]["status"], "rolled-back")
+                model.assert_called_once()
+                runtime.assert_called_once_with(quiet=True)
+                sandbox.assert_called_once()
+                self.assertEqual(sandbox.call_args.args[2], "python-unittest")
 
     def test_real_unittest_success_failure_and_empty_refusal(self):
         files = {"calc.py": "def add(a,b): return a+b\n", "test_calc.py": "import unittest\nfrom calc import add\nclass T(unittest.TestCase):\n def test_add(self): self.assertEqual(add(2,3),5)\n"}

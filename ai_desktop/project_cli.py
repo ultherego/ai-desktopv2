@@ -1,7 +1,7 @@
 """`ai-desktop project DIRECTORY`: one read-only project, explored by the model through the controller.
 
-Same transport, pacing and consent rules as `ai-desktop material`: one consent per question, a
-step-by-step visible loop (list, find, search, read), at most 8 requests / 768 KiB, nothing sent
+Same transport and pacing as `ai-desktop material`: one bounded consent per question, a
+step-by-step visible loop (list, find, search, read), at most five read-only stages, nothing sent
 before a yes, no Internet, no writes, no code execution. File NAMES, search hits and fragments are
 sent as data, so the consent says so. The answer lists the places Claude really received and what
 was skipped or unchecked; sources are confirmed by the controller, never taken from the model.
@@ -28,11 +28,12 @@ from .analysis_terminal import render_answer
 from .file_context import _read_hint
 from .material_cli import (GRANT_HINTS, GRANT_SECONDS, SEPARATOR, Session, SessionWindow, _countdown, _countdown_end,
                            _safe, field, rule)
-from .material_grant import GrantDenied, MaterialGrant, TransferSession
+from .material_grant import GrantDenied, TransferSession
 from .material_loop import lines_label
 from .project_loop import Loop, history_turn
 from .project_scope import Project, ProjectError
 from .project_step import MAX_HISTORY, MAX_STAGES, MAX_STEPS, TOTAL_BYTES, parse_decision, plain_answer
+from .project_task_consent import ProjectTaskConsent, TASK_BYTES, TASK_REQUESTS, TASK_SECONDS
 from .question_input import PromptSession, paste_token
 from . import task_workspace, workspace_trash
 from .terminal_consent import confirm
@@ -178,12 +179,26 @@ class ProjectSession(Session):
         self._skipped_shown = None              # last skipped-entry count already reported after an answer
         self.progress = ""                      # the model's own working summary (what is done, what next), session-only
         self._current = None
+        self._task_consent = None
         from .run_controls import provider_allowed
         self.can_send = provider_allowed(policy)
         self.binding = Binding(project.project_id, project.manifest_sha256())
 
     def _gate_kwargs(self, packet):
         return dict(question=packet.question, context=None, project=packet.material)
+
+    def _access_unchanged(self, session, packet):
+        if not super()._access_unchanged(session, packet):
+            return False
+        try:
+            if self._task_consent is None:
+                raise GrantDenied("GRANT_INVALID")
+            self._task_consent.check(self.project)
+        except GrantDenied as exc:
+            session.cancel(packet)
+            print(GRANT_HINTS[exc.code])
+            return False
+        return True
 
     def ledger(self):
         if not self.edit_transfers or any(task["session"].ledger() for task in self.tasks):
@@ -242,9 +257,7 @@ class ProjectSession(Session):
             return
         self._current = text
         loop = Loop(self.project, history=self.history, progress=self.progress, pasted=pastes)
-        grant = MaterialGrant(self.binding.material_id, self.binding.sha256, text[:256], self._clock() + GRANT_SECONDS)
-        session = TransferSession(self.binding, grant, clock=self._clock)
-        self.tasks.append({"session": session, "label": "%s: %s" % (self.name, _safe(text, 60))})
+        scope = ProjectTaskConsent(self.project, text, clock=self._clock)
         self._scope(text, loop)
         try:
             approved = confirm("project-task", reader=self.reader)
@@ -254,44 +267,40 @@ class ProjectSession(Session):
             self._interrupted()
             approved = False
         if not approved:
+            scope.close()
             print("Cancelled. No data was sent.")
             return
-        self._open_section()
         try:
-            partial = self._run(text, loop, session)
-        finally:
-            self._close_section()
-        stage = 1
-        while partial is not None and stage < MAX_STAGES:
-            # Claude says the analysis is not finished. Each further stage has its own small yes and fresh limits.
-            print(self._coverage_line(loop, stage))
-            try:
-                again = confirm("project-continue", reader=self.reader)
-            except EOFError:
-                again = False
-            except KeyboardInterrupt:
-                self._interrupted()
-                again = False
-            if not again:
-                print("Stopped after stage %d of %d; partial conclusions are above." % (stage, MAX_STAGES))
-                print()
-                return
-            stage += 1
-            if not self._refresh():
-                return
-            loop = Loop(self.project, history=self.history, progress=self.progress, pasted=pastes,
-                        visited=loop.visited, stage=stage)
-            grant = MaterialGrant(self.binding.material_id, self.binding.sha256, text[:256], self._clock() + GRANT_SECONDS)
-            session = TransferSession(self.binding, grant, clock=self._clock)
-            self.tasks.append({"session": session, "label": "%s: %s (stage %d)" % (self.name, _safe(text, 50), stage)})
-            self._open_section("Stage %d of %d" % (stage, MAX_STAGES))
-            try:
-                partial = self._run(text, loop, session)
-            finally:
-                self._close_section()
-        if partial is not None:
+            # Approval re-scans: even the first stage must use the exact
+            # project previewed before the owner answered.
+            scope.approve(self.project)
+            self._task_consent = scope
+            for stage in range(1, MAX_STAGES + 1):
+                if stage > 1:
+                    print(self._coverage_line(loop, stage - 1))
+                    scope.check(self.project)
+                    loop = Loop(self.project, history=self.history, progress=self.progress, pasted=pastes,
+                                visited=loop.visited, stage=stage)
+                grant = scope.next_stage(self.project)
+                session = TransferSession(self.binding, grant, clock=self._clock)
+                self.tasks.append({"session": session, "label": "%s: %s (stage %d)" % (self.name, _safe(text, 50), stage)})
+                self._open_section() if stage == 1 else self._open_section("Stage %d of %d" % (stage, MAX_STAGES))
+                try:
+                    partial = self._run(text, loop, session)
+                finally:
+                    self._close_section()
+                if partial is None:
+                    return
             print("Reached the limit of %d stages; partial conclusions are above. Type \"continue\" to start another round." % MAX_STAGES)
             print()
+        except GrantDenied as exc:
+            print(GRANT_HINTS[exc.code])
+        except KeyboardInterrupt:
+            print("\nInterrupted.")
+            self._interrupted()
+        finally:
+            scope.close()
+            self._task_consent = None
 
     def _coverage_line(self, loop, stage):
         """Controller-counted coverage of the whole deep task (never the model's claim)."""
@@ -335,6 +344,9 @@ class ProjectSession(Session):
                 extras.append("context: %d earlier question(s) and answer(s)" % len(loop.history))
             if extras:
                 print(" · ".join(extras))
+            print("Analysis scope: up to %d stages, %d requests and %d MiB of project data in %d minutes; Ctrl+C stops." %
+                  (MAX_STAGES, TASK_REQUESTS, TASK_BYTES // 1048576, TASK_SECONDS // 60))
+            print("Tests, additional edit-data transfers and saving still require their applicable separate approvals.")
             return
         print(rule("To send"))
         print(field("Question", _safe(text, 200)))
@@ -348,10 +360,13 @@ class ProjectSession(Session):
         if loop.history:
             print(field("Context", "%d earlier question(s) and answer(s) from this session (shortened)" % len(loop.history)))
         print(field("Data", recipient("the question, plus the file names, matches and parts Claude asks for")))
-        print(field("Without", "Internet, file writes or running code · time limit %d s" % GRANT_SECONDS))
+        print(field("Without", "Internet, file writes or running code · task time limit %d s" % TASK_SECONDS))
         print(field("Content", recipient("Claude will ask for a list of file names, a search or lines of files from this project."),
                     "File names, matches and parts are sent as data; the rest of the project is not sent.",
-                    "Limits: up to %d requests, up to %d KiB of data in total; you will see each step as it happens." % (MAX_STEPS, TOTAL_BYTES // 1024)))
+                    "Up to %d stages, %d requests and %d MiB of project data in total; Ctrl+C stops." %
+                    (MAX_STAGES, TASK_REQUESTS, TASK_BYTES // 1048576),
+                    "Each stage: up to %d requests, %d KiB of data and %d s." % (MAX_STEPS, TOTAL_BYTES // 1024, GRANT_SECONDS),
+                    "Tests, additional edit-data transfers and saving still require their applicable separate approvals."))
         print(SEPARATOR)
 
     def _run(self, text, loop, session):
@@ -391,6 +406,9 @@ class ProjectSession(Session):
             action = decision["action"]
             if action == "answer":
                 return self._answer(text, loop, decision)
+            # A late reply may be displayed, but cannot authorize a read,
+            # test or edit after the original project scope changed/expired.
+            self._task_consent.check(self.project)
             if action == "test":
                 self._close_section()
                 outcome = self.test_project(decision["recipe"])
@@ -635,6 +653,7 @@ class ProjectSession(Session):
         try:
             self.window.close()                       # the edit pipeline opens its own managed session
             self.pacer.wait_turn(_countdown, _countdown_end)
+            self._task_consent.check(self.project)
             # Only data from the exact packet that elicited this edit may cross the hand-off.
             # The context is subsequently sealed together with the selected files in WriteGrant.
             from .execution import current
@@ -652,12 +671,17 @@ class ProjectSession(Session):
                         "bytes": sum(len(item["content"].encode("utf-8")) for item in sent if item["content"] is not None),
                         "state": "not known whether it arrived"}      # recorded before the hand-off, like the read steps
             self.edit_transfers.append(transfer)
+            def check_edit_scope():
+                self._task_consent.check(self.project)
+                permit.check()
             response = ask_cli.request(text, args, self.reader, task=prepared.source, write_grant=prepared.write_grant,
-                                       check=permit.check, question_consent=permit)
+                                       check=check_edit_scope, question_consent=permit)
             transfer["state"] = "answer received"
-            permit.check()
+            check_edit_scope()
             permit.close()
             return ask_edit.finish(prepared, response, args, self.reader).code
+        except GrantDenied as exc:
+            print(GRANT_HINTS[exc.code])
         except InputBudgetExceeded:
             print("The agreed context and selected files exceed the edit request limit. Narrow the task; nothing was saved.")
         except ask_edit.CreateCollision:

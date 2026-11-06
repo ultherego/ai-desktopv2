@@ -24,6 +24,7 @@ PROMPTS = {
     "weather": "Get the weather from Open-Meteo? [y/n]: ",
     "ask-transfer": "Send to Claude? [y/n]: ",
     "transfer": "Send the data shown to Claude? [y/n]: ",
+    "task-scope": "Send these files to Claude and run the declared test on a copy? [y/n]: ",
     "material-transfer": "Send to Claude? [y/n]: ",
     "material-whole": "Send the whole file to Claude in these requests? [y/n]: ",
     "material-task": "Send to Claude? [y/n]: ",

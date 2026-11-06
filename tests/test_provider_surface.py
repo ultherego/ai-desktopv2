@@ -89,7 +89,8 @@ class ProviderSurfaceTests(unittest.TestCase):
             with self.subTest(provider=provider), execution.using(selection(provider)), \
                     patch.object(task_cli, "selection", return_value=(None, SOURCE)), \
                     patch.object(task_cli, "send_once") as send, redirect_stdout(io.StringIO()) as output:
-                result = task_cli.run_task(SimpleNamespace(details=True, preview=True, test="text"), lambda _: "n")
+                result = task_cli.run_task(SimpleNamespace(details=True, preview=True, test="text",
+                                                           workspace="/synthetic/project"), lambda _: "n")
             name = "Codex" if provider == "codex" else "Claude"
             self.assertEqual(result, 0)
             self.assertIn("=== SELECTED DATA FOR " + name.upper() + " ===", output.getvalue())
@@ -114,31 +115,33 @@ class ProviderSurfaceTests(unittest.TestCase):
             apply.assert_not_called()
 
     def test_task_reply_and_failure_keep_the_provider_of_the_real_handoff(self):
+        before = {"files": {"Claude_Codex.txt": {"file": {"content": "Claude oraz Codex"}}}}
         proposal = json.dumps({"summary": ANSWER, "files": [
             {"path": "Claude_Codex.txt", "content": "Nowa treść Claude i Codex."}]})
         argv = ["run", QUESTION, "--workspace", "/synthetic/project", "--file", "Claude_Codex.txt",
                 "--test", "python-syntax", "--format", "plain", "--v"]
-        for failure in (False, True):
+        for failure, change_execution in ((False, False), (True, True), (False, True)):
             sent = []
 
             def sender(approval):
                 sent.append(json.loads(approval.payload))
-                execution.select(selection("claude"))
+                if change_execution:
+                    execution.select(selection("claude"))
                 if failure:
                     raise AnalysisDenied("runtime")
                 return proposal
 
-            with self.subTest(failure=failure), redirect_stdout(io.StringIO()) as output, \
+            with self.subTest(failure=failure, change_execution=change_execution), redirect_stdout(io.StringIO()) as output, \
                     execution.using(selection("codex")), self.terminal(), \
                     patch.object(task_cli.os, "geteuid", return_value=1000), \
                     patch.object(task_cli.os, "getuid", return_value=1000), \
-                    patch.object(task_cli, "selection", return_value=({}, SOURCE)), \
+                    patch.object(task_cli, "selection", return_value=(before, SOURCE)), \
                     patch.object(task_cli.workspace, "_can_apply", return_value=0), \
                     patch.object(task_cli.workspace, "unchanged"), \
                     patch.object(task_cli, "installation_ready"), \
                     patch.object(task_cli, "managed_session", return_value=nullcontext()), \
                     patch.object(task_cli, "send_once", side_effect=sender) as send, \
-                    patch.object(task_cli.task_sandbox, "run", return_value={"passed": False, "output": ""}), \
+                    patch.object(task_cli.task_sandbox, "run", return_value={"passed": False, "output": ""}) as test, \
                     patch.object(task_cli.workspace, "apply") as apply, \
                     patch("subprocess.run") as run, patch("subprocess.Popen") as spawn, \
                     patch("socket.socket") as socket:
@@ -152,10 +155,19 @@ class ProviderSurfaceTests(unittest.TestCase):
             if failure:
                 self.assertIn("The isolated Codex runtime is incomplete. Run ai-desktop doctor --clients.", output.getvalue())
                 self.assertNotIn("The isolated Claude", output.getvalue())
+                test.assert_not_called()
+            elif change_execution:
+                # A reply cannot carry the original test approval into a different
+                # live execution context. Do not bypass the new guard to reach UI.
+                self.assertIn("ANALYSIS: REFUSED reason=consent", output.getvalue())
+                self.assertNotIn("=== PROPOSAL FROM", output.getvalue())
+                self.assertNotIn(ANSWER, output.getvalue())
+                test.assert_not_called()
             else:
                 self.assertIn("=== PROPOSAL FROM CODEX ===", output.getvalue())
                 self.assertNotIn("=== PROPOSAL FROM CLAUDE ===", output.getvalue())
                 self.assertIn(ANSWER, output.getvalue())
+                test.assert_called_once()
             apply.assert_not_called()
             run.assert_not_called()
             spawn.assert_not_called()

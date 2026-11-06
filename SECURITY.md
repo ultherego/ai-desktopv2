@@ -99,11 +99,12 @@ Important: **the content of a file or the output of a command can lead the model
 | Deleting files | A list of files and `[y/n]`. Files go to the task trash. |
 | Change from `change` | The change, test and undo shown, typing the whole word `yes`. An undo after a failure also requires `yes`. |
 | Undo and restore | A separate `[y/n]`. |
-| `material`, `project` | Consent per question. Whole-file analysis: one consent per task, valid for 30 minutes. Next project stage: a separate `[y/n]`. |
-| `task run` | Sending and writing separately; multi-process suites also require their copy-test approval. |
+| `material` | Consent per question. Whole-file analysis: one consent per task, valid for 30 minutes. |
+| `project` analysis | One approval for at most 5 stages, 40 requests, 10 MiB of project data and 50 minutes. Source, policy, recipient and deadline checks apply before continuation; changed scope stops the task. |
+| `task run` | One initial approval covers sending the selected files, bounded preparation and one exact declared test on a selected-file copy, including Go/npm. The full diff and write still need a separate approval. |
 | Project suites in `ask`/`project` | Current runtime: a separate approval for the permitted local copy and fixed recipe, before the final write decision. |
 
-The agreed next flow binds one approval to the declared plan, stage budgets and copy tests. It must not silently add a test, widen data access or reuse approval after a relevant change. Final diff approval, live system changes, deletion and undo remain separate. This simplification is not yet the current prompt flow.
+Candidate 84 binds project analysis to its declared stage budgets and standalone tasks to their preparation and one declared copy test. It cannot silently add a test, widen data access or reuse approval after a relevant change. Combining preparation, additional edit-data transfer and project-copy tests in ordinary conversations/project edits remains open in S9. Final diff approval, live system changes, deletion and undo remain separate. Candidate 84 passed its separate offline CachyOS acceptance; the evidence and remaining merge approval are recorded in [docs/ROADMAP.md](docs/ROADMAP.md).
 
 The consent prompt clears previously typed characters from the terminal, so pasted text does not approve an action you have not yet seen.
 Without a terminal there is no consent: the program refuses. There is no unattended mode. Consent does not protect against another process controlling the same terminal.
@@ -158,3 +159,7 @@ File read, excerpt, generated edit, history and local test-copy budgets are sepa
 A large-file content search or range read returns only bounded excerpts with source identities, hashes and coverage. Each following handoff rechecks the policy and source state. An anchored edit must uniquely match non-overlapping fragments of the approved original. The controller reconstructs the result, checks file and total byte budgets after restoring line endings, then uses the existing diff, copy test, consent, source-state check and rollback. A model proposal cannot authorize its own write.
 
 Skills and their local references are frozen before task consent and rechecked before sending. Selected knowledge has its own bounded, hash-bound envelope for material/project/task, and a separate budget within ask discovery. It cannot grant tools or permissions. Reference version claims come only from strict results of an already-authorized package query; free text or model-supplied versions are not trusted observations. Rolling references are dated snapshots, not version compatibility proof. Public web requests do not inherit this local knowledge envelope. This implementation does not add automatic remote documentation downloads or native client Skill tools.
+
+## Bounded task approvals
+
+Candidate 84 can reuse one explicit approval for at most five read-only project stages, under a fixed snapshot, policy, recipient and total request/data/time budget. Standalone `task run` can approve preparation and one exact declared test on its selected-file copy together. These grants are process-local, expire and cannot authorize a different recipe or input scope; test grants are consumed once. Source/recipient checks still run before transfer and test execution. The final immutable diff needs its own write approval. No grant survives saved-session resume, and ordinary conversation approval does not authorize running a project test. New consent behavior requires CachyOS acceptance before merge.

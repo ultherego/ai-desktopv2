@@ -185,9 +185,9 @@ class SharedLoaderTests(unittest.TestCase):
         self.assertEqual(session.requests_handed_off(), 2)
         answered.assert_called_once()
 
-    def test_standalone_task_loads_on_demand_under_one_transfer_consent(self):
+    def test_standalone_task_loads_on_demand_under_one_task_scope_consent(self):
         source = {"instruction": "fix", "files": [{"path": "test.txt", "content": "old", "writable": True}]}
-        args = SimpleNamespace(preview=False, workspace="/synthetic", details=False, format="plain")
+        args = SimpleNamespace(preview=False, workspace="/synthetic", details=False, format="plain", test="text")
         sent = []
         responses = iter(['{"action":"skill","names":["procedure"]}', '{"summary":"ok","files":[{"path":"test.txt","content":"new"}]}'])
         def send(approval):
@@ -201,7 +201,7 @@ class SharedLoaderTests(unittest.TestCase):
                 patch.object(task_cli, "confirm", return_value=True) as confirm, patch.object(task_cli, "send_once", side_effect=send), \
                 patch.object(task_cli, "finish_task", return_value=0), contextlib.redirect_stdout(io.StringIO()):
             self.assertEqual(task_cli.run_task(args, lambda unused: "yes"), 0)
-        confirm.assert_called_once()
+        confirm.assert_called_once_with("task-scope", reader=unittest.mock.ANY, config=self.config)
         self.assertEqual(len(sent), 2)
         self.assertNotIn("knowledge", sent[0])
         self.assertEqual(sent[1]["knowledge"]["resources"][0]["text"], skills.bundle("procedure")["text"])
