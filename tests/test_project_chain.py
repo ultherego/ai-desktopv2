@@ -81,7 +81,7 @@ class ChainTests:
         self.session(["zmień util.py"], ["yes"], self.transport(lambda path, old: old + "new\n"))
         self.assertEqual(self.transported, [])
         self.assertEqual(target.read_text(), "new private version\n")
-        self.assertIn("changed since the analysis", self.output)
+        self.assertIn("The file changed, so the task was stopped.", self.output)
         self.assertNotIn(PROMPTS["project-edit"], self.prompts)  # stop, do not nag for another yes
 
     def test_a_file_changed_during_the_extra_transfer_question_never_reaches_the_edit_transport(self):
@@ -98,7 +98,7 @@ class ChainTests:
         with patch.object(pcli, "confirm", confirm):
             self.session(["zmień readme"], ["yes", "yes"], self.transport(lambda path, old: old + "new\n"))
         self.assertEqual(self.transported, [])
-        self.assertIn("The change was not prepared", self.output)
+        self.assertIn("The file changed, so the task was stopped.", self.output)
         self.assertEqual(target.read_text(), "changed while the question was displayed\n")
 
     def test_changed_deletion_consent_refuses_and_partial_recovery_is_visible_in_status(self):

@@ -53,7 +53,7 @@ class RecipientPromptTests(unittest.TestCase):
             read.assert_not_called()
 
     def test_all_egress_prompts_name_the_frozen_recipient_and_local_decisions_stay_local(self):
-        ai_actions = {"ask-question", "ask-transfer", "transfer", "material-transfer", "material-whole",
+        ai_actions = {"ask-question", "ask-transfer", "transfer", "task-scope", "material-transfer", "material-whole",
                       "material-task", "project-task", "project-continue", "project-edit"}
         for provider, expected, other in (("claude", "Claude", "Codex"), ("codex", "Codex", "Claude")):
             for action in terminal_consent.PROMPTS:
