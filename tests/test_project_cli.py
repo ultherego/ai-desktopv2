@@ -127,7 +127,7 @@ class RootAndLocalTests(Base):
         lines = self.output.splitlines()
         self.assertIn("── To send " + "─" * 37, lines)
         self.assertRegex(self.output, r"Skipped\s+denied or out of scope: 1")
-        self.assertRegex(self.output, r"Without\s+Internet, file writes or running code · time limit 600 s")
+        self.assertRegex(self.output, r"Without\s+Internet, file writes or running code · task time limit 3000 s")
         self.assertRegex(self.output, r"Data\s+the question, plus the file names, matches and parts Claude asks for")
 
     def test_verbose_adds_the_explanation_of_what_is_sent(self):
@@ -281,33 +281,84 @@ class QuestionTests(Base):
         self.assertRegex(self.output, r"Format\s+Claude answered in plain text")
         self.assertNotIn("is not in the required format", self.output)
 
-    def test_a_deep_task_continues_in_stages_with_coverage_and_a_small_yes_per_stage(self):
+    def test_a_deep_task_continues_in_the_initial_scope_with_one_yes_and_visible_coverage(self):
         self.model = script(
             {"action": "read", "path": "src/util.py", "ranges": [{"first": 1, "last": 2}]},
             {"action": "answer", "text": "Częściowo: util.py.", "sources": [], "progress": "Zrobione: util.py. Dalej: docs.", "continue": True},
             {"action": "read", "path": "docs/readme.txt", "ranges": [{"first": 1, "last": 1}]},
             {"action": "answer", "text": "Komplet.", "sources": [], "continue": False})
-        self.run_cli(["Zrób głęboką analizę", "/exit"], ["yes", "yes"])
+        self.run_cli(["Zrób głęboką analizę", "/exit"], ["yes"])
         first, second, third, fourth = self.payloads()
         self.assertEqual((first["project"]["project"]["stage"], first["project"]["project"]["visited"]), (1, []))
         self.assertEqual(second["project"]["project"]["stage"], 1)
         self.assertEqual((third["project"]["project"]["stage"], third["project"]["project"]["visited"]), (2, ["src/util.py"]))
         self.assertEqual(third["project"]["project"]["progress"], "Zrobione: util.py. Dalej: docs.")
-        self.assertIn(PROMPTS["project-continue"], self.prompts)
+        self.assertNotIn(PROMPTS["project-continue"], self.prompts)
+        self.assertEqual(self.prompts.count(PROMPTS["project-task"]), 1)
+        self.assertIn("up to 5 stages, 40 requests and 10 MiB of project data in 50 minutes", self.output)
         self.assertIn("Partial analysis, stage 1 of 5: Claude read 1 of 3 files", self.output)
         self.assertIn("── Stage 2 of 5", self.output)
         self.assertIn("Komplet.", self.output)
 
-    def test_declining_the_next_stage_or_reaching_the_cap_ends_the_deep_task(self):
+    def test_declining_the_scope_or_reaching_the_stage_cap_ends_the_deep_task(self):
         partial = {"action": "answer", "text": "Kolejny kawałek.", "sources": [], "continue": True}
         self.model = script(partial)
-        self.run_cli(["Analiza", "/exit"], ["yes", "no"])
-        self.assertEqual(len(self.sent), 1)
-        self.assertIn("Stopped after stage 1 of 5; partial conclusions are above.", self.output)
+        self.run_cli(["Analiza", "/exit"], ["no"])
+        self.assertEqual(len(self.sent), 0)
+        self.assertIn("Cancelled. No data was sent.", self.output)
         self.model = script(*[partial] * 5)
-        self.run_cli(["Analiza", "/exit"], ["yes"] * 5)
-        self.assertEqual(len(self.sent), 6)                                # 1 earlier + 5 stages
+        self.run_cli(["Analiza", "/exit"], ["yes"])
+        self.assertEqual(len(self.sent), 5)
+        self.assertNotIn(PROMPTS["project-continue"], self.prompts)
         self.assertIn("Reached the limit of 5 stages", self.output)
+
+    def test_changed_project_between_stages_does_not_receive_a_fresh_silent_grant(self):
+        def model(payload):
+            (self.proj / "docs/readme.txt").write_text("Changed after approval\n")
+            return json.dumps({"action": "answer", "text": "Partial.", "sources": [], "continue": True})
+        self.model = model
+        self.run_cli(["Analyze", "/exit"], ["yes"])
+        self.assertEqual(len(self.sent), 1)
+        self.assertIn("The file changed, so the task was stopped.", self.output)
+        self.assertNotIn(PROMPTS["project-continue"], self.prompts)
+
+    def test_changed_project_during_initial_confirmation_is_not_sent(self):
+        def approve(*args, **kwargs):
+            (self.proj / "docs/readme.txt").write_text("Changed during approval\n")
+            return True
+        with patch.object(pcli, "confirm", side_effect=approve):
+            self.run_cli(["Analyze", "/exit"])
+        self.assertEqual(self.sent, [])
+        self.assertIn("The file changed, so the task was stopped.", self.output)
+
+    def test_changed_policy_between_stages_stops_without_new_model_data(self):
+        def model(payload):
+            self.config.write_text(self.config.read_text().replace('claude = true', 'claude = false'))
+            return json.dumps({"action": "answer", "text": "Partial.", "sources": [], "continue": True})
+        self.model = model
+        self.run_cli(["Analyze", "/exit"], ["yes"])
+        self.assertEqual(len(self.sent), 1)
+        self.assertIn("The consent is invalid", self.output)
+
+    def test_expired_scope_does_not_restart_the_deadline_for_a_new_stage(self):
+        def model(payload):
+            self.clock.now += pcli.TASK_SECONDS + 1
+            return json.dumps({"action": "answer", "text": "Partial.", "sources": [], "continue": True})
+        self.model = model
+        self.run_cli(["Analyze", "/exit"], ["yes"])
+        self.assertEqual(len(self.sent), 1)
+        self.assertIn("This consent has expired", self.output)
+
+    def test_interrupting_an_automatic_stage_stops_without_retry_or_another_prompt(self):
+        def model(payload):
+            if len(self.sent) == 2:
+                raise KeyboardInterrupt()
+            return json.dumps({"action": "answer", "text": "Partial.", "sources": [], "continue": True})
+        self.model = model
+        self.run_cli(["Analyze", "/exit"], ["yes"])
+        self.assertEqual(len(self.sent), 2)
+        self.assertIn("Interrupted.", self.output)
+        self.assertNotIn(PROMPTS["project-continue"], self.prompts)
 
     def test_prose_instead_of_an_action_is_shown_with_a_format_warning_and_no_sources(self):
         self.ask("To jest zwykły tekst z **markdownem**.")
@@ -358,7 +409,7 @@ class QuestionTests(Base):
         self.assertIn("did not answer in the last step", self.output)
         self.assertIn("Stopped without an answer", self.output)
 
-    def test_a_file_that_changes_between_reads_is_reported_and_repinned(self):
+    def test_a_file_that_changes_between_reads_stops_the_original_scope(self):
         read = {"action": "read", "path": "src/util.py", "ranges": [{"first": 1, "last": 2}]}
         reread = {"action": "read", "path": "src/util.py", "ranges": [{"first": 1, "last": 1}]}
         changer = {"n": 0}
@@ -372,11 +423,9 @@ class QuestionTests(Base):
             return base(payload)
         self.model = model
         self.run_cli(["Co robi helper?", "/exit"], ["yes"], argv=[str(self.proj), "--v"])
-        observed = self.payloads()[2]["project"]["observations"]
-        self.assertIn({"kind": "refused", "action": "read", "code": "CHANGED"}, observed)
-        self.assertEqual([o["kind"] for o in observed if o["kind"] in ("read", "dropped")], ["dropped"])
-        self.assertRegex(self.output, r"Changed\s+src/util.py \(during the task or after the scan\)")
-        self.assertRegex(self.output, r"Confirmed\s+none — Claude named no sources")
+        self.assertEqual(len(self.sent), 2)
+        self.assertIn("The file changed, so the task was stopped.", self.output)
+        self.assertNotIn("return 2", json.dumps(self.payloads()))
 
     def test_the_index_is_refreshed_before_every_question_and_on_request(self):
         self.model = script({"action": "answer", "text": "Jeden.", "sources": []},
@@ -426,7 +475,7 @@ class QuestionTests(Base):
         self.assertNotIn("repeated", self.output)
         self.assertEqual(len(self.sent), 4)
 
-    def test_a_read_refused_as_changed_may_be_retried_once_and_a_same_size_edit_is_flagged(self):
+    def test_a_same_size_edit_is_not_repinned_or_retried_under_the_original_scope(self):
         target = self.proj / "src/util.py"
         read = {"action": "read", "path": "src/util.py", "ranges": [{"first": 1, "last": 2}]}
         other = {"action": "read", "path": "src/util.py", "ranges": [{"first": 1, "last": 1}]}
@@ -441,8 +490,52 @@ class QuestionTests(Base):
         self.model = model
         self.run_cli(["Co robi helper?", "/exit"], ["yes"])
         self.assertNotIn("repeated", self.output)
-        self.assertEqual(len(self.sent), 4)
-        self.assertRegex(self.output, r"Changed\s+src/util.py \(during the task or after the scan\)")
+        self.assertEqual(len(self.sent), 2)
+        self.assertIn("The file changed, so the task was stopped.", self.output)
+        self.assertNotIn("return 2", json.dumps(self.payloads()))
+
+    def test_first_read_and_search_cannot_transfer_a_changed_file_from_the_same_stage(self):
+        decisions = (
+            {"action": "read", "path": "docs/readme.txt", "ranges": [{"first": 1, "last": 1}]},
+            {"action": "search", "needle": "CHANGED-SECRET", "continue": False},
+        )
+        target = self.proj / "docs/readme.txt"
+        for decision in decisions:
+            with self.subTest(action=decision["action"]):
+                self.sent.clear()
+                target.write_text("Original text.\n")
+                def model(payload):
+                    target.write_text("CHANGED-SECRET\n")
+                    return json.dumps(decision)
+                self.model = model
+                self.run_cli(["Analyze", "/exit"], ["yes"])
+                self.assertEqual(len(self.sent), 1)
+                self.assertIn("The file changed, so the task was stopped.", self.output)
+                self.assertNotIn("CHANGED-SECRET", json.dumps(self.payloads()))
+
+    def test_changed_bytes_loaded_after_the_action_check_are_rejected_at_the_handoff(self):
+        target = self.proj / "docs/readme.txt"
+        target.write_text("OLD-TEST-CONTENT\n")
+        original_load = ps.Project._load
+        original_stat = target.stat()
+        def load(project, entry, *args, **kwargs):
+            if entry.path == "docs/readme.txt":
+                target.write_text("NEW-TEST-CONTENT\n")
+                os.utime(target, ns=(original_stat.st_atime_ns, original_stat.st_mtime_ns))
+            return original_load(project, entry, *args, **kwargs)
+        for decision in (
+                {"action": "read", "path": "docs/readme.txt", "ranges": [{"first": 1, "last": 1}]},
+                {"action": "search", "needle": "TEST-CONTENT", "continue": False}):
+            with self.subTest(action=decision["action"]):
+                target.write_text("OLD-TEST-CONTENT\n")
+                original_stat = target.stat()
+                self.sent.clear()
+                self.model = script(decision)
+                with patch.object(ps.Project, "_load", load):
+                    self.run_cli(["Analyze", "/exit"], ["yes"])
+                self.assertEqual(len(self.sent), 1)
+                self.assertIn("The file changed, so the task was stopped.", self.output)
+                self.assertNotIn("NEW-TEST-CONTENT", json.dumps(self.payloads()))
 
     def test_access_revoked_after_an_answer_stops_the_next_question_and_leaks_no_names(self):
         revoked = 'version = 1\n[files]\nread = []\ndeny = ["~/proj/"]\n[network]\nclaude = false\n'
@@ -670,6 +763,38 @@ class EditTests(Base):
         self.assertEqual([f["path"] for f in seen[0]["task"]["files"]], ["hello.py"])
         self.assertEqual(len(finished), 1)
         self.assertFalse((self.proj / "hello.py").exists())                  # nothing is written by `project` itself
+
+    def test_late_edit_reply_cannot_start_a_fresh_edit_grant_after_task_expiry(self):
+        def model(payload):
+            self.clock.now += pcli.TASK_SECONDS + 1
+            return json.dumps({"action": "edit", "files": [], "create": ["hello.py"], "check": "python-syntax"})
+        self.model = model
+        with patch.object(pcli.ask_edit, "prepare") as prepare, patch.object(pcli.ask_cli, "request") as request, \
+                patch.object(pcli.ask_edit, "finish") as finish:
+            self.run_cli(["Create hello.py", "/exit"], ["yes"])
+        self.assertEqual(len(self.sent), 1)
+        prepare.assert_not_called()
+        request.assert_not_called()
+        finish.assert_not_called()
+        self.assertIn("This consent has expired", self.output)
+
+    def test_edit_pacing_cannot_outlive_the_original_project_scope(self):
+        original_wait = mcli.Pacer.wait_turn
+        waits = {"count": 0}
+        def wait(pacer, *args, **kwargs):
+            waits["count"] += 1
+            if waits["count"] == 2:  # One project request, then the automatic edit handoff.
+                self.clock.now += pcli.TASK_SECONDS + 1
+            return original_wait(pacer, *args, **kwargs)
+        self.model = script({"action": "edit", "files": [], "create": ["hello.py"], "check": "python-syntax"})
+        with patch.object(mcli.Pacer, "wait_turn", wait), patch.object(pcli.ask_edit, "prepare") as prepare, \
+                patch.object(pcli.ask_cli, "request") as request, patch.object(pcli.ask_edit, "finish") as finish:
+            self.run_cli(["Create hello.py", "/exit"], ["yes"])
+        prepare.assert_not_called()
+        request.assert_not_called()
+        finish.assert_not_called()
+        self.assertEqual(len(self.sent), 1)
+        self.assertIn("This consent has expired", self.output)
 
     def run_delete(self, answers, paths=("docs/readme.txt",)):
         self.model = script({"action": "edit", "files": [], "create": [], "delete": list(paths), "check": "text"})

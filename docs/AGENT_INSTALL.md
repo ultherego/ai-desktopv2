@@ -1,6 +1,6 @@
 # Client installation, registration and compatibility
 
-Candidate **0.1.0-83** uses independently installed clients. The application package contains adapters and isolation machinery, not vendor executables. Choose **Claude Code**, **Codex**, both, or local inference with neither. The unchanged candidate-82 client runtime passed CachyOS upgrade and isolated offline checks with Claude 2.1.319 and Codex 0.167.0; [the exact-head record](ROADMAP.md) distinguishes this from login or inference acceptance.
+Candidate **0.1.0-84** uses independently installed clients. The application package contains adapters and isolation machinery, not vendor executables. Choose **Claude Code**, **Codex**, both, or local inference with neither. The unchanged candidate-82 client runtime passed CachyOS upgrade and isolated offline checks with Claude 2.1.319 and Codex 0.167.0; [the exact-head record](ROADMAP.md) distinguishes this from login or inference acceptance.
 
 ## Supported installations
 

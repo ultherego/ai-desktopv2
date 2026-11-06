@@ -30,7 +30,7 @@ class TaskCliTests(unittest.TestCase):
             self.prompts.append(prompt)
             if prompt == PROMPTS["write"] and mutate:
                 (self.root / "calc.py").write_text("user edit\n")
-            approved = approve_send if prompt == PROMPTS["transfer"] else approve_write
+            approved = approve_send if prompt == PROMPTS["task-scope"] else approve_write
             return "yes" if approved else "no"
         with contextlib.redirect_stdout(out), patch.object(cli.sys.stdin, "isatty", return_value=True), \
                 patch.object(cli.sys.stdout, "isatty", return_value=True), \
@@ -50,7 +50,7 @@ class TaskCliTests(unittest.TestCase):
         self.assertIn("Test on a copy: passed (python-syntax); 1 selected file(s).", output)
         self.assertIn("This checks syntax only; project tests were not run.", output)
         self.assertIn("Changes saved.", output)
-        self.assertEqual(self.prompts, [PROMPTS["transfer"], PROMPTS["write"]])
+        self.assertEqual(self.prompts, [PROMPTS["task-scope"], PROMPTS["write"]])
         self.assertNotRegex(output, r"[a-f0-9]{64}")
         record = workspace.status(str(self.root))[0]
         self.assertTrue(workspace.rollback(str(self.root), record[0]))
@@ -75,7 +75,7 @@ class TaskCliTests(unittest.TestCase):
         self.assertEqual(result, 2)
         self.assertIn("No change was proposed: the file already has this content. Nothing was saved.\n", output)
         self.assertNotIn("The task was not finished", output)
-        self.assertEqual(self.prompts, [PROMPTS["transfer"]])  # no write question
+        self.assertEqual(self.prompts, [PROMPTS["task-scope"]])  # no write question
         check.assert_not_called()
         self.assertEqual((self.root / "calc.py").read_text(), "old\n")
         self.assertFalse((self.root / workspace.STATE).exists())
@@ -273,25 +273,30 @@ class TaskPresentationTests(unittest.TestCase):
         return before, source, proposal
 
     def run_presentation(self, *, details=False, preview=False, passed=True,
-                         approve_send=True, approve_write=True, proposal=None):
+                         approve_send=True, approve_write=True, proposal=None,
+                         recipe="python-syntax", before_send=None):
         before, source, proposed = self.fixture()
         proposed = proposed if proposal is None else proposal
         args = cli.build_parser().parse_args(["run", "Popraw dodawanie", "--workspace", "/tmp/project",
-            "--file", "calc.py", "--file", "new.txt", "--context", "test_calc.py", "--test", "python-syntax"]
+            "--file", "calc.py", "--file", "new.txt", "--context", "test_calc.py", "--test", recipe]
             + (["--details"] if details else []) + (["--preview"] if preview else []))
         output, prompts, previews = io.StringIO(), [], []
         output.isatty = lambda: True
         def reader(prompt):
             prompts.append(prompt)
             previews.append(output.getvalue())
-            return "yes" if (approve_send if prompt == PROMPTS["transfer"] else approve_write) else "no"
+            return "yes" if (approve_send if prompt == PROMPTS["task-scope"] else approve_write) else "no"
+        def model_response(approval):
+            if before_send is not None:
+                before_send(args, before, source)
+            return json.dumps(proposed)
         with contextlib.redirect_stdout(output), patch.object(cli.sys.stdin, "isatty", return_value=True), \
                 patch.object(cli, "selection", return_value=(before, source)), \
                 patch.object(cli.workspace, "_can_apply"), \
                 patch.object(cli.workspace, "unchanged") as unchanged, \
                 patch.object(cli, "installation_ready") as ready, \
                 patch.object(cli, "managed_session", return_value=contextlib.nullcontext()) as runtime, \
-                patch.object(cli, "send_once", return_value=json.dumps(proposed)) as send, \
+                patch.object(cli, "send_once", side_effect=model_response) as send, \
                 patch.object(cli.task_sandbox, "run", return_value={"passed": passed, "output": "SYNTHETIC TEST LOG"}) as test, \
                 patch.object(cli.workspace, "apply", side_effect=lambda plan, authorization: plan.consume(authorization)) as apply:
             try:
@@ -303,7 +308,7 @@ class TaskPresentationTests(unittest.TestCase):
     def test_default_shows_scope_complete_changes_and_separate_decisions_without_noise(self):
         code, output, prompts, previews, _, runtime, send, test, apply, unchanged = self.run_presentation()
         self.assertEqual(code, 0, output)
-        self.assertEqual(prompts, [PROMPTS["transfer"], PROMPTS["write"]])
+        self.assertEqual(prompts, [PROMPTS["task-scope"], PROMPTS["write"]])
         self.assertIn("Popraw dodawanie", previews[0])
         self.assertIn("calc.py — edit", previews[0])
         self.assertIn("new.txt — create", previews[0])
@@ -329,7 +334,37 @@ class TaskPresentationTests(unittest.TestCase):
         send.assert_called_once()
         test.assert_called_once()
         apply.assert_called_once()
-        self.assertEqual(unchanged.call_count, 5)
+        self.assertGreaterEqual(unchanged.call_count, 5)
+
+    def test_declared_multiprocess_test_needs_only_scope_then_exact_write_approval(self):
+        for recipe in ("go-test", "npm-test"):
+            with self.subTest(recipe=recipe):
+                code, output, prompts, previews, _, _, send, test, apply, _ = self.run_presentation(recipe=recipe)
+                self.assertEqual(code, 0, output)
+                self.assertEqual(prompts, [PROMPTS["task-scope"], PROMPTS["write"]])
+                self.assertIn("Declared test: %s, once on a copy of the 3 selected file(s)." % recipe, previews[0])
+                self.assertIn("no network, user HOME or host writes", previews[0])
+                self.assertIn("Saving still requires your approval after the full diff.", previews[0])
+                send.assert_called_once()
+                test.assert_called_once()
+                self.assertEqual(test.call_args.args[2], recipe)
+                apply.assert_called_once()
+
+    def test_changed_task_recipe_or_inputs_after_approval_never_run_tests_or_write(self):
+        def recipe(args, before, source):
+            args.test = "npm-test"
+        def workspace(args, before, source):
+            args.workspace = "/tmp/different-project"
+        def contents(args, before, source):
+            source["files"][0]["content"] = "changed after approval\n"
+        for change in (recipe, workspace, contents):
+            with self.subTest(change=change.__name__):
+                code, _, prompts, _, _, _, _, test, apply, _ = self.run_presentation(
+                    recipe="go-test", before_send=change)
+                self.assertEqual(code, 2)
+                self.assertEqual(prompts, [PROMPTS["task-scope"]])
+                test.assert_not_called()
+                apply.assert_not_called()
 
     def test_suite_edit_uses_full_project_handler_and_failed_suite_blocks_the_write(self):
         before, source, proposed = self.fixture()
@@ -441,7 +476,7 @@ class TaskPresentationTests(unittest.TestCase):
     def test_failed_test_shows_failure_output_and_prevents_write_prompt(self):
         code, output, prompts, _, _, _, _, _, apply, _ = self.run_presentation(passed=False)
         self.assertEqual(code, 2)
-        self.assertEqual(prompts, [PROMPTS["transfer"]])
+        self.assertEqual(prompts, [PROMPTS["task-scope"]])
         self.assertIn("Test on a copy: failed", output)
         self.assertIn("SYNTHETIC TEST LOG", output)
         self.assertIn("The changes were not saved", output)
@@ -454,7 +489,7 @@ class TaskPresentationTests(unittest.TestCase):
             operation.assert_not_called()
         code, output, prompts, _, _, _, send, test, apply, _ = self.run_presentation(approve_write=False)
         self.assertEqual(code, 2)
-        self.assertEqual(prompts, [PROMPTS["transfer"], PROMPTS["write"]])
+        self.assertEqual(prompts, [PROMPTS["task-scope"], PROMPTS["write"]])
         self.assertIn("Save cancelled", output)
         send.assert_called_once()
         test.assert_called_once()

@@ -90,7 +90,7 @@ class Cycle(CycleBase):
     # --- refusals before any session ---------------------------------------------------
     def test_declined_transfer_starts_nothing_and_changes_nothing(self):
         code, output = self.run_task(answers=("no",))
-        self.assertEqual((code, self.prompts), (2, [PROMPTS["transfer"]]))
+        self.assertEqual((code, self.prompts), (2, [PROMPTS["task-scope"]]))
         self.assert_model_never_started()
         self.assert_unchanged()
 
@@ -137,7 +137,7 @@ class Cycle(CycleBase):
     # --- refusals around the diff ------------------------------------------------------
     def test_declined_write_at_diff_keeps_everything(self):
         code, output = self.run_task(answers=("yes", "no"))
-        self.assertEqual((code, self.prompts), (2, [PROMPTS["transfer"], PROMPTS["write"]]))
+        self.assertEqual((code, self.prompts), (2, [PROMPTS["task-scope"], PROMPTS["write"]]))
         self.assertIn("```diff", output)
         self.mocks[0].assert_called_once()
         self.assert_unchanged()
@@ -163,7 +163,7 @@ class Cycle(CycleBase):
                 code, output = self.run_task(response=proposal([{"path": path, "content": "x\n"}]),
                                              answers=("yes", "yes"))
                 self.assertEqual(code, 2, output)
-                self.assertEqual(self.prompts, [PROMPTS["transfer"]])
+                self.assertEqual(self.prompts, [PROMPTS["task-scope"]])
                 self.mocks[2].assert_not_called()
                 self.assert_unchanged()
         self.assertEqual(self.outside.read_text(), "OUTSIDE\n")
@@ -171,14 +171,14 @@ class Cycle(CycleBase):
     def test_proposal_identical_to_the_file_says_so_and_never_offers_a_write(self):
         same = proposal([{"path": "calc.py", "content": e6.FILES["calc.py"][0]}])
         code, output = self.run_task(response=same, answers=("yes", "yes"))
-        self.assertEqual((code, self.prompts), (2, [PROMPTS["transfer"]]))
+        self.assertEqual((code, self.prompts), (2, [PROMPTS["task-scope"]]))
         self.assertIn("No change was proposed: the file already has this content. Nothing was saved.", output)
         self.mocks[2].assert_not_called()
         self.assert_unchanged()
 
     def test_failed_proposal_test_never_offers_a_write(self):
         code, output = self.run_task(passed=False)
-        self.assertEqual((code, self.prompts), (2, [PROMPTS["transfer"]]))
+        self.assertEqual((code, self.prompts), (2, [PROMPTS["task-scope"]]))
         self.assertIn("failed", output)
         self.assert_unchanged()
 
@@ -186,7 +186,7 @@ class Cycle(CycleBase):
     def test_valid_write_is_verified_on_disk_and_rolled_back_exactly(self):
         code, output = self.run_task()
         self.assertEqual(code, 0, output)
-        self.assertEqual(self.prompts, [PROMPTS["transfer"], PROMPTS["write"]])
+        self.assertEqual(self.prompts, [PROMPTS["task-scope"], PROMPTS["write"]])
         self.assertEqual(e6.check_written(self.root, self.expected), [])
         self.assertEqual((self.root / "calc.py").read_text(), NEW_CALC)
         self.assertEqual(oct((self.root / "calc.py").stat().st_mode & 0o777), oct(0o640))

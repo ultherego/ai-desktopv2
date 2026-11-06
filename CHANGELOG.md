@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.0-84: bounded task approvals
+
+- Approve up to five read-only project analysis stages once, with visible request, data and time limits. Further stages keep the same project snapshot, policy and recipient; changes or expiry stop the task. Ctrl+C interrupts it.
+- Standalone `task run` declares the exact selected files and test before the first approval, then prepares the proposal and runs that test once without another Go/npm test prompt. The full diff and separate write approval remain mandatory.
+- Grants stay in the current process, expire, cannot be reused for another scope or recipe, and are never restored from saved history. Ordinary `ask` and project-edit copy tests retain their existing approvals; the wider S9 flow remains unfinished.
+- This candidate changes consent boundaries and requires new CachyOS acceptance before merge. Client registration, OAuth and the accepted Codex widget are unchanged.
+
 ## 0.1.0-83: Codex limits inside the widget
 
 - Replace the Codex card's browser fallback with the next applicable account action: check sign-in, connect or reconnect limits, or refresh the existing connection. Show the provider's actual percentages and local reset times in the card; missing readings stay explicitly unknown.

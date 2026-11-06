@@ -15,7 +15,7 @@ import ci_analysis_systemd as driver
 
 
 class DailyPtyProjectConsentTests(unittest.TestCase):
-    def run_prompts(self, prompts, *, project_test):
+    def run_prompts(self, prompts, *, project_test, action=None):
         # A real local PTY and a synthetic Python process exercise prompt
         # boundaries without installing software, invoking a model or systemd.
         with tempfile.TemporaryDirectory() as temp, patch.object(driver, "daily_clean") as clean, \
@@ -23,7 +23,7 @@ class DailyPtyProjectConsentTests(unittest.TestCase):
             script = Path(temp) / "prompts.py"
             script.write_text("for prompt in " + repr([driver.PROMPTS[name] for name in prompts]) + ":\n"
                               "    assert input(prompt) == 'yes'\n")
-            output = driver.daily_pty(["ask"], entrypoint=script, project_test=project_test)
+            output = driver.daily_pty(action or ["ask"], entrypoint=script, project_test=project_test)
             clean.assert_called_once()
             return output
 
@@ -34,6 +34,17 @@ class DailyPtyProjectConsentTests(unittest.TestCase):
 
     def test_ordinary_question_needs_no_copy_consent(self):
         self.run_prompts(("ask-question",), project_test=False)
+
+    def test_standalone_task_has_scope_and_write_without_a_second_test_question(self):
+        output = self.run_prompts(("task-scope", "write"), project_test=False, action=["task", "run"])
+        self.assertEqual(output.count(driver.PROMPTS["task-scope"].encode()), 1)
+        self.assertEqual(output.count(driver.PROMPTS["write"].encode()), 1)
+        self.assertNotIn(driver.PROMPTS["project-test"].encode(), output)
+
+    def test_standalone_task_refuses_duplicate_scope_or_late_test_question(self):
+        for prompts in (("task-scope", "task-scope"), ("task-scope", "project-test", "write")):
+            with self.subTest(prompts=prompts), self.assertRaises(ValueError):
+                self.run_prompts(prompts, project_test=False, action=["task", "run"])
 
     def test_missing_repeated_unexpected_or_out_of_order_copy_consent_refuses(self):
         for prompts, expected in ((("ask-question", "write"), True),
@@ -274,7 +285,8 @@ class CiAnalysisGuardTests(unittest.TestCase):
             driver.file_fixture.check_unchanged(fixture)
 
     def test_compact_task_check_retains_fenced_diff_and_two_ordered_consents(self):
-        output = (driver.PROMPTS["transfer"].encode()
+        output = (b"Declared test: python-unittest, once on a copy of the 2 selected file(s).\n"
+                  + driver.PROMPTS["task-scope"].encode()
                   + b"\nTest on a copy: passed (python-unittest); 2 selected file(s)."
                   + b"\n=== Changes to save ===\n```diff\n"
                   + b"--- a/calc.py\n+++ b/calc.py\n-    return a - b\n+    return a + b\n```\n"
@@ -282,12 +294,13 @@ class CiAnalysisGuardTests(unittest.TestCase):
         driver.compact_task(output)
         rollback = driver.PROMPTS["rollback"].encode() + b"\nChanges undone.\n"
         driver.compact_task(rollback, rollback=True)
-        for bad in (output.replace(b"-    return a - b", b""),
+        for bad in (output.replace(b"Declared test: python-unittest", b"Declared test: npm-test"),
+                    output.replace(b"-    return a - b", b""),
                     output.replace(b"```diff\n", b""),
                     output.replace(b"\n```", b""),
                     output + b"Test on a copy: passed (python-unittest).\n",
                     output.replace(b"2 selected file(s)", b"1 selected file(s)"),
-                    output.replace(driver.PROMPTS["transfer"].encode(), b""),
+                    output.replace(driver.PROMPTS["task-scope"].encode(), b""),
                     output.replace(driver.PROMPTS["write"].encode(), b"")
                         + driver.PROMPTS["write"].encode() * 2,
                     driver.PROMPTS["write"].encode() + output.replace(driver.PROMPTS["write"].encode(), b""),
@@ -296,3 +309,33 @@ class CiAnalysisGuardTests(unittest.TestCase):
                 driver.compact_task(bad)
         with self.assertRaises(ValueError):
             driver.compact_task(rollback.replace(driver.PROMPTS["rollback"].encode(), b""), rollback=True)
+
+    def test_compact_npm_task_checks_declared_scope_result_and_no_extra_test_consent(self):
+        output = (b"Declared test: npm-test, once on a copy of the 3 selected file(s).\n"
+                  + driver.PROMPTS["task-scope"].encode()
+                  + b"\nTest on a copy: passed (npm-test); 3 selected file(s)."
+                  + b"\n=== Changes to save ===\n```diff\n"
+                  + b"--- a/calc.py\n+++ b/calc.py\n-    return a - b\n+    return a + b\n```\n"
+                  + driver.PROMPTS["write"].encode() + b"\nChanges saved.\n")
+        driver.compact_task(output, recipe="npm-test", files=3)
+        for bad in (output + driver.PROMPTS["project-test"].encode(),
+                    output + driver.PROMPTS["transfer"].encode(),
+                    output.replace(b"passed (npm-test)", b"passed (python-unittest)"),
+                    output.replace(b"3 selected file(s)", b"2 selected file(s)")):
+            with self.subTest(output=bad), self.assertRaises(ValueError):
+                driver.compact_task(bad, recipe="npm-test", files=3)
+
+    def test_npm_fixture_rejects_send_or_copy_execution_after_scope_refusal(self):
+        from ai_desktop import task_workspace
+        for marker in (driver.TASK_SEND_MARKER, driver.TASK_COPY_MARKER, driver.NPM_COPY_MARKER):
+            with self.subTest(marker=marker), patch.object(driver.prior, "_run"), \
+                    patch.object(driver, "daily_pty", return_value=marker.encode()) as run, \
+                    patch.object(task_workspace, "status", return_value=[]):
+                with self.assertRaisesRegex(ValueError, "npm-task-scope-refusal"):
+                    driver.multiprocess_task_cycle()
+                self.assertEqual(run.call_count, 1)
+                self.assertEqual(run.call_args.kwargs, {"expected": 2, "refusal": True})
+                action = run.call_args.args[0]
+                self.assertEqual(action[-2:], ["--test", "npm-test"])
+                self.assertEqual(action.count("--context"), 2)
+                self.assertEqual(action.count("--file"), 1)

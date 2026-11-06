@@ -1,6 +1,7 @@
 """User instruction -> selected data consent -> proposal -> test -> write consent."""
 import argparse
 import difflib
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -11,7 +12,8 @@ import time
 
 from .run_controls import recipient, failure_hint, wait_message
 from .analysis_cli import HINTS
-from .analysis_contract import AnalysisConsent, AnalysisDenied, CLIENT_CONTEXT, SYSTEM_PROMPT, terminal_text
+from .analysis_contract import (AnalysisConsent, AnalysisDenied, CLIENT_CONTEXT, SYSTEM_PROMPT,
+                                CONSENT_CEILING, canonical, consent_seconds, terminal_text)
 from .analysis_service import send_once
 from .analysis_session import installation_ready, managed_session
 from .analysis_terminal import fenced_code, render_answer
@@ -20,6 +22,7 @@ from .task_plan import TaskPlan
 from .terminal_consent import confirm, fresh_input
 from .execution import UNSET
 from .skill_runtime import task_skills, accept_skill_response, recheck_with, MAX_ROUNDS
+from .task_test_consent import CopyTestConsent
 
 
 def build_parser():
@@ -60,6 +63,14 @@ def selection(args):
     return before, source
 
 
+def _test_scope(before, source, args):
+    """Bind the selected local test inputs without exposing contents in the scope summary."""
+    return {"workspace": args.workspace, "copy": "selected-files",
+            "snapshot": hashlib.sha256(canonical(before).encode()).hexdigest(),
+            "source": hashlib.sha256(canonical(source).encode()).hexdigest(),
+            "preparation_requests": MAX_ROUNDS + 1, "test_runs": 1}
+
+
 @task_skills
 def run_task(args, reader, *, display_state=None):
     from .run_controls import require_changes
@@ -91,35 +102,47 @@ def run_task(args, reader, *, display_state=None):
             size = 0 if item["content"] is None else len(item["content"].encode("utf-8"))
             print("  " + item["path"] + " — " + action + ", " + str(size) + " B")
         print("Full data preview: --v.")
-    if args.details:
-        print("Test on a copy:", args.test, "(no network, no HOME, no writes to the project)")
+    seconds = min(CONSENT_CEILING, (MAX_ROUNDS + 1) * consent_seconds(
+        selected.get("effort") if selected is not None else None))
+    test_consent = CopyTestConsent(_test_scope(before, source, args), args.test,
+                                  guard=source_check, seconds=seconds)
+    print("Workspace: " + terminal_text(args.workspace))
+    print("Declared test: %s, once on a copy of the %d selected file(s)." % (args.test, len(source["files"])))
+    print("Preparation: at most %d model requests within %d minutes; no network, user HOME or host writes in the test." %
+          (MAX_ROUNDS + 1, (test_consent.seconds + 59) // 60))
+    print("Saving still requires your approval after the full diff.")
     if args.preview:
         print("TASK PREVIEW: PASS sha256=" + gate.sha256 if args.details
               else "Preview ready. Nothing was sent or saved.")
         return 0
     installation_ready()
-    if not confirm("transfer", reader=reader, config=selected):
+    if not confirm("task-scope", reader=reader, config=selected):
         raise AnalysisDenied("consent")
-    gate.check(None, task=source, sha256=gate.sha256, nonce=gate.nonce)
-    workspace.unchanged(before)
-    with managed_session(**({} if args.details else {"quiet": True})):
-        print(wait_message(config=selected), flush=True)
-        for number in range(MAX_ROUNDS + 1):
-            source_check()
-            approval = gate.authorize(None, task=source, sha256=gate.sha256, nonce=gate.nonce)
-            response = send_once(approval)
-            source_check()
-            if not accept_skill_response(response):
-                break
-            if number == MAX_ROUNDS:
-                raise AnalysisDenied("consent")
-            gate = AnalysisConsent(None, task=source, source_check=source_check)
-    if args.details:
-        print("SESSION: STOPPED")
-    return finish_task(before, source, response, args, reader, config=selected)
+    test_consent.approve()
+    try:
+        gate.check(None, task=source, sha256=gate.sha256, nonce=gate.nonce)
+        workspace.unchanged(before)
+        with managed_session(**({} if args.details else {"quiet": True})):
+            print(wait_message(config=selected), flush=True)
+            for number in range(MAX_ROUNDS + 1):
+                test_consent.check(_test_scope(before, source, args), args.test)
+                approval = gate.authorize(None, task=source, sha256=gate.sha256, nonce=gate.nonce)
+                response = send_once(approval)
+                test_consent.check(_test_scope(before, source, args), args.test)
+                if not accept_skill_response(response):
+                    break
+                if number == MAX_ROUNDS:
+                    raise AnalysisDenied("consent")
+                gate = AnalysisConsent(None, task=source, source_check=source_check)
+        if args.details:
+            print("SESSION: STOPPED")
+        return finish_task(before, source, response, args, reader, config=selected, test_consent=test_consent)
+    finally:
+        test_consent.close()
 
 
-def finish_task(before, source, response, args, reader, *, write_guard=None, config=UNSET, project_test=None):
+def finish_task(before, source, response, args, reader, *, write_guard=None, config=UNSET, project_test=None,
+                test_consent=None):
     """Shared proposal review; sending data never authorizes a filesystem write.
 
     ask supplies a policy-bound guard, repeated after confirmation and inside
@@ -146,7 +169,11 @@ def finish_task(before, source, response, args, reader, *, write_guard=None, con
     if args.details:
         print("=== TEST ON AN ISOLATED COPY ===", flush=True)
         print("Checking the changes on an isolated copy…", flush=True)
-    if args.test in contract.MULTIPROCESS and project_test is None:
+    if test_consent is not None:
+        if type(test_consent) is not CopyTestConsent or project_test is not None:
+            raise AnalysisDenied("consent")
+        test_consent.consume(_test_scope(before, source, args), args.test)
+    elif args.test in contract.MULTIPROCESS and project_test is None:
         print("Run %s on the selected files with a transient user cgroup, without network or host writes." % args.test)
         if not confirm("project-test", reader=reader):
             print("Test cancelled. Nothing was saved.")

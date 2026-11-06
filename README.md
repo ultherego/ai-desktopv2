@@ -36,9 +36,9 @@ See [agent settings, accounts and sessions](docs/AGENT_MANAGEMENT.md), [verified
 
 This is a development version, not a 1.0 release.
 
-The current candidate package is **0.1.0-83** (changes: [CHANGELOG.md](CHANGELOG.md)).
+The current candidate package is **0.1.0-84** (changes: [CHANGELOG.md](CHANGELOG.md)).
 
-Candidate 0.1.0-82 migrates the runtime and package to independent clients, including explicitly registered HOME installations. Its exact-head CachyOS upgrade and isolated offline compatibility checks passed with Claude 2.1.319 and Codex 0.167.0; see [the acceptance record](docs/ROADMAP.md). These checks did not perform login or model inference. Candidate 83 improves the Codex usage card: connect or reconnect its limits session and read percentages and reset times directly in the widget. On CachyOS the new card renders and DMS reports it loaded. The maintainer subsequently completed native quota reconnection on the unchanged candidate 83 and confirmed the widget flow works. The earlier `busy` did not recur; its original cause is not established. PR #20 remains unmerged.
+Candidate 0.1.0-82 migrates the runtime and package to independent clients, including explicitly registered HOME installations. Its exact-head CachyOS upgrade and isolated offline compatibility checks passed with Claude 2.1.319 and Codex 0.167.0; see [the acceptance record](docs/ROADMAP.md). These checks did not perform login or model inference. Candidate 83 improves the Codex usage card: connect or reconnect its limits session and read percentages and reset times directly in the widget. On CachyOS the new card renders and DMS reports it loaded. The maintainer subsequently completed native quota reconnection on the unchanged candidate 83 and confirmed the widget flow works. The earlier `busy` did not recur; its original cause is not established. PR #20 was merged as `700a609` after host acceptance and five passing CI jobs. Candidate 84 adds the bounded task approvals described below; its new acceptance is separate.
 
 `ai-desktop doctor` and `doctor --v` inspect metadata without executing a client. `doctor --clients` explicitly probes the selected cloud client offline, without login, network or a model request. A successful probe checks adapter prerequisites; it does not certify the vendor or prove that authentication and inference work.
 
@@ -221,7 +221,7 @@ The project editor receives the authorized conversation and observations behind 
 One directory covered by `files.read`. The scan is local and repeated before each question. Limits: 20,000 files, 100,000 entries, depth
 16. Entries from `deny`, links, special files and `.git` are skipped and counted.
 
-- **Reading.** One consent per question. The model asks for names, a content search and line reads, at most 8 requests and 2 MiB of data. File names, matches and fragments are sent. With a large project you approve further stages (up to 5) one by one.
+- **Reading.** One consent covers at most five stages: 40 requests, 10 MiB of project data and 50 minutes in total. Each stage retains its own 8-request, 2 MiB and 10-minute ceiling. File names, matches and fragments are sent. Further stages continue automatically within the same approved project snapshot, policy and recipient; a change or expiry stops the task. Ctrl+C interrupts it.
 - **Changes.** This mode is not read-only: after a request for a change the model proposes files, and from there the same flow as in `ask` applies (consent to send, test on a copy, diff, separate consent to write, undo). This needs a `files.write` entry with the directory and subdirectories covering the project, e.g. `~/Projects/**`. Edits support up to 64 changed files, 5 path levels and 8 MiB per resulting file, within the owner’s lower read limits. The local test copy supports paths up to 16 levels deep independently of editable targets.
 - **Deletion.** A list of files, `[y/n]`, the task trash and a printed restore command.
 - Project suites can run on the approved copy. The project mode has no general-purpose command runner or web search.
@@ -237,11 +237,11 @@ ai-desktop task run "Fix the addition in calc.py" --workspace /path/to/project \
     --file calc.py --context test_calc.py --test python-unittest
 ```
 
-`--file` may be changed, `--context` is read-only. The directory must be given as an absolute path and must not be the whole home directory. Limits: 512 selected input files, 64 changed files, 8 MiB per file and 16 MiB in total, instruction up to 128 KiB. Small unique anchored replacements are applied against the original bytes; missing, repeated or overlapping anchors are refused. Tests run on a copy, without network or home directory. Python tests cannot create processes, threads or sockets, so not every test suite will work here. `--preview` shows the data without the model or a test. Sending and writing have separate consents; Go and npm suites also ask before their copy test.
+`--file` may be changed, `--context` is read-only. The directory must be given as an absolute path and must not be the whole home directory. Limits: 512 selected input files, 64 changed files, 8 MiB per file and 16 MiB in total, instruction up to 128 KiB. Small unique anchored replacements are applied against the original bytes; missing, repeated or overlapping anchors are refused. Tests run on a copy, without network or home directory. Python tests cannot create processes, threads or sockets, so not every test suite will work here. `--preview` shows the data without the model or a test. The initial scope approval covers preparing the proposal and running the declared test once on the selected-file copy, including Go/npm. The summary shows the workspace, files, recipe and finite preparation budget. Changed files, recipient, scope or recipe invalidate the approval. The full diff and final write decision remain separate; no failed test authorizes a write.
 
-### Planned consent simplification
+### Task approval scope and remaining work
 
-The next flow will approve a bounded plan, its stages and its declared copy tests once, then execute those approved steps without repeating the same question at each stage. A change of scope, recipient, policy, source state or budget will invalidate the approval. The final diff and permission to write remain separate. This is the agreed direction; 0.1.0-79 still uses the per-stage and copy-test prompts described above.
+Candidate 84 implements one bounded approval for project analysis stages and combines standalone task preparation with its declared test. It does not turn ordinary conversation consent into permission to execute project tests. The combined project-edit/data-transfer/copy-test flow, ordinary-chat persistence and shared task continuation remain S9/S1/S2 work. All final writes and deletion/undo operations retain their separate decisions; saved conversations never restore these process-local grants.
 
 ### Undo and restore
 
