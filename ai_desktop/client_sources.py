@@ -16,13 +16,10 @@ import stat
 
 from .e2_ipc import _unique_pairs
 from .system_clients import _native_elf
+from .client_limits import MAX_FILE_BYTES, MAX_TOTAL_BYTES, MAX_ENTRIES, MAX_DEPTH
 
 
 PROVIDERS = ("claude", "codex")
-MAX_FILE_BYTES = 384 * 1024 * 1024
-MAX_TOTAL_BYTES = 512 * 1024 * 1024
-MAX_ENTRIES = 4096
-MAX_DEPTH = 24
 MAX_PATH_BYTES = 4096
 MAX_LINKS = 16
 _DIR = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC

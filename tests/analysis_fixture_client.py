@@ -15,6 +15,7 @@ import time
 sys.path.insert(0, "/usr/lib/ai-desktop")
 from ai_desktop.analysis_contract import CLIENT_VERSION, MAX_PACKET, MAX_CONTEXT_BYTES, canonical, application_input
 from ai_desktop.analysis_sandbox import BINARY, INNER_PROFILE, client_command, client_environment
+from ai_desktop.client_compat import FIRST_INVALID_OPTION, INVALID_OPTION
 from ai_desktop.e2_subscription_boundary import privileges_locked
 from ai_desktop.report_policy import validate_report
 
@@ -132,10 +133,11 @@ def main():
     if action.startswith("compat-"):
         assert not Path(INNER_PROFILE).exists()
         assert not Path("/run/egress.sock").exists()
-        if action == "compat-reject":
-            print("error: unknown option --ai-desktop-invalid-compatibility-option", file=sys.stderr)
-            return 2
-        assert action in ("compat-options", "compat-web", "compat-rpc")
+        if action in ("compat-options", "compat-web", "compat-reject"):
+            sentinel = FIRST_INVALID_OPTION if action == "compat-reject" else INVALID_OPTION
+            print("error: unknown option '" + sentinel + "'", file=sys.stderr)
+            return 1
+        assert action == "compat-rpc"
         print(json.dumps({"loggedIn": False, "configDirectory": INNER_PROFILE, "authMethod": "none"}))
         return 1
     profile = Path(INNER_PROFILE)

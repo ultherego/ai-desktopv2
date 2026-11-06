@@ -205,10 +205,10 @@ def client_command(action, execution=None):
     if action in ("compat-options", "compat-web", "compat-reject"):
         command = client_command("web" if action == "compat-web" else "analyze")
         if action == "compat-reject":
-            command += [client_compat.INVALID_OPTION]
-        # Keep the full production flag set (including -p) and demand the
-        # read-only auth subcommand's JSON. Help can bypass option validation.
-        return command + ["auth", "status"]
+            command += [client_compat.FIRST_INVALID_OPTION]
+        # Keep the full production flags. A parser refusal before session
+        # dispatch is separate from the positive offline auth-status contract.
+        return command + [client_compat.INVALID_OPTION]
     common = [str(BINARY), "--restricted", "--safe-mode", "--setting-sources", ""]
     if selected is not None:
         if selected["model"] != "default":

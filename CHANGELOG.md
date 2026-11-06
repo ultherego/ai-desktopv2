@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-82: native compatibility and standalone package limits
+
+- Separate Claude print-mode option checks from the signed-out account-status check. Exercise the complete production options with explicit unknown-option controls, including first-error ordering, and reject incidental error text or JSONL as parser proof. Preserve the positive offline status contract and strict runtime reply validation.
+- Raise the shared native payload total from 512 MiB to 768 MiB: the official Codex 0.167.0 standalone bundle exceeds the old cap. Keep 384 MiB per file and all traversal/ownership checks. Analysis and quota services allow 3 GiB for the retained payload, its read-only namespace copy and native-client memory.
+- Keep existing approved Claude registrations and separate account data. A previously refused Codex source can be registered after this application update. New exact-candidate CachyOS acceptance remains required before merge.
+
 ## 0.1.0-81: independent clients and explicit registration
 
 - Use independently installed Claude Code or Codex through the existing isolated adapters. Supported system packages work directly; official native/HOME/npm installations use explicit administrator-approved registration and refresh of their native payload. Freeze the selected native executable and client-private resources for one operation, check compatibility offline before account/model access, and refuse changed installations or unsupported protocols.

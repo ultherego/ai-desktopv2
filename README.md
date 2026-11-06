@@ -36,9 +36,9 @@ See [agent settings, accounts and sessions](docs/AGENT_MANAGEMENT.md), [verified
 
 This is a development version, not a 1.0 release.
 
-The current candidate package is **0.1.0-81** (changes: [CHANGELOG.md](CHANGELOG.md)).
+The current candidate package is **0.1.0-82** (changes: [CHANGELOG.md](CHANGELOG.md)).
 
-Candidate 0.1.0-81 migrates the runtime and package to independent clients, including explicitly registered HOME installations. Its new execution paths still require the recorded CachyOS acceptance before merge. The accepted 0.1.0-79 result does not cover this migration.
+Candidate 0.1.0-82 migrates the runtime and package to independent clients, including explicitly registered HOME installations. Its new execution paths still require the recorded CachyOS acceptance before merge. The accepted 0.1.0-79 result does not cover this migration.
 
 `ai-desktop doctor` and `doctor --v` inspect metadata without executing a client. `doctor --clients` explicitly probes the selected cloud client offline, without login, network or a model request. A successful probe checks adapter prerequisites; it does not certify the vendor or prove that authentication and inference work.
 

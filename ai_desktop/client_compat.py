@@ -6,6 +6,7 @@ No probe starts inference, signs in, mounts a profile or opens an uplink.
 """
 from dataclasses import dataclass, asdict
 import json
+import re
 
 from .analysis_contract import AnalysisDenied
 from .e2_ipc import _unique_pairs
@@ -14,7 +15,11 @@ from . import system_clients
 
 PROBE_ACTIONS = frozenset({"version", "compat-help", "compat-options", "compat-web", "compat-reject", "compat-rpc"})
 INVALID_OPTION = "--ai-desktop-invalid-compatibility-option"
+FIRST_INVALID_OPTION = "--ai-desktop-invalid-precedence-option"
 MAX_OUTPUT = 128 * 1024
+_UNKNOWN_OPTION = re.compile(
+    rb"(?:error: *)?(?:unknown|unrecognized) (?:option|argument) "
+    rb"(?:(['\"])(--?[A-Za-z][A-Za-z0-9-]*)\1|(--?[A-Za-z][A-Za-z0-9-]*))", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -53,6 +58,14 @@ def _claude_signed_out(output):
             and data.get("configDirectory") == "/home/client/profile")
 
 
+def _claude_option_rejected(code, output, errors, expected):
+    """Require the parser's exact refusal, not an echoed argv or session error."""
+    if code not in (1, 2) or output:
+        return False
+    match = _UNKNOWN_OPTION.fullmatch(errors.strip())
+    return bool(match and (match.group(2) or match.group(3)) == expected.encode("ascii"))
+
+
 def check(provider, run):
     """Return tested/untested compatibility after bounded offline observations.
 
@@ -71,18 +84,21 @@ checks pass. Runtime result/tool validation remains mandatory on every call.
         raise AnalysisDenied("client-version", stage="compatibility")
     for action in (("compat-options", "compat-web") if provider == "claude" else ("compat-help",)):
         code, output, errors = _result(run, action)
-        valid = (code == 1 and _claude_signed_out(output)) if provider == "claude" else (code == 0 and bool(output.strip()))
+        valid = (_claude_option_rejected(code, output, errors, INVALID_OPTION)
+                 if provider == "claude" else (code == 0 and bool(output.strip())))
         if not valid:
             raise _failure(errors, "client-protocol")
-    # Claude's parser may exit on --help before checking unknown flags. Require
-    # its full runtime argv to dispatch auth status in the empty offline profile
-    # instead, plus a diagnostic specifically rejecting our unknown option.
+    # Print mode treats auth/status as prompt text, and help may bypass option
+    # validation. A final invalid option exercises the complete runtime argv
+    # without entering a session. Two invalid options prove first-unknown
+    # ordering: an unsupported earlier production flag cannot be hidden by the
+    # final sentinel. This checks CLI recognition, not inference semantics.
     code, output, errors = _result(run, "compat-reject")
     if code not in (1, 2):
         raise AnalysisDenied("client-protocol", stage="compatibility")
     if b"CLIENT: REFUSED " in errors or b"bwrap:" in errors:
         raise _failure(errors, "client-protocol")
-    if provider == "claude" and (INVALID_OPTION.encode() not in errors or _claude_signed_out(output)):
+    if provider == "claude" and not _claude_option_rejected(code, output, errors, FIRST_INVALID_OPTION):
         raise AnalysisDenied("client-protocol", stage="compatibility")
     code, output, errors = _result(run, "compat-rpc")
     if provider == "claude":

@@ -17,12 +17,9 @@ import stat
 
 from .analysis_contract import AnalysisDenied
 from . import system_clients as clients
+from .client_limits import MAX_FILE_BYTES, MAX_TOTAL_BYTES, MAX_ENTRIES, MAX_DEPTH
 
 
-MAX_FILE_BYTES = 384 * 1024 * 1024
-MAX_TOTAL_BYTES = 512 * 1024 * 1024
-MAX_ENTRIES = 4096
-MAX_DEPTH = 24
 INNER_ROOT = "/run/ai-desktop-native"
 # Linux UAPI constants are absent in some otherwise supported Python builds.
 _ADD_SEALS = getattr(fcntl, "F_ADD_SEALS", 1033)

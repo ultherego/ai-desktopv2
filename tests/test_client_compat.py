@@ -13,15 +13,16 @@ def observations(provider="claude", version=None):
     proof = ({"loggedIn": False, "authMethod": "none", "configDirectory": "/home/client/profile"}
              if provider == "claude" else {"initialize": True, "signed_out": True, "models": True})
     status = (1 if provider == "claude" else 0, json.dumps(proof).encode(), b"")
+    option_refusal = (1, b"", b"error: unknown option '" + compat.INVALID_OPTION.encode() + b"'\n")
     return {"version": (0, text.encode(), b""), "compat-help": (0, b"Usage: native\n", b""),
-            "compat-options": status, "compat-web": status,
-            "compat-reject": (2, b"", b"unknown option " + compat.INVALID_OPTION.encode()),
+            "compat-options": option_refusal, "compat-web": option_refusal,
+            "compat-reject": (2, b"", b"unknown option " + compat.FIRST_INVALID_OPTION.encode()),
             "compat-rpc": status}
 
 
 class ClientCompatibilityTests(unittest.TestCase):
     def test_baseline_and_newer_same_major_require_every_probe(self):
-        for provider, version, tested in (("claude", "2.1.312", True), ("claude", "2.1.318", False),
+        for provider, version, tested in (("claude", "2.1.312", True), ("claude", "2.1.319", False),
                                           ("codex", "0.166.0", True), ("codex", "0.167.0", False)):
             with self.subTest(provider=provider, version=version):
                 values, calls = observations(provider, version), []
@@ -80,13 +81,14 @@ class ClientCompatibilityTests(unittest.TestCase):
                 self.assertEqual(calls[-1], action)
                 self.assertNotIn("compat-reject", calls)
 
-    def test_negative_control_requires_its_own_unknown_option_and_no_signed_out_json(self):
+    def test_ordering_control_requires_first_unknown_option_and_no_signed_out_json(self):
         for code in (1, 2):
             values = observations()
-            values["compat-reject"] = (code, b"", b"error: unknown option " + compat.INVALID_OPTION.encode())
+            values["compat-reject"] = (code, b"", b"error: unknown option " + compat.FIRST_INVALID_OPTION.encode())
             self.assertTrue(compat.check("claude", values.__getitem__).protocol_checked)
             for output, errors in ((b"", b"error: unknown option --restricted"),
                                    (b"", b"incidental failure"),
+                                   (b"", b"error: unknown option " + compat.INVALID_OPTION.encode()),
                                    (values["compat-rpc"][1], b"ignored " + compat.INVALID_OPTION.encode())):
                 values["compat-reject"] = code, output, errors
                 with self.subTest(code=code, output=output, errors=errors), self.assertRaisesRegex(AnalysisDenied, "client-protocol"):
@@ -96,18 +98,56 @@ class ClientCompatibilityTests(unittest.TestCase):
         from ai_desktop.analysis_sandbox import client_command
         for action, mode in (("compat-options", "analyze"), ("compat-web", "web")):
             command = client_command(action)
-            self.assertEqual(command, client_command(mode) + ["auth", "status"])
+            self.assertEqual(command, client_command(mode) + [compat.INVALID_OPTION])
             self.assertIn("-p", command)
             self.assertNotIn("--help", command)
+            self.assertNotIn("auth", command)
+            self.assertNotIn("status", command)
         self.assertEqual(client_command("compat-reject"),
-                         client_command("analyze") + [compat.INVALID_OPTION, "auth", "status"])
+                         client_command("analyze") + [compat.FIRST_INVALID_OPTION, compat.INVALID_OPTION])
+        self.assertEqual(client_command("compat-rpc")[-2:], ["auth", "status"])
+        self.assertNotIn("-p", client_command("compat-rpc"))
+
+    def test_session_jsonl_and_echoed_sentinels_never_count_as_parser_proof(self):
+        stream = b'{"type":"system","subtype":"init"}\n{"type":"result","is_error":true}\n'
+        for action in ("compat-options", "compat-web", "compat-reject"):
+            expected = compat.FIRST_INVALID_OPTION if action == "compat-reject" else compat.INVALID_OPTION
+            refusal = ("error: unknown option '" + expected + "'").encode()
+            for output, errors in ((stream, refusal), (b" ", refusal),
+                                   (b"", b"echoed argv: " + expected.encode()),
+                                   (b"", b"error: unknown option '--tools'\nargv: " + expected.encode()),
+                                   (b"", refusal + b"\nSECRET unrelated failure")):
+                values = observations(version="2.1.319")
+                values[action] = 1, output, errors
+                with self.subTest(action=action, output=output), self.assertRaisesRegex(AnalysisDenied, "client-protocol") as raised:
+                    compat.check("claude", values.__getitem__)
+                self.assertNotIn("SECRET", str(raised.exception))
+
+    def test_parser_proof_accepts_only_the_exact_expected_unknown_token(self):
+        for action in ("compat-options", "compat-web", "compat-reject"):
+            expected = compat.FIRST_INVALID_OPTION if action == "compat-reject" else compat.INVALID_OPTION
+            for code in (1, 2):
+                for message in ("error: unknown option '" + expected + "'\n", "unknown argument " + expected,
+                                'error: unrecognized option "' + expected + '"'):
+                    values = observations()
+                    values[action] = code, b"", message.encode()
+                    with self.subTest(action=action, code=code, message=message):
+                        self.assertTrue(compat.check("claude", values.__getitem__).protocol_checked)
+            for suffix in ("-extra", "'", " trailing"):
+                values = observations()
+                values[action] = 1, b"", ("unknown option " + expected + suffix).encode()
+                with self.subTest(action=action, suffix=suffix), self.assertRaisesRegex(AnalysisDenied, "client-protocol"):
+                    compat.check("claude", values.__getitem__)
 
     def test_boundary_errors_do_not_satisfy_negative_control(self):
-        values = observations()
-        values["compat-reject"] = (2, b"", b"CLIENT: REFUSED stage=boundary reason=sandbox\n")
-        with self.assertRaises(AnalysisDenied) as raised:
-            compat.check("claude", values.__getitem__)
-        self.assertEqual((raised.exception.reason, raised.exception.stage), ("sandbox", "boundary"))
+        for action in ("compat-options", "compat-web", "compat-reject"):
+            for error, stage in ((b"CLIENT: REFUSED stage=boundary reason=sandbox\n", "boundary"),
+                                 (b"bwrap: Permission denied", "namespace")):
+                values = observations()
+                values[action] = 2, b"", error
+                with self.subTest(action=action, stage=stage), self.assertRaises(AnalysisDenied) as raised:
+                    compat.check("claude", values.__getitem__)
+                self.assertEqual((raised.exception.reason, raised.exception.stage), ("sandbox", stage))
 
     def test_empty_profile_status_contract_is_not_an_authentication_attempt(self):
         for data, code in (({"loggedIn": True, "authMethod": "claude.ai", "configDirectory": "/home/client/profile"}, 0),

@@ -98,7 +98,8 @@ def observation(action, value):
                   if fields["configDirectory"] == sandbox.INNER_PROFILE else "other",
                   signed_out_matches=code == 1 and client_compat._claude_signed_out(output))
     flags = {value for mode in ("analyze", "web") for value in sandbox.client_command(mode)
-             if re.fullmatch(r"--?[A-Za-z][A-Za-z0-9-]*", value)} | {client_compat.INVALID_OPTION}
+             if re.fullmatch(r"--?[A-Za-z][A-Za-z0-9-]*", value)} | {
+                 client_compat.INVALID_OPTION, client_compat.FIRST_INVALID_OPTION}
     unknown = re.search(rb"(?:unknown|unrecognized|unexpected|invalid) (?:option|argument)[:\s]+['\"]?(--?[A-Za-z][A-Za-z0-9-]*)",
                         errors, re.IGNORECASE)
     flag = unknown.group(1).decode("ascii") if unknown else None

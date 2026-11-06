@@ -22,7 +22,8 @@ RuntimeMaxSec=120
 TimeoutStopSec=3
 KillMode=control-group
 TasksMax=96
-MemoryMax=2G
+# Up to 768 MiB sealed client + 768 MiB child tmpfs; 1.5 GiB native headroom.
+MemoryMax=3G
 LimitCORE=0
 NoNewPrivileges=yes
 CapabilityBoundingSet=
