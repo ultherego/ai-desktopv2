@@ -1,10 +1,10 @@
 # Plan for version 1.0
 
-**Goal:** you start the program, talk in plain language, diagnose the system and ask for changes, and every change waits for your consent and can be undone. The flow that must work end to end:
+**Goal:** you start the program, talk in plain language, diagnose the system and ask for changes, and every change waits for your consent with its available recovery path explained. The flow that must work end to end:
 
 > analyze → let's agree on the change → do it → test it → undo
 
-This page is the authoritative roadmap and progress record, including the agreed follow-up scope below. [TODO.md](TODO.md) is a legacy task inventory, not a separate roadmap. Current limitations are in [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md), and release checks are in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
+This page is the authoritative roadmap and progress record, including the agreed follow-up scope below. [TODO.md](TODO.md) redirects here; there is no separate task inventory. Current limitations are in [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md), and release checks are in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 
 ## How completion counts
 
@@ -14,12 +14,12 @@ Existing stage tables use **done**, **in progress** and **to do**. Follow-up ent
 
 ## Current state
 
-Working and merged:
+Working and merged at `dd2daec3045c41662a722f4c6a3485dea14dd196` (PR #18, package `0.1.0-79`; maintainer acceptance recorded below):
 
-- `ask` conversation with one consent, a context window of up to 32 exchanges and task memory, `/` commands, messages up to 128 KiB. The window is not a 32-turn conversation limit.
-- Directory discovery, file reads and commands according to `permissions.toml`.
+- `ask` conversation with one consent, a context window of up to 64 recent exchanges within 512 KiB and bounded task memory, `/` commands, messages up to 128 KiB. The window is not a conversation-length limit; a full durable transcript and compaction remain unfinished.
+- Directory discovery, bounded content search and line-range reads, larger selected-file budgets and commands according to `permissions.toml`. Local text import supports 32 MiB by default (64 MiB ceiling).
 - Writing after showing the diff, with a test on a copy, separate consent and a journal. A concurrent editor save is not overwritten on write.
-- Skills on demand in `ask`, procedures for CachyOS and Arch.
+- Shared on-demand Skills and references in `ask`, `material`, `project` and `task`; general CachyOS/Arch procedures with observed package-version applicability.
 - Client on a separate account, in Bubblewrap, with egress through a filtering proxy.
 - Protection of the `main` branch, five required CI jobs, pinned actions.
 - The interface, settings, docs and Skills are in English, and Claude answers in the language of the question.
@@ -29,7 +29,7 @@ Working and merged:
 | Task | Status |
 |---|---|
 | Undoing a change does not overwrite or delete a newer editor save, both for an edit and for a new file | done |
-| SHA-256 sum of the client checked when the package is built | done |
+| Legacy client download/build integrity | done for the existing path: Claude fixed build hash; Codex archive hash and installer-bound staged hash. Plain manual Codex packaging has no fixed hash. Replaced by the S8 delivery migration below. |
 | Consent for a conversation covers the whole `permissions.toml` | done |
 | A long change instruction is not refused at the edit stage (`ask` accepts 128 KiB, the edit stage 2 KiB) | done |
 | A word starting with `/` can be sent as a question, as the program's message says | done |
@@ -44,11 +44,11 @@ Working and merged:
 |---|---|
 | The final answer after a file read gets the command results and loaded Skills | done |
 | The edit stage gets what was settled in the conversation, the task memory, discovery results and Skills | done |
-| The same in `project` | in progress (PR #18, host acceptance pending) |
-| A Skill loaded in a conversation is available in later questions without an extra model call | in progress (PR #18, host acceptance pending) |
-| Skills on demand also in `material`, `project` and `task` | in progress (candidate `-79`, PR #18; CI and host acceptance pending) |
-| A Skill also works without `permissions.toml` when the question is general | in progress (PR #18, host acceptance pending) |
-| Procedures of the 21 Skills: reading interpretation, conditions for use, ending a diagnosis and verifying a change | in progress |
+| The same in `project` | done (PR #18 merged; reviewed CI and maintainer acceptance below) |
+| A Skill loaded in a conversation is available in later questions without an extra model call | done (PR #18 merged; reviewed CI and maintainer acceptance below) |
+| Skills on demand also in `material`, `project` and `task` | done (candidate `-79`, PR #18 merged; selective loading only, remaining S4 criteria below) |
+| A Skill also works without `permissions.toml` when the question is general | done (PR #18 merged; reviewed CI and maintainer acceptance below) |
+| Procedures of the 21 Skills: reading interpretation, conditions for use, ending a diagnosis and verifying a change | done for the packaged procedures; broader S5 capability coverage remains open |
 
 **Complete when:** for "let's settle on the CSV separator, do it" the edit request contains the settled value, as confirmed by a test on the real request generator.
 
@@ -79,34 +79,38 @@ Working and merged:
 
 | Task | Status |
 |---|---|
-| Project tests (for example `pytest`, `go test`, `npm test`) on an isolated copy, not only seven fixed checks | in progress (PR #18, host acceptance pending) |
-| A clear message about what a given check confirms and what it does not | in progress (PR #18, host acceptance pending) |
+| Project tests (for example `pytest`, `go test`, `npm test`) on an isolated copy, not only seven fixed checks | done (PR #18 merged; reviewed CI and maintainer acceptance below) |
+| A clear message about what a given check confirms and what it does not | done (PR #18 merged; reviewed CI and maintainer acceptance below) |
 | A longer time limit for `high`, if long messages exceed it | to check |
 
 ## Stage 6: cleanup before release
 
 | Task | Status |
 |---|---|
-| A new `pkgrel` number with every change, so the package version tells releases apart | to do |
+| Distinct `pkgrel` for each shipped candidate and consistent package references | done for candidates 79/80; maintain this requirement with every delivery |
 | Working acceptance scripts or their removal (`update_candidate.fish` requires an old version) | to do |
-| Removal of modules and commands not used by the installed program | to do |
-| Merging the duplicated `material` and `project` flows | to do |
+| Separate unused experiments/fixtures from installed runtime; preserve active `e2_*` boundary helpers | TODO — dependency review before movement, no deletion by prefix |
+| Merging the duplicated `material` and `project` flows, shared text validation and smaller orchestration functions | TODO — preserve the complete task flow and refusal behavior |
+| Codex login/logout false error after a successful operation | TODO — reproduce and distinguish native exit status from verified account state |
+| Keep current documentation aligned with code and archive obsolete acceptance instructions | IN PROGRESS — candidate 80 reconciles current documentation and the sole roadmap |
 | `task prune` with a list of entries and consent | to do |
 | One client session per conversation, streaming answers | to do — follow-up S2; lifecycle and revocation checks required |
 
 ## Agreed follow-up scope — 2026-11-06
 
-This section records the requested work after the installed DankBar layout check. It extends the existing stages; it does not close them or create a second release plan. The implementation baseline is package `0.1.0-78`, commit `0cc4be81e16f02b33eb6760dd2fa58de7d6f74fb`; the inspected PR head `55233872e1ef916efa8b6c2576f8c862040e1c1d` adds only the acceptance record. The S3–S5 implementation is now in progress; the delivery order below follows the updated core-work priority. Core work stays within E3–E7; optional desktop additions are deferred until those criteria are stable.
+This section records the requested work after the installed DankBar layout check. It extends the existing stages; it does not close them or create a second release plan. The implementation baseline is package `0.1.0-78`, commit `0cc4be81e16f02b33eb6760dd2fa58de7d6f74fb`; the inspected PR head `55233872e1ef916efa8b6c2576f8c862040e1c1d` adds only the acceptance record. PR #18 subsequently delivered the candidate-79 core and was merged as `dd2daec`; S3–S5 retain only the unfinished criteria below. The delivery order incorporates the approved system-client decision. Core work stays within E3–E7; optional desktop additions are deferred until those criteria are stable.
 
-Release boundary: S3–S5 are the immediate implementation queue; the remaining S0–S6 items are recorded follow-up work, not an automatic expansion of every v1.0 release gate. The existing conditions below remain authoritative; relevant behavior changed by an item must meet those conditions before shipping. S7 is explicitly outside the current MVP. Recording a requested item neither promises a release date nor requires completing optional work before a stable core release.
+Release boundary: S8 client delivery, S9 task usability and the remaining S2–S5 core criteria are the immediate implementation queue; the remaining S0–S6 items are recorded follow-up work, not an automatic expansion of every v1.0 release gate. The existing conditions below remain authoritative; relevant behavior changed by an item must meet those conditions before shipping. S7 is explicitly outside the current MVP. Recording a requested item neither promises a release date nor requires completing optional work before a stable core release.
 
 | Order / ID | Epic and priority | Deliverable | Status | Depends on |
 |---|---|---|---|---|
-| 1 / S3 | E3–E6 / P0 | Large-file analysis, many files, anchored edits and independent test-copy budgets | IN PROGRESS | Existing read/plan/executor; bounded context work from S2 |
-| 2 / S4 | E3, E6 / P0 | Shared on-demand Skills and documentation loader in every mode | IN PROGRESS | Existing role, source and recipient authorization |
-| 3 / S5 | E3 / P0 | General Arch/CachyOS procedures and version-aware references | IN PROGRESS | S4 and official documentation |
-| Later / S2 | E3, E6 / P0 | Durable transcript, compaction and streaming beyond the bounded context improvements | TODO | Stable core task flow |
-| Later / S1 | E7, E3 / P1 | `ai-desktop -c` and ordinary-chat autosaving | DEFERRED | Stable analyze → edit → test → undo flow |
+| 1 / S8 | E2, E7 / P0 | Independently installed system clients with shared discovery and compatibility | IN PROGRESS | Accepted candidate 79; staged runtime migration and new host acceptance |
+| 2 / S9 | E3–E6 / P0 | One bounded task flow with fewer repeated approvals | TODO | Existing policy, copy tests, exact write approval; S1/S2 persistence |
+| Remaining / S3 | E3–E6 / P0 | Large-file analysis, many files, anchored edits and independent test-copy budgets | IN PROGRESS | Existing read/plan/executor; bounded context work from S2 |
+| Remaining / S4 | E3, E6 / P0 | Shared on-demand Skills and documentation loader in every mode | IN PROGRESS | Existing role, source and recipient authorization |
+| Remaining / S5 | E3 / P0 | General Arch/CachyOS procedures and version-aware references | IN PROGRESS | S4 and official documentation |
+| Core / S2 | E3, E6 / P0 | Durable transcript, compaction and streaming beyond the bounded context improvements | TODO | Stable core task flow |
+| Core / S1 | E7, E3 / P1 | Ordinary-chat autosaving; `ai-desktop -c` remains a deferred convenience | TODO / shortcut DEFERRED | Stable analyze → edit → test → undo flow |
 | Later / S0 | E7 / P1 | One universal package with managed environment-specific Skills | DEFERRED | Stable core and shared loader |
 | Later / S6 | E4–E7 / P1 | Six CachyOS Hello integrations with explicit state and controls | TODO | S5, typed host operations and host acceptance |
 | Later / S7 | E7, R4 / P2 | Project launch actions, crash entry point, OCR/dictation and terminal layouts | DEFERRED | Stable core and environment adapters |
@@ -151,7 +155,7 @@ For writes, use precise patches against verified source bytes, preserve encoding
 
 ### S4 — one Skills loader and documentation in the same task
 
-Use one catalog and loader in `ask`, `material`, `project` and `task`: metadata first, the matching short procedure on demand, then only required sections of `references/`. The present `ask` loader already selects Skills, checks assignments/hashes and reuses recent procedures; the other modes still inject all assigned bodies. Preserve the useful checks while removing that inconsistency. Keep general system procedures separate from repository-development instructions and local machine facts. Skills do not grant tools, run embedded commands, install scripts or widen permissions.
+Use one catalog and loader in `ask`, `material`, `project` and `task`: metadata first, the matching short procedure on demand, then only required sections of `references/`. Candidate 79 implements this shared selective loader in all four modes, including frozen hashes/assignments and bounded reuse in the current conversation. Complete persisted resource reuse after resume and live documentation retrieval without weakening those checks. Keep general system procedures separate from repository-development instructions and local machine facts. Skills do not grant tools, run embedded commands, install scripts or widen permissions.
 
 Support versioned source metadata: official URL and section, verification date, applicable tool version or documentation commit, and content hash. Reuse validated procedures and references across turns and resume; re-read or invalidate them when contents, assignments, recipient or policy change. Make available/assigned/loaded state and reasons for non-selection inspectable. Ensure the default setup exposes relevant general diagnostic metadata without requiring unexplained manual setup, while respecting customized roles. Allocate separate predictable budgets for procedure text, references and diagnostic results.
 
@@ -203,7 +207,31 @@ Keep these recorded as **DEFERRED**, rather than expanding the release gate befo
 - Diagnose a crashed application from a clicked notification or explicit request, using process identity, time and bounded journal/coredump metadata. A watcher is opt-in; raw core memory is not sent automatically.
 - OCR of a deliberately selected screenshot and optional dictation, with a preview before transfer, declared local/cloud processing and optional dependencies.
 - Optional Kitty/Tmux layouts with editor, conversation and diff. A persistent terminal process remains distinct from saved history and does not authorize unattended actions.
-- Optional component installation and one clear owner of client updates. Keep tested client versions and compatibility checks; do not import Omarchy's broad auto-approval modes or add many providers as part of this scope. Local-model lifecycle/catalog expansion remains R4.
+- Optional additional component installation. Client update ownership is now core S8, not a deferred desktop feature. Keep tested client versions and compatibility checks; do not import Omarchy's broad auto-approval modes or add many providers as part of this scope. Local-model lifecycle/catalog expansion remains R4.
+
+### S8 — independently installed system clients
+
+**Decision (E2/E7, P0):** the user installs Claude Code, Codex, or both independently. One general AI Desktop package detects the chosen system client and runs it through the existing controlled adapter. A compatible client update must not require rebuilding AI Desktop. There is no second bundled/pinned delivery mode in the target architecture. Local inference continues to work without either cloud client. AI Desktop must not install, update, downgrade or remove a system client as a side effect of startup, diagnosis, application upgrade or uninstall.
+
+**Transition:** accepted package 79 still uses the packaged native clients and exact version checks. Candidate 80 adds a shared read-only system-client inspection to `doctor`; it does not switch execution, execute a version probe or read OAuth. Keep the working legacy installation instructions explicitly labeled until the complete lifecycle replacement is accepted. Historical download helpers and checksum-pinned fixtures may remain for reproducible offline tests; that does not create a second supported production mode.
+
+The shared discovery layer uses compiled system entry points, initially `/usr/bin/claude` and `/usr/bin/codex`, not ambient PATH, aliases, shell functions, model arguments or the invoking user's HOME. Check the root ownership and permissions of every path component, resolve only bounded trusted system symlinks, reject writable/privileged/special files and unsupported script wrappers, and detect a changed file. Native ELF metadata is a layout/trust observation, not proof of vendor origin or successful execution. Installation provenance and package integrity remain separate from protocol compatibility. The [Arch Codex package file list](https://archlinux.org/packages/extra/x86_64/openai-codex/files/) (checked 2026-11-06) also contains helper binaries/resources; the complete supported installation layout must be accounted for when mounting the client, not reduced blindly to one copied executable.
+
+The provider adapter records minimum requirements, tested versions, incompatible versions and required CLI/protocol capabilities. Distinguish missing, unsafe, unsupported layout, unsupported version, untested version, incompatible protocol and interrupted/update-changed execution. A higher version is not automatically tested, and a matching `--version` string is not sufficient authorization. Run bounded compatibility probes in an offline namespace without the profile or credentials. Test refusal before network/auth access, protocol changes, malformed/oversized output and timeouts. Runtime and `doctor` must share the same result vocabulary when those probes are implemented.
+
+Bind a checked executable and its required resource layout for all task phases (version, authentication status, analysis and quota operations). Detect package upgrades, replacement, removal and symlink retargeting without mixing versions, refreshing authority or exposing the profile to an unchecked client. Separate Claude login/profile and Codex SIWC/native-quota grants remain in their present isolated ownership; reuse of a binary does not migrate the user's personal credentials, configuration, hooks or plugins. Preserve namespace, egress, tool and plan/write boundaries.
+
+Complete the migration as one user-visible path across startup, analysis/web, login/status/logout, named accounts, quota reads, `doctor`, package build/upgrade/uninstall, diagnostics, documentation and real namespace fixtures. Remove client downloading and embedding from the public/private application packaging path only when that replacement works. Fresh users need only their selected provider. An existing installation must receive a clear migration instruction, preserve credentials and data, and never silently fall back to the old embedded binary or a HOME executable.
+
+Acceptance: Claude only; Codex only; both; neither with local inference; a missing selected provider; trusted system symlinks; mutable ancestor/file; special files and wrappers; unsupported/untested versions and incompatible output; interrupted update during each phase; fresh installation and upgrade from 79; logout and quota operation; application uninstall retaining independently installed clients. Use synthetic success/refusal/failure fixtures, the existing Python matrix and real kernel gates, then new CachyOS acceptance before merging runtime changes. Prior acceptance of package 79 does not cover these new boundaries.
+
+### S9 — complete tasks with fewer repeated decisions
+
+Preserve read-only defaults and the conversation-scoped consent already implemented in `ask`. At the start of an approved multi-stage task, show its workspace, recipient, permitted reads, bounded number of stages and specific offline test recipe/copy scope. Once approved, analysis, preparation and those tests may proceed within that scope without asking again for every project stage or test attempt. Additional scope, changed policy/recipient, a different recipe or a new host operation requires a new decision. Consent stays process-local and must not be restored from a saved transcript.
+
+Keep the exact final diff/plan approval before each live write, separate deletion/undo decisions and existing source/state rechecks. A failed test blocks writing. An automatic retry must not silently send test output, enlarge limits, change provider or repeat an applied action. Persist completed outcomes and the next step through the S1/S2 work. Long waits, cancellation and errors must leave a usable conversation with an honest outcome.
+
+Acceptance measures the complete user's task: one scope approval, no duplicate read/stage/test approvals inside that scope, a reviewable final write decision, and preserved outcomes after failure/resume. Cover refusal, revoked access, changed project contents, exhausted budgets, test failure, cancellation, provider/account changes and a separate rollback. This is a planned consent-flow change, not an already enabled bypass of current prompts.
 
 ### Source and verification policy for this scope
 
@@ -213,7 +241,7 @@ Distribution references: [CachyOS applications](https://wiki.cachyos.org/cachyos
 
 Each implementation updates this roadmap with its own PR/SHA, tests, CI, remaining limitations and one next step. Add meaningful regressions to the existing `scripts/verify.py` gates and Python 3.12/3.13/3.14 Actions jobs, creating a new stage only for a distinct risk. Synthetic tests must cover success, refusal and failure without OAuth or real model requests. Changes to persistence, isolation, networking, host services and writes require applicable real CachyOS checks and explicit merge approval; Ubuntu CI is not that evidence. Keep documentation-only results separate from implementation acceptance.
 
-**Next step:** implement S0, the split Arch packages and target-system DMS selection, including upgrade coverage. S1–S6 remain TODO and S7 remains DEFERRED until their own work and evidence are recorded.
+**Next step:** complete S8 from the shared system-client diagnostic foundation through the isolated runtime, all account/limits operations and package migration. Finish the corresponding CI and new CachyOS acceptance before activating that path. S0 and S7 remain deferred; accepted candidate-79 work must not be repeated.
 
 ## Conditions for the 1.0 release
 
@@ -226,9 +254,27 @@ Each implementation updates this roadmap with its own PR/SHA, tests, CI, remaini
 
 ## Progress log
 
+Earlier dated entries preserve the evidence and status at that point. The latest entry supersedes historical pending/next-step statements.
+
+### 2026-11-06 — E7 / S8: system-client decision, shared inspection and documentation
+
+- **IN PROGRESS**, branch `feature/system-clients`, based on merged `main` `dd2daec3045c41662a722f4c6a3485dea14dd196`. Selected one system-client delivery path, with a common detector and separate provider adapters; no optional bundled mode. S8 and S9 define the implementation and acceptance boundaries above.
+- Candidate `0.1.0-80`: shared metadata-only system-client inspection and separate results in `doctor`, with pure tested/untested/unsupported version classification available to the future isolated probe. Current runtime still uses its packaged clients. No client is executed, no credentials are read, and no system package is installed by the new inspection.
+- Reconciled README, installation/management/desktop guides, security/threat model, limitations and release checklist. Replaced the duplicate TODO checklist with a pointer here, updated contributor rules and corrected obsolete split-DMS instructions. Existing candidate-79 installation instructions remain visibly transitional.
+- Validation: 41/41 focused tests PASS with no skips (17 system-client metadata/version cases, 19 doctor cases, 5 release-consistency cases), plus independent code review and clean diff/link checks. [PR #19](https://github.com/ultherego/ai-desktopv2/pull/19) implementation `3e10024edee7cc78e3bb25696ab6b5dcfbae7411` passed **5/5 completed jobs** in [run 42189278385](https://github.com/ultherego/ai-desktopv2/actions/runs/42189278385): Python 3.12/3.13/3.14 and both real Bubblewrap/systemd jobs. Regressions are discovered by the existing central unit stage; no extra CI stage is needed. The local full gate failed at the unit stage in the UID-0 executor and is not claimed as PASS; focused checks and ordinary-user CI provide the evidence for this offline diagnostic. No native client, OAuth or host state was changed by this feature. Complete system-client runtime compatibility and new CachyOS execution-path acceptance remain open.
+- **Next step:** implement S8's stable executable/resource binding, isolated compatibility probes and every runtime/account/package consumer before requesting new host acceptance. The metadata foundation is implemented and CI-verified; S8 as a whole remains IN PROGRESS.
+
+### 2026-11-06 — E3–E7: candidate 79 accepted and PR #18 merged
+
+- **DONE** for the implemented candidate-79 scope. The maintainer reported that the tested version works on CachyOS and explicitly requested merging the latest PR. This is user-reported functional acceptance; individual LOCAL exit codes were not separately supplied in that message. S3–S5 remain **IN PROGRESS** for their explicitly unfinished criteria, not for a repeat of accepted work.
+- Rechecked PR #18 head `5101fe64122d573bec0bd80212539e7e68429f80`, unchanged base `4c1e81c31d9e1b6033e21a444b1fe370224c9ce6`, mergeability, empty review/comment/thread queues and all five completed successful jobs in [run 42182761289](https://github.com/ultherego/ai-desktopv2/actions/runs/42182761289). Marked the draft ready and merged with the exact expected head.
+- Merge commit: [`dd2daec3045c41662a722f4c6a3485dea14dd196`](https://github.com/ultherego/ai-desktopv2/commit/dd2daec3045c41662a722f4c6a3485dea14dd196). The independent push workflow [42187104183](https://github.com/ultherego/ai-desktopv2/actions/runs/42187104183) completed with **5/5 jobs PASS** on the actual merge commit, separately from PR CI.
+- No real model or host operations were run by the development agent. The user's acceptance applies to candidate 79, not the upcoming client delivery or consent changes.
+- **Next step:** S8 system-client migration, followed by S9 and the remaining persistence/Skills/documentation criteria. Ordinary-chat saving is core work; optional desktop packs and the `-c` shortcut stay behind a usable core.
+
 ### 2026-11-06 — E3–E6 / S3–S5: complete project work before desktop extras
 
-- **READY FOR TEST** for the implemented candidate `0.1.0-79`; S3–S5 remain **IN PROGRESS** until their remaining criteria are accepted. Continuing PR #18 from `0473e9990e89c5355edc2ba406d9e0d8bc21dfc3`; verified `main` remains `4c1e81c31d9e1b6033e21a444b1fe370224c9ce6`. The maintainer prioritizes a usable analyze → edit → test → undo flow. `-c` and desktop refinements are deferred. S0 now specifies one universal package and reconciliation of Skills for all installed environments, with no repeated downloads for an unchanged set; no desktop-pack downloader is implemented in this candidate.
+- Historical candidate preparation (**subsequently accepted and merged**, see the entry above): `0.1.0-79`; S3–S5 remain **IN PROGRESS** until their remaining criteria are accepted. Continuing PR #18 from `0473e9990e89c5355edc2ba406d9e0d8bc21dfc3`; verified `main` remains `4c1e81c31d9e1b6033e21a444b1fe370224c9ce6`. The maintainer prioritizes a usable analyze → edit → test → undo flow. `-c` and desktop refinements are deferred. S0 now specifies one universal package and reconciliation of Skills for all installed environments, with no repeated downloads for an unchanged set; no desktop-pack downloader is implemented in this candidate.
 - S3 implementation: default selected reads 128 files / 2 MiB per file / 4 MiB combined; configurable ceilings 512 / 8 MiB / 16 MiB. Local text import defaults to 32 MiB, ceiling 64 MiB. Ordinary ask can search content and read bounded line ranges with versioned coverage; the entire large file is not sent. Anchored replacements reconstruct larger edits locally with uniqueness, overlap, format and restored-byte budget checks. Copy budgets are independent: 2,000 files / 8 MiB / 64 MiB defaults, 20,000 / 32 MiB / 128 MiB ceilings. Suite-based project edits test the proposed overlay in the full supported authorized project copy; copy-only files stay out of model input.
 - Bounded context groundwork from S2: 64 recent turns within 512 KiB, answers up to 32 KiB, 96 task notes within 64 KiB, 2,048 revocable source identities and saved records up to 16 MiB. Listing sessions retains summaries rather than all large records. This does not implement unlimited transcripts, semantic compaction, native session reuse, streaming or `-c`.
 - S4 implementation: shared frozen bundle loader and model-selected procedures/references in ask/material/project/task, separate knowledge budget, hash/assignment rechecks, explicit unknown/mismatched version behavior and worker-side envelope validation. Existing saved role selections remain authoritative; new defaults expose the general catalog. Public web tasks do not inherit local knowledge. Live documentation retrieval and persisted loaded-resource reuse after resume are still open.
@@ -240,7 +286,7 @@ Each implementation updates this roadmap with its own PR/SHA, tests, CI, remaini
 - On `b62f4f1e5b1092fd1d11e1ea57264f51ab9ea350`, [run 42180347132](https://github.com/ultherego/ai-desktopv2/actions/runs/42180347132) passed the real synthetic analysis, ordinary ask, provider-error recovery and standalone task test/apply/rollback scenarios. The ask-edit fixture then hit the intended project-directory refusal: it ran outside its authorized synthetic project and still observed the old selected-file test function. Its acceptance harness now enters the synthetic project, checks the exact complete local overlay through `run_copy`, and requires one separate copy-test consent before execution and write consent afterward. Missing/duplicate consent and incomplete/changed copies are regression cases; the production refusal and consent boundaries are unchanged.
 - On `34a10a4e70220b389381f83ea33581a95f10fabf`, [run 42180932618](https://github.com/ultherego/ai-desktopv2/actions/runs/42180932618) passed the real installed ask-edit sequence (full local copy, test, apply and rollback) and the HOME/deny sequence. The following web acceptance observer still compared the controller's packet to a pre-default-profile shape; its strict expectation is being updated to include the frozen role while retaining the no-local-data web boundary. This run remains unaccepted until every job completes successfully.
 - Final implementation evidence: `507fc7e325d94975513a3b393e5f4604c0bcb439`, [run 42181842965](https://github.com/ultherego/ai-desktopv2/actions/runs/42181842965), **5/5 completed jobs PASS**: Python 3.12/3.13/3.14 plus distro/current Bubblewrap. The central gate passed 21/21 stages; the ambient-profile suite ran 2,728 cases, with 15 existing platform/explicit host-gate skips (not evidence for those host-only checks). Both kernel jobs passed the installed synthetic application flows, exact full-project edit/test/apply/rollback, HOME denials, web isolation, failure recovery, 132-file/2 MiB copy and >2 MiB anchored edit with rollback. No real provider or OAuth was used. This following evidence-only documentation update changes no implementation, fixture or package bytes.
-- Remaining gates: real CachyOS tests of file/namespace/resource boundaries and explicit maintainer merge approval. Live versioned-document retrieval, environment-pack reconciliation and the other recorded follow-ups remain unfinished. **Next step:** execute the CI/local gates and added large-project regression cases on CachyOS from the exact candidate worktree; record the reported SHA and exit codes before requesting merge.
+- Candidate-79 host acceptance and explicit merge approval were subsequently supplied by the maintainer and PR #18 was merged; see the acceptance entry above. Live versioned-document retrieval, environment-pack reconciliation and the other recorded follow-ups remain unfinished. **Next step:** follow S8/S9 and the remaining core criteria; do not repeat the accepted candidate tests without a relevant change.
 
 
 ### 2026-11-06 — E3–E7: agreed continuation, file, Skills and CachyOS integration scope
@@ -251,7 +297,7 @@ Each implementation updates this roadmap with its own PR/SHA, tests, CI, remaini
 - Review evidence: targeted code inspection of the `-78` session, file and Skills paths; official Omarchy/CachyOS/upstream documentation; exact Hello service mapping from CachyOS Welcome `efd467041a9accb461bc3bf8a096a6627f795293`. No AI request, OAuth operation, host service control or package change was performed. Package version remains `0.1.0-78`.
 - Documentation validation: scope coverage, section/status consistency, table structure, relative links, code fences and a private-data scan passed; an independent review checked completeness and release-scope clarity. Full implementation tests were not repeated for prose-only edits. Results for the documentation commit are tracked separately in [PR checks](https://github.com/ultherego/ai-desktopv2/pull/18/checks).
 - Remaining: implement and verify each entry before changing its status; apply the existing CachyOS and explicit-approval merge requirements to changes affecting persistence, network, permissions or writes. Optional R4 work does not block the current MVP.
-- **Next step:** S0 — implement split Arch packages and target-system DMS selection, with fresh-install and combined-package upgrade tests.
+- Historical next step superseded: S0 now requires one universal package and managed environment sets. Current priority is S8, S9 and unfinished core criteria; no split DMS package is planned.
 
 ### 2026-11-05 — E3–E6: desktop agents and the authorized change-and-test flow
 
@@ -279,7 +325,7 @@ Each implementation updates this roadmap with its own PR/SHA, tests, CI, remaini
 - The maintainer reported the live-limits feature working on CachyOS after installation of [`a8344fe`](https://github.com/ultherego/ai-desktopv2/commit/a8344feb2861649942a2914cab2612c29efb2ade). [All five checks](https://github.com/ultherego/ai-desktopv2/actions/runs/42122940122) passed for that candidate.
 - E7 follow-up, package `0.1.0-78`, **READY FOR TEST**. The account list can grow taller within the available DMS popout space. Codex actions fit inside the usage card. Both tabs support selecting the service from its card, and the accounts tab offers management for both cloud providers regardless of known sign-in state. Card selection preserves the account alias. An offscreen upgrade from `-77` passed with the released DMS 2.0 and 2.1 controls. With many accounts the list grew from a 340 px cap to 432 px. The test kept the footer accessible on a 480 px screen and clicked both the card and its separate actions.
 - 2026-11-06 — CachyOS visual acceptance for installed `0.1.0-78`, built from [`0cc4be8`](https://github.com/ultherego/ai-desktopv2/commit/0cc4be81e16f02b33eb6760dd2fa58de7d6f74fb): the maintainer accepted the adjusted widget appearance. The earlier IPC error was attributed to invoking DMS outside the desktop user's graphical session after changing users in a terminal; package installation had succeeded. This report confirms the installed layout, without adding new click-path or full-gate results. [All five GitHub jobs passed](https://github.com/ultherego/ai-desktopv2/actions/runs/42126509638) for the installed implementation. This documentation update does not change its code or package version. The wider E7 work remains **IN PROGRESS**; PR #18 is still a draft and unmerged.
-- **Next step:** implement the requested optional Arch packaging: produce `ai-desktop` and `ai-desktop-dms` from one `PKGBUILD`, and let the installer detect DMS on the target system when selecting packages. Without DMS, install only the independent core CLI. Acceptance must cover systems with and without DMS and an upgrade from the combined package. Merge still awaits explicit maintainer approval.
+- Historical packaging proposal superseded by S0: one universal package selects Skills for every installed environment. The DMS split is not planned. PR #18 was subsequently accepted and merged; current merge evidence is recorded above.
 
 ### 2026-11-05 — E3: quality of the Skills procedures
 

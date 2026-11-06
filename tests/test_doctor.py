@@ -3,6 +3,7 @@ import io
 import json
 from pathlib import Path
 import tempfile
+from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
 
@@ -13,6 +14,8 @@ class DoctorTests(unittest.TestCase):
     def setUp(self):
         # This report must not depend on whether the package is installed on the machine running the tests.
         self.enterContext(patch.object(doctor, "INSTALLED", Path("/nonexistent/ai-desktop")))
+        self.enterContext(patch.object(doctor.system_clients, "inspect", side_effect=lambda provider:
+            SimpleNamespace(provider=provider, status="missing", detail="missing")))
 
     def test_an_installed_package_checks_only_its_own_client(self):
         with tempfile.TemporaryDirectory() as temp, patch.object(doctor, "INSTALLED", Path(temp)), \
@@ -20,6 +23,90 @@ class DoctorTests(unittest.TestCase):
             self.assertFalse(doctor.inspect()["claude_binary_valid"])     # another client on PATH does not count
             (Path(temp) / "claude-code").write_bytes(b"x")
             self.assertTrue(doctor.inspect()["claude_binary_valid"])
+
+    def test_system_client_discovery_never_satisfies_or_changes_bundled_runtime_requirements(self):
+        for present in ((), ("claude",), ("codex",), ("claude", "codex")):
+            with self.subTest(present=present), tempfile.TemporaryDirectory() as directory:
+                skills, profile, _ = self.skill_tree(Path(directory))
+                def result(provider):
+                    return SimpleNamespace(provider=provider,
+                        status="present" if provider in present else "missing",
+                        detail="vendor-unverified" if provider in present else "missing",
+                        path="/private-not-for-report/" + provider, identity="private-inode")
+                with patch.object(doctor.system_clients, "inspect", side_effect=result) as inspect, \
+                        patch.object(doctor.skills, "ROOT", skills), patch.object(doctor, "PROFILE", profile), \
+                        patch.object(doctor, "INSTALLED", Path(directory) / "package"), \
+                        patch.object(doctor.launcher, "claude_binary", side_effect=FileNotFoundError), \
+                        patch.object(doctor.shutil, "which", return_value="/usr/bin/tool"), \
+                        patch.object(doctor.sys, "platform", "linux"), \
+                        patch.object(doctor.sys, "version_info", (3, 12)):
+                    report = doctor.inspect()
+                self.assertEqual([call.args for call in inspect.call_args_list], [("claude",), ("codex",)])
+                self.assertEqual(report["runtime_client_source"], "bundled-package")
+                self.assertEqual(report["bundled_clients_present"], {"claude": False, "codex": False})
+                self.assertFalse(report["claude_binary_valid"])
+                self.assertTrue(report["offline_prerequisites_present"])
+                self.assertFalse(report["diagnose_prerequisites_present"])
+                for provider, item in report["system_clients"].items():
+                    self.assertEqual(item["metadata_trusted"], provider in present)
+                    self.assertEqual(item["layout"], "native-elf" if provider in present else "unverified")
+                    self.assertFalse(item["active"])
+                    self.assertFalse(item["version_checked"])
+                    self.assertFalse(item["protocol_checked"])
+                self.assertNotIn("private-not-for-report", json.dumps(report))
+                self.assertNotIn("private-inode", json.dumps(report))
+
+    def test_each_bundled_client_is_reported_independently(self):
+        with tempfile.TemporaryDirectory() as directory, patch.object(doctor, "INSTALLED", Path(directory)):
+            for present in ((), ("claude",), ("codex",), ("claude", "codex")):
+                with self.subTest(present=present):
+                    for provider, name in (("claude", "claude-code"), ("codex", "codex")):
+                        path = Path(directory) / name
+                        if provider in present:
+                            path.write_bytes(b"synthetic presence only")
+                        else:
+                            path.unlink(missing_ok=True)
+                    self.assertEqual(doctor.inspect()["bundled_clients_present"],
+                                     {provider: provider in present for provider in ("claude", "codex")})
+
+    def test_unsafe_unsupported_and_changing_clients_remain_inactive_without_false_trust(self):
+        for status, detail, message in (("unsafe", "owner", "unsafe file metadata"),
+                                       ("unsupported", "not-native-elf", "unsupported layout"),
+                                       ("changed", "metadata-changed", "changed during inspection"),
+                                       ("unavailable", "metadata-unavailable", "metadata unavailable")):
+            with self.subTest(status=status), patch.object(doctor.system_clients, "inspect",
+                    return_value=SimpleNamespace(status=status, detail=detail)):
+                report = doctor.inspect()
+            for item in report["system_clients"].values():
+                self.assertEqual((item["status"], item["detail"]), (status, detail))
+                self.assertFalse(item["metadata_trusted"])
+                self.assertFalse(item["active"])
+                self.assertEqual(doctor.system_client_summary(item), message + "; not active.")
+
+    def test_system_discovery_does_not_start_clients_network_or_read_credentials(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            skills, profile, _ = self.skill_tree(root)
+            for name in ("auth.json", ".credentials.json"):
+                (profile / name).write_text("SYNTHETIC-PRIVATE-CREDENTIAL")
+            read_bytes = Path.read_bytes
+            reads = []
+            def only_skills(path):
+                self.assertEqual(path.name, "SKILL.md")
+                reads.append(path)
+                return read_bytes(path)
+            with patch.object(doctor.skills, "ROOT", skills), patch.object(doctor, "PROFILE", profile), \
+                    patch.object(doctor.launcher, "claude_binary", side_effect=FileNotFoundError), \
+                    patch.object(Path, "read_bytes", only_skills), \
+                    patch("subprocess.run", side_effect=AssertionError("must not execute clients")) as run, \
+                    patch("subprocess.Popen", side_effect=AssertionError("must not spawn clients")) as popen, \
+                    patch("socket.socket", side_effect=AssertionError("must not connect")) as network:
+                report = doctor.inspect()
+            self.assertTrue(reads)
+            self.assertNotIn("SYNTHETIC-PRIVATE-CREDENTIAL", json.dumps(report))
+            run.assert_not_called()
+            popen.assert_not_called()
+            network.assert_not_called()
 
     def skill_tree(self, root):
         skills = root / "skills"
@@ -176,7 +263,9 @@ class DoctorTests(unittest.TestCase):
 
     def test_default_is_short_and_does_not_turn_metadata_into_a_live_ai_claim(self):
         mock_data = {"offline_prerequisites_present": True, "diagnose_prerequisites_present": False,
-                     "claude_binary_valid": True, "isolated_account_metadata_valid": True}
+                     "claude_binary_valid": True, "isolated_account_metadata_valid": True,
+                     "bundled_clients_present": {"claude": True, "codex": False},
+                     "system_clients": {"claude": {"status": "missing"}, "codex": {"status": "present"}}}
         with patch.object(doctor, "inspect", return_value=mock_data) as inspect, \
                 patch.object(doctor.os, "geteuid", return_value=1000), \
                 patch("subprocess.run") as run, patch("subprocess.Popen") as popen, \
@@ -186,9 +275,13 @@ class DoctorTests(unittest.TestCase):
         run.assert_not_called()
         popen.assert_not_called()
         text = out.getvalue()
-        self.assertEqual(len(text.splitlines()), 4)
+        self.assertEqual(len(text.splitlines()), 8)
         self.assertIn("Offline requirements (metadata): met.", text)
-        self.assertIn("Claude client: found; isolated account metadata: valid.", text)
+        self.assertIn("Runtime source: bundled package clients (Claude found; Codex missing).", text)
+        self.assertIn("Isolated account metadata: valid.", text)
+        self.assertIn("System Claude: missing; not active.", text)
+        self.assertIn("System Codex: trusted file metadata, native ELF; not active.", text)
+        self.assertIn("vendor, version and protocol: not verified; runtime migration is pending.", text)
         self.assertIn("Login and AI operation: not checked.", text)
         self.assertIn("ai-desktop doctor --v", text)
         for technical in ("DOCTOR: PASS", "diagnose_prerequisites_present", "{", "READINESS"):
@@ -202,9 +295,10 @@ class DoctorTests(unittest.TestCase):
                 contextlib.redirect_stdout(io.StringIO()) as out:
             self.assertEqual(doctor.main([]), 0)
         text = out.getvalue()
-        self.assertEqual(len(text.splitlines()), 4)
+        self.assertEqual(len(text.splitlines()), 8)
         self.assertIn("Offline requirements (metadata): incomplete.", text)
-        self.assertIn("Claude client: missing; isolated account metadata: unconfirmed.", text)
+        self.assertIn("Runtime source: bundled package clients (Claude missing; Codex missing).", text)
+        self.assertIn("Isolated account metadata: unconfirmed.", text)
         self.assertIn("Login and AI operation: not checked.", text)
         self.assertNotIn("PASS", text)
 

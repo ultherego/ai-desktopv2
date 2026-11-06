@@ -1,0 +1,297 @@
+"""Read-only metadata for system-installed native clients, never a launcher.
+
+Finding a root-owned ELF does not authenticate its vendor, establish protocol
+compatibility or prove that its runtime dependencies are available. No client,
+shell, package manager, credential store or network operation is invoked here.
+The active bundled-client runtime remains separate until its migration is done.
+"""
+from dataclasses import dataclass, field
+import errno
+import os
+import re
+import stat
+from types import MappingProxyType
+
+
+_CANDIDATES = MappingProxyType({"claude": "/usr/bin/claude", "codex": "/usr/bin/codex"})
+_TRUSTED_ROOTS = ("/usr", "/opt")
+_BASELINES = MappingProxyType({"claude": (2, 1, 312), "codex": (0, 166, 0)})
+MAX_LINKS = 16
+MAX_COMPONENTS = 256
+MAX_PATH_BYTES = 4096
+MAX_VERSION_BYTES = 128
+_DIR = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+_FILE = os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC
+_VERSION = r"(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})\.(0|[1-9][0-9]{0,3})"
+_VERSION_PATTERNS = {
+    "claude": re.compile(_VERSION + r" \(Claude Code\)(?:\r?\n)?\Z", re.ASCII),
+    "codex": re.compile(r"codex-cli " + _VERSION + r"(?:\r?\n)?\Z", re.ASCII),
+}
+
+
+@dataclass(frozen=True)
+class Fingerprint:
+    dev: int
+    ino: int
+    size: int
+    mtime_ns: int
+    ctime_ns: int
+
+
+@dataclass(frozen=True)
+class _Node:
+    path: str
+    identity: Fingerprint
+    mode: int
+    uid: int
+    gid: int
+    links: int
+    target: str | None = None
+
+
+@dataclass(frozen=True)
+class Inspection:
+    provider: str
+    status: str
+    path: str | None
+    detail: str
+    identity: Fingerprint | None = None
+    _nodes: tuple[_Node, ...] = field(default=(), repr=False)
+
+    def recheck(self):
+        """Whether the fixed candidate still matches this complete snapshot.
+
+        This is metadata evidence, not an execution authorization or an open
+        executable handle: a future launcher must also bind the file it uses.
+        """
+        if self.status != "present" or self.identity is None or not self._nodes:
+            return False
+        fresh = inspect(self.provider)
+        return (fresh.status == "present" and fresh.path == self.path
+                and fresh.identity == self.identity and fresh._nodes == self._nodes)
+
+
+@dataclass(frozen=True)
+class Compatibility:
+    provider: str
+    status: str
+    version: str | None
+    detail: str
+
+
+class _Denied(Exception):
+    def __init__(self, status, detail):
+        self.status, self.detail = status, detail
+
+
+def _provider(provider):
+    if type(provider) is not str or provider not in _CANDIDATES:
+        raise ValueError("provider")
+    return provider
+
+
+def _identity(info):
+    return Fingerprint(info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def _node(path, info, target=None):
+    directory = stat.S_ISDIR(info.st_mode)
+    # Unrelated children can change directory timestamps/size/link count. Its
+    # inode, owner and permissions, and the parent/name binding, are what matter.
+    identity = Fingerprint(info.st_dev, info.st_ino, 0, 0, 0) if directory else _identity(info)
+    return _Node(path, identity, info.st_mode, info.st_uid, info.st_gid,
+                 0 if directory else info.st_nlink, target)
+
+
+def _trusted(info):
+    if info.st_uid != 0:
+        raise _Denied("unsafe", "owner")
+    # Symlink permission bits have no access-control meaning on Linux. Their
+    # owner and every containing directory are checked instead.
+    if not stat.S_ISLNK(info.st_mode) and info.st_mode & 0o022:
+        raise _Denied("unsafe", "permissions")
+    if info.st_mode & (stat.S_ISUID | stat.S_ISGID):
+        raise _Denied("unsafe", "special-mode")
+
+
+def _target(path):
+    if (type(path) is not str or not path.startswith("/")
+            or len(os.fsencode(path)) > MAX_PATH_BYTES
+            or any(ord(char) < 32 or ord(char) == 127 for char in path)):
+        raise _Denied("unsafe", "symlink-target")
+    if os.path.normpath(path) != path:
+        raise _Denied("unsafe", "symlink-target")
+    if not any(path == root or path.startswith(root + "/") for root in _TRUSTED_ROOTS):
+        raise _Denied("unsafe", "symlink-target")
+    return path
+
+
+def _link_target(parent, target):
+    # Leading ../ refers to already inspected ancestors. Never lexically
+    # collapse a/../b: a could itself be a symlink and change what .. means.
+    # Such noncanonical layouts are refused rather than resolved incorrectly.
+    if target.startswith("/"):
+        return _target(target)
+    parts = target.split("/")
+    ancestors = parent.split("/")[1:]
+    while parts and parts[0] in (".", ".."):
+        head = parts.pop(0)
+        if head == "..":
+            if not ancestors:
+                raise _Denied("unsafe", "symlink-target")
+            ancestors.pop()
+    if not parts or any(part in ("", ".", "..") for part in parts):
+        raise _Denied("unsafe", "symlink-target")
+    return _target("/" + "/".join(ancestors + parts))
+
+
+def _native_elf(header):
+    """Bounded ELF header/layout check for this package's x86_64 target."""
+    return (len(header) == 64 and header[:7] == b"\x7fELF\x02\x01\x01"
+            and int.from_bytes(header[16:18], "little") in (2, 3)
+            and int.from_bytes(header[18:20], "little") == 62
+            and int.from_bytes(header[20:24], "little") == 1
+            and int.from_bytes(header[52:54], "little") == 64)
+
+
+def _walk(candidate):
+    """Descriptor-relative inspection; symlinks are read and checked manually."""
+    candidate = _target(candidate)
+    descriptors = []
+    nodes = []
+    edges = []
+    try:
+        root = os.open("/", _DIR)
+        descriptors.append(root)
+        root_info = os.fstat(root)
+        _trusted(root_info)
+        nodes.append(_node("/", root_info))
+        current, parent = root, "/"
+        pending = candidate.split("/")[1:]
+        links, components = 0, 0
+        while pending:
+            components += 1
+            if components > MAX_COMPONENTS:
+                raise _Denied("unsafe", "symlink-limit")
+            name, *pending = pending
+            path = os.path.join(parent, name)
+            before = os.stat(name, dir_fd=current, follow_symlinks=False)
+            _trusted(before)
+            edges.append((current, name, _node(path, before)))
+            if stat.S_ISLNK(before.st_mode):
+                links += 1
+                if links > MAX_LINKS:
+                    raise _Denied("unsafe", "symlink-limit")
+                target = os.readlink(name, dir_fd=current)
+                if _node(path, before) != _node(path, os.stat(name, dir_fd=current, follow_symlinks=False)):
+                    raise _Denied("changed", "metadata-changed")
+                nodes.append(_node(path, before, target))
+                destination = _link_target(parent, target)
+                pending = destination.split("/")[1:] + pending
+                if len(os.fsencode("/" + "/".join(pending))) > MAX_PATH_BYTES:
+                    raise _Denied("unsafe", "symlink-target")
+                current, parent = root, "/"
+                continue
+            if pending:
+                if not stat.S_ISDIR(before.st_mode):
+                    raise _Denied("unsupported", "not-regular")
+                descriptor = os.open(name, _DIR, dir_fd=current)
+            else:
+                if not stat.S_ISREG(before.st_mode):
+                    raise _Denied("unsupported", "not-regular")
+                if before.st_nlink != 1:
+                    raise _Denied("unsafe", "hardlink")
+                if not before.st_mode & 0o111:
+                    raise _Denied("unsupported", "not-executable")
+                descriptor = os.open(name, _FILE, dir_fd=current)
+            descriptors.append(descriptor)
+            opened = os.fstat(descriptor)
+            if _node(path, opened) != _node(path, before):
+                raise _Denied("changed", "metadata-changed")
+            nodes.append(_node(path, before))
+            if pending:
+                current, parent = descriptor, path
+                continue
+            header = os.read(descriptor, 64)
+            after = os.fstat(descriptor)
+            linked = os.stat(name, dir_fd=current, follow_symlinks=False)
+            if _node(path, before) != _node(path, after) or _node(path, before) != _node(path, linked):
+                raise _Denied("changed", "metadata-changed")
+            if not _native_elf(header):
+                raise _Denied("unsupported", "not-native-elf")
+            if nodes[0] != _node("/", os.fstat(root)):
+                raise _Denied("changed", "metadata-changed")
+            # A directory descriptor can remain readable after its path was
+            # replaced. Recheck every parent/name edge before accepting bytes
+            # read through it, including edges traversed before symlink resets.
+            for parent_fd, entry, expected in edges:
+                try:
+                    observed = os.stat(entry, dir_fd=parent_fd, follow_symlinks=False)
+                except OSError:
+                    raise _Denied("changed", "metadata-changed") from None
+                if _node(expected.path, observed) != expected:
+                    raise _Denied("changed", "metadata-changed")
+            return path, _identity(after), tuple(nodes)
+        raise _Denied("unsupported", "not-regular")
+    finally:
+        for descriptor in reversed(descriptors):
+            os.close(descriptor)
+
+
+def inspect(provider):
+    """Inspect only /usr/bin/claude or /usr/bin/codex, independent of PATH/HOME.
+
+    Safe root-owned symlinks may resolve within /usr or /opt. Every traversed
+    component is checked, and a second independent traversal detects replaced
+    ancestors/links. No version, vendor, complete ELF loadability, filesystem
+    capability, library closure, authentication or protocol claim is made.
+    """
+    provider = _provider(provider)
+    candidate = _CANDIDATES[provider]
+    try:
+        first = _walk(candidate)
+        if _walk(candidate) != first:
+            raise _Denied("changed", "metadata-changed")
+        path, identity, nodes = first
+        return Inspection(provider, "present", path, "vendor-unverified", identity, nodes)
+    except _Denied as exc:
+        return Inspection(provider, exc.status, candidate, exc.detail)
+    except FileNotFoundError:
+        return Inspection(provider, "missing", candidate, "missing")
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            return Inspection(provider, "changed", candidate, "metadata-changed")
+        if exc.errno == errno.ENOTDIR:
+            return Inspection(provider, "unsupported", candidate, "not-regular")
+        return Inspection(provider, "unavailable", candidate, "metadata-unavailable")
+
+
+def compatibility(provider, output):
+    """Classify already obtained native version text; never run the client.
+
+    The exact tested baseline is supported by existing evidence. Older or
+    malformed output is unsupported; any newer version remains explicitly
+    untested, not silently admitted by this parser.
+    """
+    provider = _provider(provider)
+    try:
+        if type(output) not in (bytes, str) or len(output) > MAX_VERSION_BYTES:
+            raise ValueError()
+        if type(output) is bytes:
+            text = output.decode("ascii")
+        else:
+            text = output
+        text.encode("ascii")
+        match = _VERSION_PATTERNS[provider].fullmatch(text)
+        if match is None:
+            raise ValueError()
+    except (ValueError, UnicodeError):
+        return Compatibility(provider, "unsupported", None, "invalid-version-output")
+    version = tuple(int(part) for part in match.groups())
+    displayed = ".".join(str(part) for part in version)
+    baseline = _BASELINES[provider]
+    if version == baseline:
+        return Compatibility(provider, "tested", displayed, "tested-baseline")
+    if version < baseline:
+        return Compatibility(provider, "unsupported", displayed, "older-than-baseline")
+    return Compatibility(provider, "untested", displayed, "newer-unverified")

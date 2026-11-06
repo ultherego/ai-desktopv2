@@ -2,6 +2,10 @@
 
 The Arch package installs **AI Desktop** and **AI Desktop Panel** as desktop entries. Find them in your application launcher. Both request a terminal and start the same installed `ai-desktop ask` or `ai-desktop panel` you use in fish. DMS uses its configured terminal to open these entries.
 
+## Runtime transition
+
+The launchers and widget use the selected service; they do not require both Claude and Codex. Candidate 0.1.0-80 retains the working 0.1.0-79 runtime and [current client installation procedure](AGENT_INSTALL.md). Its new metadata-only system-client discovery is exposed by `doctor`, not a new account or widget runtime. The agreed system-client migration changes where a compatible executable comes from, not the separate account profiles or the widget's authority. Discovery/preflight alone does not connect an account or make the new runtime available. DMS is optional for terminal conversations and client selection.
+
 ## Niri with kitty
 
 The package installs an example at `/usr/share/ai-desktop/niri-bindings.kdl`. Pick two free shortcuts and add the corresponding lines inside your existing Niri `binds` block. The example uses `Mod+Shift+A` for chat and `Mod+Shift+P` for the panel. Validate your edited configuration with `niri validate`. Installing AI Desktop does not edit the compositor configuration.

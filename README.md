@@ -2,9 +2,11 @@
 
 A terminal assistant for diagnostics, configuration and file work on CachyOS and Arch Linux x86_64. In a terminal, start `ai-desktop`, write a plain sentence, and the program itself collects the data your `~/.config/ai-desktop/permissions.toml` file allows and sends it to the model. Every write shows a full diff and waits for your consent.
 
-The interface and settings are in English, and Claude answers in the language of your question.
+The interface and settings are in English, and the selected model answers in the language of your question.
 
-Underneath runs the official Claude Code client in the exact version **2.1.312**, which you download yourself. The client works under a separate system account `ai-desktop`, in a Bubblewrap sandbox, and reaches the network only through a filtering proxy. Codex uses a separate subscription adapter. For a local model, the controller can send an approved request to a configured loopback server.
+The working **0.1.0-79** runtime uses a privately prepared official Claude Code **2.1.312** client or the separate Codex subscription adapter. The cloud client runs under the `ai-desktop` system account in Bubblewrap, with network access through a filtering proxy. Local inference uses an approved request to your configured loopback server.
+
+The next runtime will use a compatible **system-installed Claude or Codex client**; either service must work without installing the other. AI Desktop will stop bundling vendor executables. Shared client discovery and preflight are the first migration step, not a replacement runtime: the installation and login instructions below still describe the working 0.1.0-79 path. See the [transition and trust requirements](docs/AGENT_INSTALL.md).
 
 **What this is not:**
 
@@ -33,13 +35,15 @@ See [agent settings, accounts and sessions](docs/AGENT_MANAGEMENT.md), [verified
 
 This is a development version, not a 1.0 release.
 
-The current candidate package is **0.1.0-79** (changes: [CHANGELOG.md](CHANGELOG.md)).
+The current candidate package is **0.1.0-80** (changes: [CHANGELOG.md](CHANGELOG.md)).
 
-What is still missing and what has not been checked is described in [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md). Read that file before using this on important data. The plan up to version 1.0: [docs/ROADMAP.md](docs/ROADMAP.md), tasks: [docs/TODO.md](docs/TODO.md).
+In 0.1.0-80, `ai-desktop doctor` also reports system-client file metadata; `doctor --v` includes structured results. It does not start either system client, check its version/protocol, change the active runtime or reuse a CLI login. `present` means a supported ELF file passed metadata checks, not that it is ready for a model request.
 
-## Installation on a laptop (CachyOS / Arch x86_64)
+What is still missing and what has not been checked is described in [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md). Read that file before using this on important data. The only roadmap and progress record is [docs/ROADMAP.md](docs/ROADMAP.md).
 
-The example below installs and connects Claude for a regular user with a terminal and `sudo`. For Codex, use the verified client installer linked above. Local inference uses your running server and requires no subscription login.
+## Transition: existing runtime installation (CachyOS / Arch x86_64)
+
+Release 0.1.0-79 passed the recorded CachyOS acceptance; candidate 0.1.0-80 retains its runtime and installation method. Keep this path until the system-client runtime migration and its own CachyOS acceptance are complete. Detecting a system client alone does not make it usable by the existing adapters. The example installs and connects Claude for a regular user with a terminal and `sudo`. For Codex, use the verified client installer linked above. Local inference uses your running server and requires no subscription login.
 
 ```fish
 # 1. Dependencies and build tools
@@ -58,7 +62,7 @@ and ./claude-code --version  # must print: 2.1.312 (Claude Code)
 
 # 4. Build and install the package (the version in the file name = pkgrel from PKGBUILD)
 makepkg --cleanbuild
-sudo pacman -U ai-desktop-0.1.0-79-x86_64.pkg.tar.zst
+sudo pacman -U ai-desktop-0.1.0-80-x86_64.pkg.tar.zst
 sudo systemctl daemon-reload
 
 # 5. Log in to Claude (interactive, once)
@@ -184,9 +188,9 @@ Without `--question` this is one conversation: after each answer `>` comes back.
 How consents work:
 
 1. **One `Send this request to Claude? [y/n]:` per conversation.** It covers further questions, reads and commands from `allow`. The program asks again when `permissions.toml` or the chosen service or agent changes.
-2. **Reads and discovery without asking.** The model lists and searches names (not content), then reads what it found or what you typed. A guessed path is rejected. The budgets are in the table above.
+2. **Reads and discovery without asking.** The model lists and searches names, then can search content and read bounded line ranges in authorized files. Paths must come from discovery or your text. Source hashes and coverage distinguish excerpts from complete files. The budgets are in the table above.
 3. **Commands from `allow` without asking**, up to 16 in one model step and 24 per question (`command_rounds`).
-4. **Each write separately.** An edit or a new file may follow from earlier discovery. The program checks the proposal on an isolated copy, shows the full diff and asks `[y/n]`. A failed test blocks the write.
+4. **Each write separately.** An edit or a new file may follow from earlier discovery. The program checks the proposal on an isolated copy, shows the full diff and asks `[y/n]`. A project suite uses the complete permitted project copy and currently asks separately before running it. A failed or refused test blocks the write.
 5. **Deletion separately.** The program lists the files and asks `[y/n]`. Files are not erased, they go to the task trash: at most 8 files at a time, up to 16 MiB each.
 6. **Changes from the `change` list** require typing `yes`.
 
@@ -196,7 +200,7 @@ In a normal conversation, ask to run the current project's tests or type `/test 
 
 The check on the copy comes from a list: `python-unittest`, `pytest`, `go-test`, `npm-test`, `python-syntax`, `json`, `toml`, `bash-syntax`, `fish-syntax`, `text`. The `text` check only confirms valid UTF-8 text: **syntax and behaviour are not checked**. No check proves the project is correct.
 
-A conversation sends up to 64 recent exchanges within a 512 KiB history budget, with up to 32 KiB per answer, and up to 96 structured task notes within 64 KiB. The in-memory window is 128 turns; saved records keep the recent 64 and bounded notes in at most 16 MiB. This is bounded working context, not an unlimited transcript or automatic semantic compaction. A long history uses up the service limit, because it goes with every question. If you revoke access to a file, the answers that depend on it disappear from memory before the next question. A timeout or service limit ends the conversation, and unsaved history is lost.
+A conversation sends up to 64 recent exchanges within a 512 KiB history budget, with up to 32 KiB per answer, and up to 96 structured task notes within 64 KiB. The in-memory window is 128 turns; saved records keep the recent 64 and bounded notes in at most 16 MiB. This is bounded working context, not an unlimited transcript or automatic semantic compaction. A long history uses up the service limit, because it goes with every question. If you revoke access to a file, the answers that depend on it disappear from memory before the next question. In interactive `ask`, a timeout or service limit returns you to the conversation without retrying the question; earlier context stays in memory. Unsaved context is still lost if the process exits.
 
 You turn on web search with `web = true`. It is a separate request: only your question, without files or local data. Weather (`weather = true`) reveals the place name and your IP address to the Open-Meteo service, and the result goes to the model.
 
@@ -208,8 +212,8 @@ One UTF-8 text file up to `file_size`, covered by `files.read`. You ask in a pla
 
 - A file up to 200 KiB goes to the model whole.
 - With a larger one the model asks for searches and line reads, at most 8 requests per question, up to 256 KiB per request and 2 MiB in total. You see each step, and the rest of the file is not sent.
-- "Analyze the whole file": the program splits the file into parts, shows a plan and asks once for the whole task. The consent expires after 30 minutes. At most 24 parts, so a larger file needs a larger `part_size`. Coverage is counted by the program, and an interrupted analysis is marked as partial.
-- The answer gives the lines the model really received. Session memory is the last 4 questions and answers.
+- "Analyze the whole file": the program splits the file into up to 512 parts, shows the request and byte budgets, and asks once for the whole task. The consent expires after 30 minutes. `part_size` is configurable up to 512 KiB. Coverage is counted by the program, and an interrupted analysis is marked as partial. Required Skills must be loaded before the fixed map/reduce plan starts.
+- The answer gives the lines the model really received. Session memory keeps up to 16 questions and bounded answers.
 - No writing, no Internet and no running code. Refusals cover among others an empty file, a link, control characters and invalid UTF-8.
 
 Local commands that send nothing: `/find TEXT`, `/show A-B`, `/log`, `/exit`. `/ask A-B QUESTION` narrows the question to those lines. The service accepts 4 session starts per minute, so the program waits between steps by itself.
@@ -238,7 +242,11 @@ ai-desktop task run "Fix the addition in calc.py" --workspace /path/to/project \
     --file calc.py --context test_calc.py --test python-unittest
 ```
 
-`--file` may be changed, `--context` is read-only. The directory must be given as an absolute path and must not be the whole home directory. Limits: 512 selected input files, 64 changed files, 8 MiB per file and 16 MiB in total, instruction up to 128 KiB. Small unique anchored replacements are applied against the original bytes; missing, repeated or overlapping anchors are refused. Tests run on a copy, without network or home directory. Python tests cannot create processes, threads or sockets, so not every test suite will work here. `--preview` shows the data without the model or a test. There are two consents: to send and to write.
+`--file` may be changed, `--context` is read-only. The directory must be given as an absolute path and must not be the whole home directory. Limits: 512 selected input files, 64 changed files, 8 MiB per file and 16 MiB in total, instruction up to 128 KiB. Small unique anchored replacements are applied against the original bytes; missing, repeated or overlapping anchors are refused. Tests run on a copy, without network or home directory. Python tests cannot create processes, threads or sockets, so not every test suite will work here. `--preview` shows the data without the model or a test. Sending and writing have separate consents; Go and npm suites also ask before their copy test.
+
+### Planned consent simplification
+
+The next flow will approve a bounded plan, its stages and its declared copy tests once, then execute those approved steps without repeating the same question at each stage. A change of scope, recipient, policy, source state or budget will invalidate the approval. The final diff and permission to write remain separate. This is the agreed direction; 0.1.0-79 still uses the per-stage and copy-test prompts described above.
 
 ### Undo and restore
 
@@ -298,9 +306,9 @@ ai-desktop sessions                                 # saved conversations
 
 Details: [docs/AGENT_MANAGEMENT.md](docs/AGENT_MANAGEMENT.md).
 
-## Codex (optional)
+## Codex in the retained runtime
 
-Without this section everything runs on Claude. Treat this path as experimental.
+Choose Codex independently of Claude. This adapter remains experimental. The following private client preparation is a transition procedure; the system-client target removes it once runtime migration is complete.
 
 ```fish
 cd ~/ai-desktop
@@ -313,6 +321,8 @@ ai-desktop login --codex                     # log in with a ChatGPT subscriptio
 In `permissions.toml` set `codex = true` in `[network]`: the Claude and Codex permissions are separate, and Codex is blocked by default. Codex has no web search. Disconnecting the account: `ai-desktop codex logout --allow-chatgpt-logout`.
 
 ## Updating
+
+For the retained 0.1.0-79 runtime in candidate 0.1.0-80, use the existing package update procedure below. The system-client target separates application and compatible client updates: an ordinary compatible client update must not require rebuilding AI Desktop. Unknown or incompatible versions will stop before sending data. Client identity must remain fixed for an approved task; a replacement or update during that task must refuse further execution. These are migration requirements, not behavior already supplied by the legacy runtime.
 
 ```fish
 ai-desktop stop
@@ -349,7 +359,7 @@ The program has no "remove everything" command. You remove this data yourself an
 
 ## Data and privacy
 
-The provider receives: your question, the instructions of the program and the agent (with assigned Skills), the `read` and `write` patterns and command templates, names from discovery, the content and **absolute paths** of files read, command output, systemd and weather data and the conversation memory. `deny` rules are not sent. The official client adds its own technical context, so `--v` is not a record of all traffic. The full list: [SECURITY.md](SECURITY.md).
+The provider receives: your question, the instructions of the program and the agent, assigned Skill metadata and the procedures/references actually loaded, the `read` and `write` patterns and command templates, names from discovery, the content and **absolute paths** of files read, command output, systemd and weather data and the conversation memory. `deny` rules are not sent. The official client adds its own technical context, so `--v` is not a record of all traffic. The full list: [SECURITY.md](SECURITY.md).
 
 - Data that was sent cannot be withdrawn: neither stopping, nor undo, nor uninstalling removes it from the provider.
 - A conversation is saved locally only after your `y` at the end or with `--session new`, in private files. An answer may quote files it read.

@@ -1,11 +1,17 @@
 # Changelog
 
+## 0.1.0-80: system-client discovery and a single delivery roadmap
+
+- Add read-only metadata inspection of system Claude Code and Codex to `doctor`, with separate missing, unsafe, unsupported-layout and changed-file outcomes. Inspection does not execute a client, access credentials or certify vendor origin, version or protocol compatibility.
+- Record the chosen migration to independently installed system clients, with one shared detection layer, provider-specific compatibility and unchanged separate authentication. There is no planned second bundled/pinned mode. The current packaged-client runtime remains active until the complete migration and host acceptance pass.
+- Reconcile README, installation, management, security, limitations and release documentation. Consolidate all work tracking into ROADMAP.md; preserve the accepted candidate-79 results and the outstanding core criteria.
+
 ## 0.1.0-79: large-project workflow and shared knowledge
 
 - Separate larger file/context budgets from local test-copy budgets. Inspect large text by search and line ranges in ordinary conversation, and use checked anchored replacements for larger files. Preserve the complete diff, copy test, apply consent and rollback checks.
 - Keep a larger bounded conversation window and task memory, with a separate larger saved-record budget. The continuation shortcut and full transcript/compaction work remain follow-up items.
 - Load assigned Skills and their needed reference sections on demand in ask, material, project and task. Extend practical Arch/CachyOS procedures using official sources and explicit version applicability.
-- This candidate changes file and worker contracts and requires the existing offline CI and real CachyOS acceptance before merge.
+- Merged in PR #18 after five passing CI jobs and maintainer acceptance on CachyOS; unfinished follow-up criteria remain tracked in ROADMAP.md.
 
 ## 0.1.0-78: quota card layout and service selection
 
