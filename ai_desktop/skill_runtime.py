@@ -12,8 +12,9 @@ import unicodedata
 
 from . import skills
 from .e2_ipc import _unique_pairs
+from .discovery_contract import CEILING_SKILL_BYTES
 
-MAX_KNOWLEDGE_BYTES = 192 * 1024
+MAX_KNOWLEDGE_BYTES = CEILING_SKILL_BYTES
 MAX_RESOURCES = 32
 MAX_ROUNDS = 4
 _active = ContextVar("ai_desktop_skill_registry", default=None)

@@ -183,7 +183,7 @@ class ProfileStoreTests(unittest.TestCase):
             self.store.mutate(profiles.prepared, expected=self.store.load())
         self.assertEqual(self.store.path.read_bytes(), original)
 
-    def test_preparation_validates_combined_instructions_of_existing_custom_profiles(self):
+    def test_preparation_validates_catalog_and_each_source_for_large_custom_profiles(self):
         root = self.installed_skills()
         big = root / "big"
         big.mkdir(mode=0o755)
@@ -196,7 +196,15 @@ class ProfileStoreTests(unittest.TestCase):
         original = profiles.defaults().put("custom", profiles.Profile(
             instructions="a" * profiles.MAX_INSTRUCTIONS, skills=("big", "big2")))
         self.write(original.data())
+        with patch.object(skills, "ROOT", root):
+            after = self.store.mutate(profiles.prepared, expected=self.store.load())
+            self.assertEqual(after.config.profiles["custom"], original.profiles["custom"])
+            instructions = profiles.resolve("custom", store=self.store)["instructions"]
+        self.assertIn("- big: Large test skill", instructions)
+        self.assertIn("- big2: Large test skill", instructions)
+        self.assertNotIn("x" * 1024, instructions)
         before = self.store.path.read_bytes()
+        path.write_text("---\nname: big\ndescription: Large test skill\n---\n" + "x" * skills.MAX_SKILL_BYTES)
         with patch.object(skills, "ROOT", root), self.assertRaises(profiles.ProfileError):
             self.store.mutate(profiles.prepared, expected=self.store.load())
         self.assertEqual(self.store.path.read_bytes(), before)

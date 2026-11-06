@@ -251,7 +251,7 @@ def prepared(config):
         entries[name] = selected
     candidate = replace(config, entries=tuple(sorted(entries.items())))
     for _, selected in candidate.entries:
-        instructions_for(selected)
+        catalog_for(selected)
     return candidate
 
 

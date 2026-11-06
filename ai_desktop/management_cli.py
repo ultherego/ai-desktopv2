@@ -82,6 +82,15 @@ def build_parser(*, prog="ai-desktop claude", provider_neutral=False):
     return parser
 
 
+def _skill_summary(names):
+    """Keep menu labels bounded even when a role assigns many valid Skills."""
+    if not names:
+        return "none assigned"
+    shown = ", ".join(names[:3])
+    remaining = len(names) - min(3, len(names))
+    return str(len(names)) + " assigned · " + shown + (" (+" + str(remaining) + " more)" if remaining else "")
+
+
 def _summary(config):
     config = config.with_provider(config.selected_provider)
     selected = config.profiles[config.active]
@@ -236,7 +245,7 @@ class _SettingsMenu:
         return value if value.strip() else None
 
     def update(self, before, name, selected):
-        profiles.instructions_for(selected)
+        profiles.catalog_for(selected)
         current = before.config.with_provider(before.config.selected_provider)
         if current.profiles[name] != selected:
             self.store.mutate(lambda value: value.with_provider(current.selected_provider).put(name, selected),
@@ -277,7 +286,7 @@ class _SettingsMenu:
             raise profiles.ProfileError("skill")
         result = []
         for name in skills.names():
-            profiles.instructions_for(profiles.Profile(skills=(name,)))
+            profiles.catalog_for(profiles.Profile(skills=(name,)))
             result.append(name)
         return tuple(result)
 
@@ -288,18 +297,18 @@ class _SettingsMenu:
             return selected
         draft = selected
         while True:
-            action = self.select("Skills · " + (", ".join(draft.skills) or "none assigned"),
+            action = self.select("Skills · " + _skill_summary(draft.skills),
                                  ("Add Skill", "Unassign", "Preview Skill", "Save", "Back"))
             if action is None or action == 4:
                 return selected
             if action == 3:
-                profiles.instructions_for(draft)
+                profiles.catalog_for(draft)
                 return draft
             if action == 0:
                 name = self.pick("Add Skill", tuple(name for name in names if name not in draft.skills))
                 if name is not None:
                     candidate = replace(draft, skills=draft.skills + (name,))
-                    profiles.instructions_for(candidate)
+                    profiles.catalog_for(candidate)
                     draft = candidate
             elif action == 1:
                 name = self.pick("Unassign Skill", draft.skills)
@@ -353,7 +362,7 @@ class _SettingsMenu:
                 "Reasoning: " + EFFORT_LABELS[selected.effort],
                 "Access: " + ("read-only" if selected.access == "read-only" else "changes after approval"),
                 "Instructions: " + ("custom" if selected.instructions else "none"),
-                "Skills: " + (", ".join(selected.skills) or "none assigned"))
+                "Skills: " + _skill_summary(selected.skills))
 
     def draft(self, selected):
         fields = ("model", "effort", "access", "instructions", "skills")
@@ -363,7 +372,7 @@ class _SettingsMenu:
             if action is None or action == 6:
                 return None
             if action == 5:
-                profiles.instructions_for(selected)
+                profiles.catalog_for(selected)
                 return selected
             selected = self.change(selected, fields[action])
 
@@ -429,7 +438,7 @@ class _SettingsMenu:
                     if name in before.config.profiles:
                         raise profiles.ProfileError("exists")
                     selected = before.config.with_provider(before.config.selected_provider).profiles[source]
-                    profiles.instructions_for(selected)
+                    profiles.catalog_for(selected)
                     self.store.mutate(lambda value: value.with_provider(before.config.selected_provider).copy(source, name),
                                       expected=before)
                 elif action == 4:
@@ -558,7 +567,7 @@ def main(argv=None, *, reader=input, store=None, chooser=None,
             if name in before.config.profiles:
                 raise profiles.ProfileError("exists")
             selected = before.config.with_provider(before.config.selected_provider).profiles[source]
-            profiles.instructions_for(selected)
+            profiles.catalog_for(selected)
             store.mutate(lambda value: value.with_provider(before.config.selected_provider).copy(source, name),
                          expected=before)
             print("Copied profile: " + name)
@@ -574,7 +583,7 @@ def main(argv=None, *, reader=input, store=None, chooser=None,
             config = config.with_provider(args.provider or config.selected_provider)
             selected = config.profiles[name] if exists else profiles.Profile(provider=config.selected_provider)
             selected = replace(selected, **updates)
-            profiles.instructions_for(selected)
+            profiles.catalog_for(selected)
             return config.put(name, selected)
         store.mutate(operation)
         print(("Created" if action == "create" else "Changed") + " profile: " + name)

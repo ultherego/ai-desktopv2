@@ -15,7 +15,9 @@ MAX_STEPS = 8 + 4 + 32 + MAX_SKILL_ROUNDS * 4 + MAX_REUSED_SKILLS
 MAX_DIRECTORIES = 4            # directories in one list step
 CEILING_ENTRIES = 512          # entries of one list/find step
 CEILING_TOTAL_ENTRIES = 1024   # entries of the whole document
-CEILING_BYTES = 262144 + 192 * 1024  # diagnostics plus separately budgeted procedures/references
+CEILING_DIAGNOSTIC_BYTES = 256 * 1024
+CEILING_SKILL_BYTES = 192 * 1024
+CEILING_BYTES = CEILING_DIAGNOSTIC_BYTES + CEILING_SKILL_BYTES
 MAX_QUERIES = 4
 MIN_QUERY_CHARS = 2
 MAX_QUERY_BYTES = 64
@@ -203,8 +205,12 @@ def validate_discovery(value):
             raise ValueError()
         result = {"steps": steps, "remaining": {"rounds": remaining["rounds"], "corrections": remaining["corrections"],
                                    "commands": remaining["commands"]}}
-        if len(json.dumps(result, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
-                          allow_nan=False).encode("utf-8")) > CEILING_BYTES:
+        # An unused Skill allocation must never increase diagnostic authority,
+        # nor may a small diagnostic context subsidize oversized procedures.
+        # The worker enforces the same partitions as the controller ledger.
+        if (diagnostic_bytes(result) > CEILING_DIAGNOSTIC_BYTES
+                or skill_bytes(result) > CEILING_SKILL_BYTES
+                or document_bytes(result) > CEILING_BYTES):
             raise ValueError()
         return result
     except (ValueError, TypeError, KeyError, UnicodeError, RecursionError):
@@ -214,6 +220,16 @@ def validate_discovery(value):
 def document_bytes(document):
     return len(json.dumps(document, ensure_ascii=False, sort_keys=True, separators=(",", ":"),
                           allow_nan=False).encode("utf-8"))
+
+
+def diagnostic_bytes(document):
+    """Diagnostic steps and their complete envelope, excluding Skill steps."""
+    return document_bytes({**document, "steps": [step for step in document["steps"] if step["op"] != "skill"]})
+
+
+def skill_bytes(document):
+    """Procedures/references and their resource-list envelope, independently bounded."""
+    return document_bytes({"resources": [step for step in document["steps"] if step["op"] == "skill"]})
 
 
 def scope_ids(document):

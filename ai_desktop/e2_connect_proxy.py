@@ -12,8 +12,6 @@ import socketserver
 import threading
 import time
 
-from .analysis_contract import MAX_PACKET_LARGE, MAX_RESPONSE_BYTES
-
 HOSTS = frozenset({"api.anthropic.com", "claude.ai", "platform.claude.com"})
 OPENAI_HOSTS = frozenset({"api.openai.com"})
 # Separate native account RPC namespace. Device auth/token renewal and account limits.
@@ -21,9 +19,12 @@ CODEX_ACCOUNT_HOSTS = frozenset({"auth.openai.com", "chatgpt.com"})
 HEADER_LIMIT = 8192
 HELLO_LIMIT = 65536
 STREAM_LIMIT = 4 * 1024 * 1024
-# Analysis carries JSON inside the native client's HTTPS protocol. Account
-# operations keep the smaller default; neither limit comes from model data.
-ANALYSIS_STREAM_LIMIT = 2 * MAX_PACKET_LARGE + 2 * MAX_RESPONSE_BYTES + 4 * 1024 * 1024
+# Analysis carries JSON inside the native client's HTTPS protocol. This
+# standalone transport is also mounted in the minimal namespace fixture: do
+# not import the controller's contract here. A regression checks this ceiling
+# against two request/response envelopes plus TLS overhead. Account operations
+# keep the smaller default; neither limit comes from model data.
+ANALYSIS_STREAM_LIMIT = 96 * 1024 * 1024
 TIME_LIMIT = 20
 CONNECTION_LIMIT = 64
 

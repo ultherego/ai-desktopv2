@@ -10,7 +10,7 @@ import json
 import re
 
 from . import material_step as base
-from .assistant_contract import EDIT_CHECKS
+from .assistant_contract import EDIT_CHECKS, MAX_DELETE_FILES
 from . import materials
 from . import project_scope as scope
 
@@ -274,7 +274,7 @@ def parse_decision(raw):
         if action == "edit" and {"action", "files", "create", "check"} <= set(value) <= {"action", "files", "create", "check", "delete"}:
             files, create, delete = value["files"], value["create"], value.get("delete", [])
             if (type(files) is not list or type(create) is not list or type(delete) is not list
-                    or len(files) > MAX_EDIT_FILES or len(create) > MAX_EDIT_FILES or len(delete) > MAX_EDIT_FILES
+                    or len(files) > MAX_EDIT_FILES or len(create) > MAX_EDIT_FILES or len(delete) > MAX_DELETE_FILES
                     or not (files or create or delete) or (delete and (files or create))
                     or type(value["check"]) is not str or value["check"] not in EDIT_CHECKS):
                 raise ValueError("decision")

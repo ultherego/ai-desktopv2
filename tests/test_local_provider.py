@@ -137,8 +137,11 @@ class LocalProviderTests(unittest.TestCase):
                 output = stack.enter_context(redirect_stdout(io.StringIO()))
                 stack.enter_context(patch.object(permissions, "_identity", return_value=(os.getuid(), folder)))
                 stack.enter_context(patch.object(agent_profiles, "Store", return_value=store))
-                stack.enter_context(patch("os.getuid", return_value=1000))
-                stack.enter_context(patch("os.geteuid", return_value=1000))
+                # Keep the real installed-Skill owner on non-root CI runners.
+                # Root-only unit environments still simulate a normal client UID.
+                client_uid = os.getuid() or 1000
+                stack.enter_context(patch("os.getuid", return_value=client_uid))
+                stack.enter_context(patch("os.geteuid", return_value=client_uid))
                 stack.enter_context(patch("os.isatty", return_value=True))
                 stack.enter_context(patch("sys.stdin.isatty", return_value=True))
                 stack.enter_context(patch("sys.stdout.isatty", return_value=True))

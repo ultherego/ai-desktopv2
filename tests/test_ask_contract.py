@@ -113,12 +113,13 @@ class AskContractTests(unittest.TestCase):
                                sha256=gate.sha256, nonce=gate.nonce)
 
     def test_file_context_cannot_grant_writes_commands_or_duplicate_bundles(self):
+        from ai_desktop.file_context_contract import CEILING_FILE_BYTES
         invalid = [dict(FILES, command="cat /etc/shadow"),
                    {"kind": "files", "files": [dict(FILES["files"][0], writable=True)]},
                    {"kind": "files", "files": [dict(FILES["files"][0], path="../outside")]},
-                   {"kind": "files", "files": [dict(FILES["files"][0], content="x" * 131073)]}]
-        for context in [[item] for item in invalid] + [[FILES, FILES]]:
-            with self.subTest(context=context), self.assertRaises(ValueError):
+                   {"kind": "files", "files": [dict(FILES["files"][0], content="x" * (CEILING_FILE_BYTES + 1))]}]
+        for index, context in enumerate([[item] for item in invalid] + [[FILES, FILES]]):
+            with self.subTest(case=index), self.assertRaises(ValueError):
                 contract.AnalysisConsent(None, question="Plik", context=context)
 
     def test_individually_valid_sources_still_obey_aggregate_context_limit(self):

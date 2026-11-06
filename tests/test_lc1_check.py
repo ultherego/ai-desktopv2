@@ -40,7 +40,8 @@ class Lc1CheckTests(unittest.TestCase):
         self.assertEqual(code, 0)
         sizes = {name: (self.root / name).stat().st_size for name in check.FIXTURES}
         self.assertEqual(sizes["log1m.txt"], 1024 * 1024)
-        self.assertEqual(sizes["over.txt"], 16 * 1024 * 1024 + 1)
+        self.assertEqual(check.CEILING, p.MAX_FILE_SIZE)
+        self.assertEqual(sizes["over.txt"], p.MAX_FILE_SIZE + 1)
         self.assertEqual(sizes["empty.txt"], 0)
         self.assertEqual(oct(self.root.stat().st_mode & 0o777), "0o700")
         self.assertEqual(oct((self.root / "log1m.txt").stat().st_mode & 0o777), "0o600")

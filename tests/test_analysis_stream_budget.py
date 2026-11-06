@@ -7,12 +7,18 @@ from types import SimpleNamespace
 import unittest
 from unittest.mock import MagicMock, patch
 
-from ai_desktop import analysis_child, analysis_sandbox, codex_runtime, codex_quota_runtime
+from ai_desktop import analysis_child, analysis_contract, analysis_sandbox, codex_runtime, codex_quota_runtime
 from ai_desktop import e2_connect_proxy as proxy
 from test_e2_connect_proxy import header, hello
 
 
 class AnalysisStreamBudgetTests(unittest.TestCase):
+    def test_compiled_analysis_ceiling_covers_bounded_json_envelopes_and_tls(self):
+        required = (2 * analysis_contract.MAX_PACKET_LARGE + 2 * analysis_contract.MAX_RESPONSE_BYTES
+                    + 4 * 1024 * 1024)
+        self.assertGreaterEqual(proxy.ANALYSIS_STREAM_LIMIT, required)
+        self.assertEqual(proxy.STREAM_LIMIT, 4 * 1024 * 1024)
+
     def relay_bytes(self, count, limit):
         client, accepted = socket.socketpair()
         upstream, fixture = socket.socketpair()

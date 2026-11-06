@@ -12,7 +12,7 @@ import re
 from . import directory_context, permissions
 from .skill_runtime import MAX_KNOWLEDGE_BYTES, observe_command
 from .discovery_contract import (CEILING_TOTAL_ENTRIES, REFUSAL_CODES, MAX_SELECTORS, clean_path, document_bytes,
-                                 validate_discovery)
+                                 diagnostic_bytes, skill_bytes, validate_discovery)
 
 REFUSAL_RESERVE = 2400
 OVERHEAD = 1024            # envelope of a document with its counters; leaves room for the remaining steps' framing
@@ -80,7 +80,7 @@ class DiscoveryLedger:
 
     @staticmethod
     def _diagnostic_bytes(document):
-        return document_bytes({**document, "steps": [s for s in document["steps"] if s["op"] != "skill"]})
+        return diagnostic_bytes(document)
 
     def _budget(self):
         # Room for the refusal steps the correction budget may still add (4 selectors of ~560 bytes + framing each).
@@ -143,7 +143,7 @@ class DiscoveryLedger:
         document = self.document()
         step = {"op": "skill", "name": name, "status": status, "text": text or ""}
         document["steps"].append(step)
-        if document_bytes({"resources": [s for s in document["steps"] if s["op"] == "skill"]}) > MAX_KNOWLEDGE_BYTES:
+        if skill_bytes(document) > MAX_KNOWLEDGE_BYTES:
             raise BudgetExhausted("skills_bytes")
         self.steps.append(step)
         if text and "/" not in name:

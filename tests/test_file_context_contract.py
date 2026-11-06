@@ -36,10 +36,11 @@ class FileContextContractTests(unittest.TestCase):
 
     def test_content_is_utf8_bounded_and_rejects_terminal_controls(self):
         for content in (None, b"text", "\x00", "\x1b[2J", "\r", "\u202e", "\ud800",
-                        "ą" * 65536 + "x", "ą" * 65537, "a" * 131073):
+                        "ą" * (contract.CEILING_FILE_BYTES // 2) + "x",
+                        "ą" * (contract.CEILING_FILE_BYTES // 2 + 1), "a" * (contract.CEILING_FILE_BYTES + 1)):
             with self.subTest(content=repr(content)[:80]), self.assertRaises(ValueError):
                 contract.validate_context(context(content=content))
-        for content in ("", "\n\t", "ą" * 65536, "a" * 131072):
+        for content in ("", "\n\t", "ą" * (contract.CEILING_FILE_BYTES // 2), "a" * contract.CEILING_FILE_BYTES):
             self.assertEqual(contract.validate_context(context(content=content)), context(content=content))
 
     def test_private_key_envelopes_are_data_and_policy_owns_exclusions(self):
@@ -58,17 +59,17 @@ class FileContextContractTests(unittest.TestCase):
 
     def test_count_and_total_limits_refuse_whole_bundle(self):
         maximum = {"kind": "files", "files": [{"path": f"/tmp/{index}.txt", "content": ""}
-                                              for index in range(128)]}
+                                              for index in range(contract.CEILING_FILES)]}
         self.assertEqual(contract.validate_context(maximum), maximum)
         for value in ({"kind": "files", "files": []},
                       {"kind": "files", "files": maximum["files"] + [{"path": "/tmp/65", "content": ""}]},
-                      {"kind": "files", "files": [{"path": f"/tmp/{index}", "content": "ą" * 32768 + ("x" if index == 3 else "")}
+                      {"kind": "files", "files": [{"path": f"/tmp/{index}", "content": "ą" * (contract.CEILING_TOTAL_BYTES // 8) + ("x" if index == 3 else "")}
                                                    for index in range(4)]}):
             with self.assertRaises(ValueError):
                 contract.validate_context(value)
-        exact = {"kind": "files", "files": [{"path": f"/tmp/{index}", "content": "ą" * 32768}
+        exact = {"kind": "files", "files": [{"path": f"/tmp/{index}", "content": "ą" * (contract.CEILING_TOTAL_BYTES // 8)}
                                              for index in range(4)]}
-        self.assertEqual(sum(len(item["content"].encode("utf-8")) for item in exact["files"]), 262144)
+        self.assertEqual(sum(len(item["content"].encode("utf-8")) for item in exact["files"]), contract.CEILING_TOTAL_BYTES)
         self.assertEqual(contract.validate_context(exact), exact)
 
     def test_schema_cannot_embed_permissions_or_model_tools(self):

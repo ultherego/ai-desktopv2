@@ -161,6 +161,20 @@ class ManagementMenuPTYTests(unittest.TestCase):
             self.assertEqual(list(state.home.iterdir()), [])
             self.assertEqual(state.writes, [])
 
+    def test_default_skill_catalog_opens_in_the_real_terminal_without_writes(self):
+        with self.settings() as state:
+            self.frame(state, "Settings · agent: default")
+            count = len(state.store.load().config.profiles["default"].skills)
+            self.assertGreater(count, 3)
+            self.select_after(state, 6, "Skills · " + str(count) + " assigned")
+            start = len(state.output)
+            os.write(state.master, b"\x1b")
+            self.frame(state, "Settings · agent: default", start=start)
+            os.write(state.master, b"\x1b")
+            self.finish(state)
+            self.assertEqual(list(state.home.iterdir()), [])
+            self.assertEqual(state.writes, [])
+
 
 if __name__ == "__main__":
     unittest.main()

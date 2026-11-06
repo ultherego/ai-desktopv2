@@ -10,7 +10,7 @@ import unittest
 from unittest.mock import patch
 
 from ai_desktop import agent_profiles as profiles, management_cli, skills
-from ai_desktop.terminal_menu import MenuInputError
+from ai_desktop.terminal_menu import MenuInputError, _label
 
 
 class Choices:
@@ -19,6 +19,9 @@ class Choices:
         self.calls = []
 
     def __call__(self, title, options, *, default=0):
+        _label(title)
+        for option in options:
+            _label(option)
         self.calls.append((title, options, default))
         self.test.assertLessEqual(len(options), 12)
         self.test.assertTrue(self.steps, "unexpected menu: " + title)
@@ -38,8 +41,9 @@ class CompleteManagementMenuTests(unittest.TestCase):
         self.store = profiles.Store(self.home)
         self.root = self.home / "installed-skills"
         self.root.mkdir(mode=0o755)
-        for name in ("demo", "other", "third", "fourth", "fifth", "concise-assistant",
-                     "cachyos-diagnostics", "code-development", "code-review", "project-analysis"):
+        names = {"demo", "other", "third", "fourth", "fifth"}
+        names.update(name for group in profiles.PRESET_SKILLS.values() for name in group)
+        for name in names:
             self.skill(name)
         self.patch = patch.object(skills, "ROOT", self.root)
         self.patch.start()
@@ -56,6 +60,10 @@ class CompleteManagementMenuTests(unittest.TestCase):
         for name in profiles.PRESET_SKILLS["diagnostic"]:
             if not (self.root / name).exists():
                 self.skill(name)
+
+    def pick_skill(self, name, *, excluded=()):
+        names = tuple(value for value in skills.names() if value not in excluded)
+        return ["Next page"] * (names.index(name) // 8) + [name]
 
     def run_menu(self, *steps, argv=("menu",), text=()):
         chooser = Choices(self, *steps)
@@ -268,24 +276,49 @@ class CompleteManagementMenuTests(unittest.TestCase):
         self.assertFalse(self.store.path.parent.exists())
         code, _, _ = self.run_menu("Add Skill", "demo", "Save", argv=("skills",))
         self.assertEqual(code, 0)
-        self.assertEqual(self.store.load().config.profiles["default"].skills, ("demo",))
-        code, _, _ = self.run_menu("Unassign", "demo", "Save", argv=("skills",))
+        self.assertEqual(self.store.load().config.profiles["default"].skills,
+                         profiles.PRESET_SKILLS["default"] + ("demo",))
+        code, _, _ = self.run_menu("Unassign", "Next page", "Next page", "demo", "Save", argv=("skills",))
         self.assertEqual(code, 0)
-        self.assertEqual(self.store.load().config.profiles["default"].skills, ())
+        self.assertEqual(self.store.load().config.profiles["default"].skills, profiles.PRESET_SKILLS["default"])
 
-    def test_no_skill_count_cap_and_combined_instruction_limit_does_not_partially_write(self):
+    def test_many_and_large_skills_use_catalog_but_invalid_source_cannot_write(self):
         selected = profiles.Profile(skills=("demo", "other", "third", "fourth"))
         self.store.mutate(lambda config: config.put("default", selected))
-        code, output, _ = self.run_menu("Add Skill", "fifth", "Save", argv=("skills",))
+        code, output, _ = self.run_menu("Add Skill", *self.pick_skill("fifth", excluded=selected.skills),
+                                        "Save", argv=("skills",))
         self.assertEqual(code, 0)
         self.assertEqual(self.store.load().config.profiles["default"].skills, ("demo", "other", "third", "fourth", "fifth"))
         self.skill("big-one", "x" * (60 * 1024))
         self.skill("oversize-total", "x" * (60 * 1024))
         self.store.mutate(lambda config: config.put("default", profiles.Profile(skills=("big-one",))))
+        code, _, _ = self.run_menu("Add Skill", *self.pick_skill("oversize-total", excluded=("big-one",)),
+                                   "Save", argv=("skills",))
+        self.assertEqual(code, 0)
+        selected = self.store.load().config.profiles["default"]
+        self.assertEqual(selected.skills, ("big-one", "oversize-total"))
+        self.assertNotIn("x" * 1024, profiles.resolve(store=self.store)["instructions"])
+        with self.assertRaises(profiles.ProfileError):
+            profiles.instructions_for(selected)
         before = self.store.load()
-        code, _, _ = self.run_menu("Add Skill", "Next page", "oversize-total", argv=("skills",))
+        self.skill("invalid-source", "x" * skills.MAX_SKILL_BYTES)
+        code, _, _ = self.run_menu(argv=("skills",))
         self.assertEqual(code, 2)
         self.assertEqual(self.store.load(), before)
+
+    def test_many_maximum_length_skill_names_keep_all_menu_labels_bounded(self):
+        names = tuple("skill-" + str(index).zfill(2) + "x" * 40 for index in range(24))
+        selected = profiles.Profile(skills=names)
+        for label in management_cli._SettingsMenu(self.store).fields(selected):
+            _label(label)
+        for name in names:
+            self.skill(name)
+        self.store.mutate(lambda config: config.put("default", selected))
+        code, _, choices = self.run_menu("Back", argv=("skills",))
+        self.assertEqual(code, 0)
+        self.assertIn("24 assigned", choices.calls[0][0])
+        self.assertIn("(+21 more)", choices.calls[0][0])
+        self.assertEqual(self.store.load().config.profiles["default"].skills, names)
 
     def test_create_cancel_copy_and_remove_use_real_store_without_auth(self):
         code, _, _ = self.run_menu("Create profile", "Cancel", "Back", argv=("agents", "menu"), text=("unused",))
@@ -309,7 +342,7 @@ class CompleteManagementMenuTests(unittest.TestCase):
         self.assertEqual(code, 0)
         before = self.store.load()
         selected = before.config.profiles["default"]
-        self.assertEqual((selected.model, selected.effort, selected.skills), ("opus", "high", ("concise-assistant",)))
+        self.assertEqual((selected.model, selected.effort, selected.skills), ("opus", "high", profiles.PRESET_SKILLS["default"]))
         with redirect_stdout(io.StringIO()):
             self.assertEqual(management_cli.main(["agents", "setup"], store=self.store), 0)
         self.assertEqual(self.store.load(), before)

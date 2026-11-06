@@ -1,4 +1,4 @@
-"""The optional 512 KiB part profile: the larger limits exist only for a whole-file "map" request, nothing else widens."""
+"""Typed material budgets remain independent of the larger general transport envelope."""
 import copy
 import json
 import unittest
@@ -43,25 +43,44 @@ class SchemaTests(unittest.TestCase):
 
     def test_one_byte_over_the_part_ceiling_is_refused(self):
         self.assertEqual(ms.data_limit({"phase": "map"}), ms.PART_DATA_BYTES)
-        self.assertEqual(ms.data_limit({"phase": "reduce"}), ms.DATA_BYTES)
+        self.assertEqual(ms.data_limit({"phase": "reduce"}), ms.REDUCE_DATA_BYTES)
         self.assertEqual(ms.data_limit({}), ms.DATA_BYTES)
         self.assertEqual(ms.data_limit(None), ms.DATA_BYTES)
 
+    def test_exact_map_data_ceiling_accepts_all_bytes_and_next_byte_refuses(self):
+        from ai_desktop.material_loop import read_observation
+        material = m.import_bytes(b"x" * (ms.PART_DATA_BYTES + 1), "file")
+        observations = [read_observation(material, start, min(start + m.CHUNK_BYTES, material.size))
+                        for start in range(0, material.size, m.CHUNK_BYTES)]
+        value = {"material": {"id": material.material_id, "version": material.sha256,
+                               "size": material.size, "lines": 1},
+                 "task": {"step": 1, "max_steps": 8, "bytes_left": ms.TOTAL_BYTES,
+                          "phase": "map", "part": {"index": 1, "total": 1}},
+                 "observations": observations[:-1], "history": []}
+        self.assertEqual(ms.data_bytes(value["observations"]), ms.PART_DATA_BYTES)
+        ac.parse_request(ac.application_input(None, "Check", material=value).encode())
+        value["observations"] = observations
+        self.assertEqual(ms.data_bytes(value["observations"]), ms.PART_DATA_BYTES + 1)
+        with self.assertRaises(ValueError):
+            ms.validate_input(value)
+        with self.assertRaises(ValueError):
+            ac.application_input(None, "Check", material=value)
+
 
 class PacketTests(unittest.TestCase):
-    def test_only_a_map_request_may_exceed_the_512_kib_packet(self):
+    def test_map_payload_above_the_former_wire_limit_remains_phase_bound(self):
         mat = material()
         _, request = map_request(mat, 512 * KIB)
         payload = ac.application_input(None, "Pytanie?", material=request)
         size = len(payload.encode())
-        self.assertTrue(ac.MAX_PACKET < size <= ac.MAX_PACKET_LARGE, size)
+        self.assertTrue(512 * KIB < size <= ac.MAX_PACKET_LARGE, size)
         ac.parse_request(payload.encode())                            # the transport and the parser accept it
         reduce_like = copy.deepcopy(request)
         reduce_like["task"]["phase"] = "reduce"
         with self.assertRaises(ValueError):                           # but not under another phase / mode
             ac.application_input(None, "Pytanie?", material=reduce_like)
 
-    def test_the_transport_ceiling_does_not_widen_other_modes(self):
+    def test_transport_size_does_not_bypass_mode_schemas_or_the_wire_cap(self):
         big = "x" * 600 * KIB
         with self.assertRaises(ValueError):
             ac.application_input(None, "Pytanie?", context=[{"kind": "file", "text": big}])

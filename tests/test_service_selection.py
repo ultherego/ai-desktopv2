@@ -93,7 +93,7 @@ class ServiceSelectionTests(unittest.TestCase):
                 execution = profiles.resolve(profile=name, store=self.store)
                 self.assertEqual(execution["provider"], "codex")
                 self.assertEqual(execution["profile"], name)
-                self.assertEqual(execution["instructions"], config.profiles[name].instructions)
+                self.assertEqual(execution["instructions"], profiles.catalog_for(config.profiles[name]))
                 self.assertEqual(execution["access"], config.profiles[name].access)
         reviewer = profiles.resolve(profile="reviewer", store=self.store)
         self.assertEqual((reviewer["model"], reviewer["effort"]), ("default", "default"))

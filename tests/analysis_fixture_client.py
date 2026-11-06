@@ -81,8 +81,8 @@ def validate_file_payload(data):
     assert set(actual) == set(FILE_FIXTURE["files"]) and total == 12175
     assert actual["notes.txt"].index(FILE_FIXTURE["marker"]) > 4096
     assert actual["notes.txt"].endswith("answer_marker = " + FILE_FIXTURE["marker"] + "\n")
-    assert len(canonical(data["context"]).encode("utf-8")) <= MAX_CONTEXT_BYTES == 384 * 1024
-    assert len(application_input(None, question=data["question"], context=data["context"]).encode("utf-8")) <= MAX_PACKET == 512 * 1024
+    assert len(canonical(data["context"]).encode("utf-8")) <= MAX_CONTEXT_BYTES == 34 * 1024 * 1024
+    assert len(application_input(None, question=data["question"], context=data["context"]).encode("utf-8")) <= MAX_PACKET == 36 * 1024 * 1024
 
 
 def main():

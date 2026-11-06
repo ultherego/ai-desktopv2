@@ -26,8 +26,9 @@ class PreparedSkillWholeAnalysisTests(unittest.TestCase):
             with patch.object(skills, "ROOT", installed):
                 store.mutate(profiles.prepared, expected=store.load())
                 selected = profiles.resolve(store=store)
-            self.assertIn("Skill concise-assistant:", selected["instructions"])
-            self.assertEqual(store.load().config.profiles["default"].skills, ("concise-assistant",))
+            self.assertIn("- concise-assistant:", selected["instructions"])
+            self.assertNotIn("Skill concise-assistant:", selected["instructions"])
+            self.assertEqual(store.load().config.profiles["default"].skills, profiles.PRESET_SKILLS["default"])
 
             line = b"synthetic whole-file material for budget verification".ljust(63, b".") + b"\n"
             raw = (line * ((4 * 1024 * 1024 + len(line) - 1) // len(line)))[:4 * 1024 * 1024]

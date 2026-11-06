@@ -7,6 +7,7 @@ from ai_desktop import analysis_contract as contract
 from ai_desktop import analysis_child
 from ai_desktop import codex_protocol as codex
 from ai_desktop import discovery_contract as dc
+from ai_desktop import ask_discovery, skill_runtime
 
 
 ACCESS = {"files": [{"id": "f0", "pattern": "~/.config/**"}], "systemd": [], "weather": False}
@@ -30,6 +31,62 @@ def document():
 
 
 class DiscoveryContractTests(unittest.TestCase):
+    @staticmethod
+    def sized_diagnostics(size):
+        value = {"steps": [{"op": "run", "argv": ["uname"], "status": "ok", "exit": 0,
+                            "output": "", "truncated": False} for _ in range(2)],
+                 "remaining": {"rounds": 0, "corrections": 0, "commands": 0}}
+        remaining = size - dc.document_bytes(value)
+        first = min(remaining, dc.CEILING_OUTPUT)
+        value["steps"][0]["output"] = "x" * first
+        value["steps"][1]["output"] = "x" * (remaining - first)
+        return value
+
+    @staticmethod
+    def sized_skills(size):
+        steps = [{"op": "skill", "name": name, "status": "ok", "text": ""} for name in ("first", "second")]
+        remaining = size - dc.document_bytes({"resources": steps})
+        first = min(remaining, dc.MAX_SKILL_TEXT)
+        steps[0]["text"] = "x" * first
+        steps[1]["text"] = "x" * (remaining - first)
+        return steps
+
+    def test_diagnostic_and_skill_bytes_have_independent_exact_boundaries(self):
+        value = self.sized_diagnostics(dc.CEILING_DIAGNOSTIC_BYTES)
+        value["steps"] += self.sized_skills(dc.CEILING_SKILL_BYTES)
+        self.assertEqual(dc.diagnostic_bytes(value), dc.CEILING_DIAGNOSTIC_BYTES)
+        self.assertEqual(dc.skill_bytes(value), dc.CEILING_SKILL_BYTES)
+        self.assertEqual(skill_runtime.MAX_KNOWLEDGE_BYTES, dc.CEILING_SKILL_BYTES)
+        self.assertEqual(dc.validate_discovery(value), value)
+        for category in ("diagnostic", "skill"):
+            changed = self.sized_diagnostics(dc.CEILING_DIAGNOSTIC_BYTES if category == "diagnostic" else 256)
+            changed["steps"] += self.sized_skills(dc.CEILING_SKILL_BYTES if category == "skill" else 256)
+            item = changed["steps"][1 if category == "diagnostic" else 3]
+            item["output" if category == "diagnostic" else "text"] += "x"
+            self.assertLess(dc.document_bytes(changed), dc.CEILING_BYTES)
+            with self.subTest(category=category), self.assertRaises(ValueError):
+                dc.validate_discovery(changed)
+            # Invalid data cannot pass the controller envelope or be smuggled
+            # directly into the worker's canonical request parser.
+            with self.subTest(category=category), self.assertRaises(ValueError):
+                contract.application_input(None, QUESTION, access=ACCESS, discovery=changed)
+            payload = json.loads(contract.application_input(None, QUESTION, access=ACCESS))
+            payload["discovery"] = changed
+            with self.subTest(category=category), self.assertRaises(contract.AnalysisDenied):
+                contract.parse_request(contract.canonical(payload).encode())
+
+    def test_controller_skill_budget_does_not_consume_diagnostic_room(self):
+        ledger = ask_discovery.DiscoveryLedger(None, "synthetic")
+        room = ledger._budget()
+        steps = self.sized_skills(dc.CEILING_SKILL_BYTES)
+        for step in steps:
+            ledger.add_skill(step["name"], step["text"])
+        self.assertEqual(ledger._budget(), room - dc.document_bytes(ledger.document() | {"steps": []}))
+        self.assertEqual(dc.skill_bytes(ledger.snapshot().document), dc.CEILING_SKILL_BYTES)
+        with self.assertRaises(ask_discovery.BudgetExhausted) as exhausted:
+            ledger.add_skill("third", "x")
+        self.assertEqual(exhausted.exception.name, "skills_bytes")
+
     def test_valid_document_is_copied_without_sharing_mutable_state(self):
         source = document()
         valid = dc.validate_discovery(source)

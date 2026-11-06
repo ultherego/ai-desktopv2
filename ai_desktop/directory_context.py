@@ -14,7 +14,8 @@ import unicodedata
 
 from . import file_context, permissions
 from .assistant_contract import file_selections
-from .discovery_contract import (KINDS, MAX_DIRECTORIES, MAX_QUERIES, clean_path, clean_query, validate_discovery)
+from .discovery_contract import (KINDS, MAX_DIRECTORIES, MAX_QUERIES, clean_path, clean_query, validate_discovery,
+                                 diagnostic_bytes, skill_bytes)
 
 # Directory aliases are real symlinks. They are shown as `alias` entries (with their literal sibling target) only when the
 # very same guarded rule that later lets a read pass through them would accept them; everything else is invisible.
@@ -60,11 +61,10 @@ def recheck_discovery(snapshot):
         limit = policy.limits().discovery_bytes
     else:
         raise ValueError("files-selection")
-    diagnostic = {**document, "steps": [step for step in document["steps"] if step["op"] != "skill"]}
-    if _byte_size(diagnostic) > limit:
+    if diagnostic_bytes(document) > limit:
         raise ValueError("discovery_bytes")
     from .skill_runtime import MAX_KNOWLEDGE_BYTES
-    if _byte_size({"resources": [step for step in document["steps"] if step["op"] == "skill"]}) > MAX_KNOWLEDGE_BYTES:
+    if skill_bytes(document) > MAX_KNOWLEDGE_BYTES:
         raise ValueError("skills_bytes")
     if policy is None:
         return

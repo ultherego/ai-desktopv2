@@ -146,7 +146,7 @@ class AskCliTests(unittest.TestCase):
 
     def test_file_read_refusal_stops_after_planner_with_one_local_hint_and_no_status_advice(self):
         for details in (False, True):
-            for reason, expected in (("files-size", "65536 bytes per file"),
+            for reason, expected in (("files-size", f"{Limits().read_file_size} bytes per file"),
                                      ("PRIVATE\n\x1b[31m", "Could not verify access")):
                 with self.subTest(details=details, reason=reason):
                     policy = Mock()

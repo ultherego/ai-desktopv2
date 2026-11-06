@@ -9,7 +9,7 @@ import unittest
 from unittest.mock import Mock, patch
 
 from ai_desktop import analysis_service as service
-from ai_desktop.analysis_contract import AnalysisConsent, AnalysisDenied, result_packet
+from ai_desktop.analysis_contract import AnalysisConsent, AnalysisDenied, MAX_TEXT, result_packet
 from test_report_policy import report_fixture
 from test_analysis_framing import records
 
@@ -149,8 +149,9 @@ class AnalysisServiceTests(unittest.TestCase):
 
     def test_trailing_record_cancels_before_model_and_mode_comes_only_from_request(self):
         workspace = {"instruction": "Propozycja", "files": [{"path": "x.txt", "content": "x", "writable": True}]}
-        cases = [(None, True, "wynik", False), (None, False, "x" * 20000, False),
-                 (workspace, False, "x" * 20000, True)]
+        cases = [(None, True, "wynik", False), (None, False, "x" * MAX_TEXT, True),
+                 (None, False, "x" * (MAX_TEXT + 1), False),
+                 (workspace, False, "x" * (MAX_TEXT + 1), True)]
         for task, trailing, text, success in cases:
             report = None if task is not None else report_fixture()
             gate = AnalysisConsent(report, task=task)
