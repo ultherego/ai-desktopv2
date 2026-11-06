@@ -4,19 +4,19 @@
 
 > analyze → let's agree on the change → do it → test it → undo
 
-This page describes the stages and the conditions for completing them. Individual tasks are in [TODO.md](TODO.md), limitations of the current version in [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md), and the release steps in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
+This page is the authoritative roadmap and progress record, including the agreed follow-up scope below. [TODO.md](TODO.md) is a legacy task inventory, not a separate roadmap. Current limitations are in [KNOWN_LIMITATIONS.md](KNOWN_LIMITATIONS.md), and release checks are in [RELEASE_CHECKLIST.md](RELEASE_CHECKLIST.md).
 
 ## How completion counts
 
 A stage is complete when its conditions are met for a specific commit. The result of another commit attests nothing. Green CI is not enough for changes to isolation, permissions, the file system, network and login: these also require a test on real CachyOS or Arch, with the commit number recorded.
 
-Status: **done** (merged), **in progress** (waiting for a test or merge), **to do**.
+Existing stage tables use **done**, **in progress** and **to do**. Follow-up entries use **TODO**, **IN PROGRESS**, **READY FOR TEST**, **BLOCKED**, **DONE** or **DEFERRED**. A planned acceptance target is not evidence that a feature exists; **DONE** requires implementation, the applicable checks and merge.
 
 ## Current state
 
 Working and merged:
 
-- `ask` conversation with one consent, 32 exchanges and task memory, `/` commands, messages up to 128 KiB.
+- `ask` conversation with one consent, a context window of up to 32 exchanges and task memory, `/` commands, messages up to 128 KiB. The window is not a 32-turn conversation limit.
 - Directory discovery, file reads and commands according to `permissions.toml`.
 - Writing after showing the diff, with a test on a copy, separate consent and a journal. A concurrent editor save is not overwritten on write.
 - Skills on demand in `ask`, procedures for CachyOS and Arch.
@@ -46,7 +46,7 @@ Working and merged:
 | The edit stage gets what was settled in the conversation, the task memory, discovery results and Skills | done |
 | The same in `project` | in progress (PR #18, host acceptance pending) |
 | A Skill loaded in a conversation is available in later questions without an extra model call | in progress (PR #18, host acceptance pending) |
-| Skills on demand also in `material`, `project` and `task` | to do |
+| Skills on demand also in `material`, `project` and `task` | to do — follow-up S4 |
 | A Skill also works without `permissions.toml` when the question is general | in progress (PR #18, host acceptance pending) |
 | Procedures of the 21 Skills: reading interpretation, conditions for use, ending a diagnosis and verifying a change | in progress |
 
@@ -92,7 +92,122 @@ Working and merged:
 | Removal of modules and commands not used by the installed program | to do |
 | Merging the duplicated `material` and `project` flows | to do |
 | `task prune` with a list of entries and consent | to do |
-| One client session per conversation, streaming answers | to consider |
+| One client session per conversation, streaming answers | to do — follow-up S2; lifecycle and revocation checks required |
+
+## Agreed follow-up scope — 2026-11-06
+
+This section records the requested work after the installed DankBar layout check. It extends the existing stages; it does not close them or create a second release plan. The implementation baseline is package `0.1.0-78`, commit `0cc4be81e16f02b33eb6760dd2fa58de7d6f74fb`; the inspected PR head `55233872e1ef916efa8b6c2576f8c862040e1c1d` adds only the acceptance record. All new behavior below remains unimplemented. Core work stays within E3–E7; optional desktop additions are deferred until those criteria are stable.
+
+Release boundary: S0–S6 are the agreed implementation queue, not an automatic expansion of every v1.0 release gate. The existing conditions below remain authoritative; relevant behavior changed by an item must meet those conditions before shipping. S7 is explicitly outside the current MVP. Recording a requested item neither promises a release date nor requires completing optional work before a stable core release.
+
+| Order / ID | Epic and priority | Deliverable | Status | Depends on |
+|---|---|---|---|---|
+| 1 / S0 | E7 / P1 | Independent core package and optional DMS package | TODO | Existing installed widget acceptance |
+| 2 / S1 | E7, E3 / P0 | `ai-desktop -c` and reliable saving while talking | TODO | Existing session store; S0 first in delivery order |
+| 3 / S2 | E3, E6 / P0 | Long conversations, durable history, compaction and streaming | TODO | S1; current consent and source-revocation boundaries |
+| 4 / S3 | E3–E6 / P0 | Consistent large-file, multi-file, edit and project-test handling | TODO | Existing read/plan/executor contracts; S2 context management |
+| 5 / S4 | E3, E6 / P0 | One on-demand Skills and documentation loader for every mode | TODO | Existing role and recipient authorization; S2 continuity |
+| 6 / S5 | E3 / P1 | General Arch/CachyOS procedures and a detected tool catalog | TODO | S4; verified distribution and upstream documentation |
+| 7 / S6 | E4–E7 / P1 | Six CachyOS Hello integrations with explicit state and controls | TODO | S5, typed host operations and host acceptance |
+| Later / S7 | E7, R4 / P2 | Project launch actions, crash entry point, OCR/dictation and terminal layouts | DEFERRED | Stable S1–S6 and optional desktop adapters |
+
+### S0 — optional DMS packaging
+
+Build `ai-desktop` and `ai-desktop-dms` from one split `PKGBUILD`. Keep package contents reproducible; detection belongs to package selection on the target system, not conditional build contents or a pacman hook starting another package transaction. The installer detects DMS, offers the widget when present and installs only the core when absent. Existing explicit opt-out must be respected. Core chat, accounts, usage and diagnostics work without DMS, Niri or a graphical session. DMS activation and reload use the intended desktop user's session rather than assuming an installation terminal has that environment.
+
+Acceptance: fresh installation with/without DMS, opt-out, upgrade from the combined `-78` package, removal of the optional widget while retaining the core, unchanged user configuration, package ownership and successful plugin reload in an active session. Do not reinstall or reset credentials during migration.
+
+### S1 — direct continuation and saving
+
+Add `ai-desktop -c` (`--continue`) to open the last-used saved conversation of the current user immediately, with no picker or session ID. Preserve its kind (`ask`, `material` or `project`), workspace/material, provider, exact account or local endpoint, role, model and access mode. Display a compact identity/title line. Do not change the global default service or silently transfer history to another recipient. Use explicit last-used ordering; resuming without a new question must count as use.
+
+Save during ordinary conversations, atomically after completed turns and completed actions, including when the next model response fails. Provide an explicit non-saving mode and a clear local-storage setting. A new session must survive terminal failure up to its last durable checkpoint; do not rely on a save question at exit. Saved content contains no OAuth credentials, reusable write approvals or restored grants. Current policy and source permissions are checked again on resume; entering the conversation is local, and data transfer retains the ordinary session consent.
+
+Acceptance: continue the newest thread across restarts; changed global provider/account settings; named accounts and local endpoints; missing/retired account; removed workspace; no saved thread; corrupt/incompatible record; active thread in another process; interruption during save; full storage. Empty storage must give a clear message and a fresh prompt, never pretend to restore a thread. A corrupt or busy latest thread must not silently select an older one. Existing explicit session commands stay compatible.
+
+### S2 — durable history and bounded model context
+
+Separate the local transcript, task state and the context assembled for one model request. Preserve the transcript independently of the recent-message window. Keep goals, accepted decisions, rejected proposals, completed changes, test results, source identities and the next task in structured state. Compact old context into a provenance-aware summary when the model budget approaches its limit; retrieve relevant earlier records when needed. Add a context/compaction view so the user can inspect what was summarized or omitted. Persistence and retention limits must be configurable and visible; never discard older history silently to fit a 1 MiB record.
+
+The current implementation retains at most 64 turns in memory, sends up to 32 pairs with an approximately 128 KiB history budget, shortens answer history to about 8 KiB and keeps only 40 short memory entries. Material/project history is narrower still. Replace these unrelated truncation paths with a shared manager; also remove or explicitly handle the current turn-number ceiling of 9999. Native-client session reuse and streaming must stay behind the existing broker. Summaries cannot restore revoked data or privileges. On recipient/policy changes, rebuild the permitted context; if a native session retains revoked content, discard that native context before any further request.
+
+Acceptance: a synthetic conversation of at least 200 turns survives exit and `-c`, preserves an early corrected decision, distinguishes a rejected proposal from an applied change and does not repeat an already completed action after an error. Test source revocation after compaction, account/provider changes, corrupted summaries, token/byte budget exhaustion, multibyte input, cancelled streaming and timeout cleanup. The transcript retains the original evidence even when its model-facing summary is lossy. Do not equate a surviving Tmux process with durable conversation storage.
+
+### S3 — large files and projects through ordinary conversation
+
+Expose indexed discovery, content search and range reads from the ordinary conversation, reusing the existing project/material machinery. The user should not need to choose a different command merely because a text file is larger. Maintain a reusable index of permitted paths and hashes; invalidate changed/deleted files and recheck authorization before reading. Denied paths must not leak through indexes, counts or search output. Treat binary or unsupported files explicitly.
+
+Separate budgets for local file size, scanned bytes, excerpts sent to the model, local test copies, changed files and patch/rollback data. The current `ask` defaults (64 files, 64 KiB per file, 128 KiB combined), its ceilings (128 files, 128 KiB per file, 256 KiB combined), material import (5 MiB default, 16 MiB maximum), project index (20,000 files), and the much smaller edit/test-copy ceilings must not contradict one another. The whole-material path currently allows 24 parts: accepting a 16 MiB import does not prove that all of it fits 24 parts of at most 512 KiB. Fix planning, coverage and reporting together.
+
+Initial acceptance targets, not current capabilities: analyze a 32 MiB text file through bounded search/range reads; work across a permitted 20,000-file index; edit and undo a 2 MiB text file; test a realistic multi-file project using a separate configurable copy budget larger than the model payload. Set copy/edit ceilings from measured resource use and enforce them consistently in the controller, worker, transport and executor. Whole-file analysis must report actual coverage and use staged synthesis where necessary. An answer based on selected excerpts must not claim the entire file was examined.
+
+For writes, use precise patches against verified source bytes, preserve encoding/newlines and existing race/symlink protections, and show the complete reviewable change before approval. Acceptance covers multiple affected files, large UTF-8 lines, interrupted scans, index invalidation, excluded generated trees, each budget boundary, resource limits, failed project tests, partial-operation recovery and a concurrent editor change during apply/undo. Larger limits alone must not bypass `deny`, the plan hash or rollback checks.
+
+### S4 — one Skills loader and documentation in the same task
+
+Use one catalog and loader in `ask`, `material`, `project` and `task`: metadata first, the matching short procedure on demand, then only required sections of `references/`. The present `ask` loader already selects Skills, checks assignments/hashes and reuses recent procedures; the other modes still inject all assigned bodies. Preserve the useful checks while removing that inconsistency. Keep general system procedures separate from repository-development instructions and local machine facts. Skills do not grant tools, run embedded commands, install scripts or widen permissions.
+
+Support versioned source metadata: official URL and section, verification date, applicable tool version or documentation commit, and content hash. Reuse validated procedures and references across turns and resume; re-read or invalidate them when contents, assignments, recipient or policy change. Make available/assigned/loaded state and reasons for non-selection inspectable. Ensure the default setup exposes relevant general diagnostic metadata without requiring unexplained manual setup, while respecting customized roles. Allocate separate predictable budgets for procedure text, references and diagnostic results.
+
+Add a bounded public-documentation read that returns evidence to the current task: detect the installed version, retrieve the appropriate documentation, compare it with permitted local facts and continue the diagnosis. Today's separate final `web` answer cannot complete that flow. Queries must contain only approved public technical terms, not private paths, configuration or log contents. Check destination/redirect policy, response size and provenance; remote documents are untrusted data and cannot change authority. Offline or stale sources must be identified without claiming live verification.
+
+Acceptance: identical selective loading in all four modes; a task using more than four Skills, saved and resumed; source/hash changes and removed assignments; unavailable documentation and unsupported versions; malicious remote instructions and oversized responses; revoked local data after a document lookup; unrelated procedures absent from requests. Exercise the actual request generator, not only Markdown structure. One packaged catalog serves both Claude and Codex through the controlled adapters, without enabling their unrestricted native Skill discovery.
+
+### S5 — general Arch/CachyOS knowledge and tools
+
+Extend the existing procedures instead of duplicating them. Detect `os-release`, installed packages, executable versions and actual session capabilities. A CachyOS kernel or repository alone does not identify the whole installation. Common Linux/Arch guidance is the foundation; CachyOS and desktop-specific references load only when applicable. Public Skills contain no particular person's paths, hardware profile or account data.
+
+| Existing subject area | Coverage to add or complete |
+|---|---|
+| Packages and repositories | CachyOS Hello/Welcome, Package Installer, `cachyos-rate-mirrors`, Cachy-Update, full-update rules, signatures, optimized repositories, pacnew/pacsave and mirror freshness |
+| Kernel, scheduling and memory | Kernel Manager, SCX Manager, `scxctl`, `scx_loader`, `kerver`, `topmem`, `cachyos-settings`, CPU/I/O schedulers, pressure and provider defaults versus local overrides |
+| Hardware and graphics | Existing `chwd` support, versioned profiles, AMD/Intel/NVIDIA and multiple GPUs; distinguish listing from driver installation |
+| Gaming | `cachyos-gaming-meta`, gaming applications, Proton-CachyOS, Wine-CachyOS, `game-performance`, MangoHud/Gamescope, per-game logs and measured changes; verify GameMode/ananicy interactions |
+| Storage and recovery | Btrfs Assistant, Snapper, `snap-pac`, supported GRUB/Limine/systemd-boot integrations and `cachy-chroot` only in the appropriate recovery environment; snapshots are not backups |
+| Desktop session | Detect compositor and shell independently, including Niri, Hyprland, KDE, DMS and Noctalia; validate which user's session IPC describes |
+| Diagnostics and reports | Minimal logs matched to the symptom; documented behavior of `cachyos-bugreport.sh` and `paste-cachyos`; distinguish local collection, privileged writes and uploading |
+| Hello services and tweaks | All six integrations in S6, with their effects, current state, prerequisites, conflicts, verification and recovery |
+
+Provide a machine-readable catalog of installed, supported operations with versions and read/change classification. Compare documented syntax with the installed tool's help and behavior instead of inventing flags. A missing executable or inaccessible host view is a capability gap, not proof the host service is broken. Official documentation, packaged manuals and upstream code are evidence; stale or conflicting examples must be reconciled against the applicable version. Each procedure includes inputs, interpretation, stopping conditions, a separately approved change if supported, verification of the original symptom and recovery limits.
+
+### S6 — CachyOS Hello service controls
+
+Make these integrations usable through ordinary conversation and the existing management interface, with no DMS dependency. Initial mapping is verified against [CachyOS Welcome's tweak definitions](https://github.com/CachyOS/CachyOS-Welcome/blob/efd467041a9accb461bc3bf8a096a6627f795293/src/tweak.rs); the implementation must detect the installed version rather than assume every system has the same packages or units.
+
+| Feature | Expected integration | Required behavior |
+|---|---|---|
+| profile-sync-daemon | Package `profile-sync-daemon`; user `psd.service` and dependent `psd-resync.timer` | Explain and inspect browser-profile synchronization to RAM, status and configuration; controlled on/off and autostart for the intended user. Check browser state, available RAM and recovery prerequisites before first activation. Follow upstream start/stop and sync requirements, await successful unsync/recovery on stop, and never delete profiles or treat browser credential contents as diagnostic input. Test with disposable synthetic profiles. |
+| ananicy-cpp | Package `ananicy-cpp`; system `ananicy-cpp.service` | Explain rule-driven process priorities, inspect active rules/service and competing managers, support controlled on/off and autostart, then verify the intended effect. Stopping the daemon is not evidence that priorities already applied to running processes were restored. |
+| Cachy-Update | Package `cachy-update`; user `arch-update.timer` and `arch-update.service`, plus tray/autostart | Expose on/off for scheduled checks and the tray separately, with a clear combined option if wanted. Verify the intended user's timer, any check already in progress and graphical autostart. Enabling notifications must not install updates, remove packages or clean caches. |
+| systemd-oomd | System `systemd-oomd.service`; inspect the installed systemd implementation and activation paths | Inspect cgroup v2/PSI support, memory accounting, swap, ManagedOOM policy and monitored cgroups; explain on/off and verify active, enabled and effective state, including socket activation where present. Distinguish this service from kernel OOM handling and other OOM managers. Killing a process cannot be undone by re-enabling a service. |
+| bpftune | System `bpftune.service`; Welcome currently maps installation to `bpftune-git` | Detect the actual provider/package and kernel/BPF requirements, inspect tuners and changed parameters, support controlled on/off and autostart. Record a baseline and verify what stopping restores; do not promise complete rollback of runtime tuning without evidence. |
+| Bluetooth | Package `bluez`; system `bluetooth.service`; adapter/rfkill state separately | Support requested radio on/off, service on/off and autostart with clear scope. Detect soft/hard blocks and multiple adapters; verify the actual adapter state and connected-device impact. Switching off must not unpair devices or remove configuration. |
+
+Shared acceptance: show installed/missing, active/inactive/failed, enabled/disabled/masked, unavailable/unknown and effective state separately where applicable. Explain each feature before proposing a change. An off operation does not uninstall its package. Installing a missing package is a separate approved action. User operations target the correct user's manager, never `--global` or every user. Runtime start/stop and persistent enable/disable must be explicit in the plan; inherited defaults and activation paths must be accounted for.
+
+Feature references: [profile-sync-daemon](https://github.com/graysky2/profile-sync-daemon) and its [user service](https://github.com/graysky2/profile-sync-daemon/blob/master/init/psd.service), [ananicy-cpp](https://github.com/CachyOS/ananicy-cpp), [Cachy-Update](https://github.com/CachyOS/cachy-update) and [CachyOS post-install instructions](https://wiki.cachyos.org/configuration/post_install_setup/), [systemd-oomd](https://www.freedesktop.org/software/systemd/man/latest/systemd-oomd.html), [bpftune](https://github.com/oracle/bpftune/blob/main/docs/bpftune.rst) and its [service](https://github.com/oracle/bpftune/blob/main/src/bpftune.service), and [BlueZ adapter API](https://github.com/bluez/bluez/blob/master/doc/org.bluez.Adapter.rst). Check installed-version behavior before implementing a control. In particular, stopping bpftune is not equivalent to using its explicit rollback mode.
+
+Execution uses typed, allowlisted operations with the existing plan/diff, state preconditions, hash-bound approval, audit and verification. Capture the previous state and restore only the authorized change when recovery is valid. Refusal, failed elevation, missing polkit/user session, unavailable units, masked services, concurrent state changes and timeout must never be reported as success. No arbitrary model shell, automatic tuning, raw browser-profile reads or automatic report uploads. Host-control implementation requires synthetic success/refusal/failure tests and actual CachyOS acceptance before merge. Adding this plan does not authorize running any of these operations on a user's computer.
+
+### S7 — optional Omarchy-inspired entry points
+
+Keep these recorded as **DEFERRED**, rather than expanding the release gate before the core work is complete:
+
+- Open a file or folder in AI Desktop with its selected workspace and initial task; optional file-manager and Niri shortcuts preserve the normal policy and review flow.
+- Diagnose a crashed application from a clicked notification or explicit request, using process identity, time and bounded journal/coredump metadata. A watcher is opt-in; raw core memory is not sent automatically.
+- OCR of a deliberately selected screenshot and optional dictation, with a preview before transfer, declared local/cloud processing and optional dependencies.
+- Optional Kitty/Tmux layouts with editor, conversation and diff. A persistent terminal process remains distinct from saved history and does not authorize unattended actions.
+- Optional component installation and one clear owner of client updates. Keep tested client versions and compatibility checks; do not import Omarchy's broad auto-approval modes or add many providers as part of this scope. Local-model lifecycle/catalog expansion remains R4.
+
+### Source and verification policy for this scope
+
+Reference baseline checked on 2026-11-06: [Omarchy AI](https://omarchy.org/manual/ai/), [Omarchy task guides](https://github.com/omacom/omarchy/blob/d5b32d24d37af8f0376a67d98531bb2da629824b/default/agents/skills/omarchy/SKILL.md), [terminal layouts](https://omarchy.org/manual/terminal/), [OCR and dictation](https://omarchy.org/manual/text-extraction-dictation/), [Claude continuation](https://code.claude.com/docs/en/cli-reference), [context compaction](https://code.claude.com/docs/en/how-claude-code-works), and [Agent Skills specification](https://agentskills.io/specification). Omarchy delegates long-conversation behavior to native clients; its launcher is not a replacement for AI Desktop's context manager or broker.
+
+Distribution references: [CachyOS applications](https://wiki.cachyos.org/cachyos_basic/why_cachyos/), [settings and tools](https://wiki.cachyos.org/features/cachyos_settings/), [Kernel Manager](https://wiki.cachyos.org/features/kernel_manager/), [sched-ext](https://wiki.cachyos.org/configuration/sched-ext/), [chwd](https://wiki.cachyos.org/features/chwd/chwd/), [gaming](https://wiki.cachyos.org/configuration/gaming/), [snapshots](https://wiki.cachyos.org/configuration/btrfs_snapshots/), [Niri](https://wiki.cachyos.org/configuration/desktop_environments/niri/), [Arch system maintenance](https://wiki.archlinux.org/title/System_maintenance), and installed-version upstream manuals. These links are starting points for versioned procedures, not proof of the current host state.
+
+Each implementation updates this roadmap with its own PR/SHA, tests, CI, remaining limitations and one next step. Add meaningful regressions to the existing `scripts/verify.py` gates and Python 3.12/3.13/3.14 Actions jobs, creating a new stage only for a distinct risk. Synthetic tests must cover success, refusal and failure without OAuth or real model requests. Changes to persistence, isolation, networking, host services and writes require applicable real CachyOS checks and explicit merge approval; Ubuntu CI is not that evidence. Keep documentation-only results separate from implementation acceptance.
+
+**Next step:** implement S0, the split Arch packages and target-system DMS selection, including upgrade coverage. S1–S6 remain TODO and S7 remains DEFERRED until their own work and evidence are recorded.
 
 ## Conditions for the 1.0 release
 
@@ -104,6 +219,16 @@ Working and merged:
 6. Release checklist ticked for this commit.
 
 ## Progress log
+
+### 2026-11-06 — E3–E7: agreed continuation, file, Skills and CachyOS integration scope
+
+- **Status: TODO** for S0–S6; **DEFERRED** for S7. The requested scope is recorded in this roadmap with delivery order, dependencies, acceptance targets, official sources and remaining host checks. This is a planning/documentation change, not implementation evidence.
+- Baseline: `main` remains `4c1e81c31d9e1b6033e21a444b1fe370224c9ce6`; [PR #18](https://github.com/ultherego/ai-desktopv2/pull/18), branch `fix/conversation-project-review`, was inspected at `55233872e1ef916efa8b6c2576f8c862040e1c1d`. Its [five completed CI jobs passed](https://github.com/ultherego/ai-desktopv2/actions/runs/42170506262); it remains a draft with no merge approval. Those checks do not validate the new planned functionality.
+- Recorded: optional DMS packaging; `-c` with incremental saving; long-session history/compaction/streaming; consistent larger-file, edit and test-copy budgets; on-demand Skills and versioned documentation in all modes; general Arch/CachyOS tools; profile-sync-daemon, ananicy-cpp, Cachy-Update, systemd-oomd, bpftune and Bluetooth controls; deferred desktop entry points, crash diagnosis, OCR/dictation and terminal layouts.
+- Review evidence: targeted code inspection of the `-78` session, file and Skills paths; official Omarchy/CachyOS/upstream documentation; exact Hello service mapping from CachyOS Welcome `efd467041a9accb461bc3bf8a096a6627f795293`. No AI request, OAuth operation, host service control or package change was performed. Package version remains `0.1.0-78`.
+- Documentation validation: scope coverage, section/status consistency, table structure, relative links, code fences and a private-data scan passed; an independent review checked completeness and release-scope clarity. Full implementation tests were not repeated for prose-only edits. Results for the documentation commit are tracked separately in [PR checks](https://github.com/ultherego/ai-desktopv2/pull/18/checks).
+- Remaining: implement and verify each entry before changing its status; apply the existing CachyOS and explicit-approval merge requirements to changes affecting persistence, network, permissions or writes. Optional R4 work does not block the current MVP.
+- **Next step:** S0 — implement split Arch packages and target-system DMS selection, with fresh-install and combined-package upgrade tests.
 
 ### 2026-11-05 — E3–E6: desktop agents and the authorized change-and-test flow
 
@@ -145,3 +270,4 @@ Working and merged:
 - CI for `c53e51514a3c07e58b43c75c8110c51a616a8302`: **5/5 required jobs PASS**, [run 42060801397](https://github.com/ultherego/ai-desktopv2/actions/runs/42060801397): Python 3.12, 3.13, 3.14 and two versions of Bubblewrap. This is evidence for this SHA, not CachyOS acceptance. The full local gate was not repeated in a UID 0 environment, where tests requiring a regular user refuse to run.
 - Not finished: checking usefulness in a real conversation on CachyOS. Format validation, scenario review and a transport test do not confirm that a repair works on the host. The remaining criteria of stage 2 and E3 stay open.
 - **Next step:** after CI passes, assess the procedures during ordinary read-only diagnostics on CachyOS, without performing the suggested system changes.
+
