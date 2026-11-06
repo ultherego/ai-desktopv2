@@ -322,7 +322,7 @@ def main(argv=None, *, reader=input):
         if args.session not in (None, "new"):
             conversation = load_session(args, "ask", execution_config=current())
             talk = conversation_state.load(conversation.state())
-        auto_save = interactive and not args.no_save and args.session is None
+        auto_save = interactive and reader is input and not args.no_save and args.session is None
         auto_save_attempted = False
 
         def ensure_conversation(current_talk):

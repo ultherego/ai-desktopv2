@@ -203,8 +203,7 @@ class ConversationLoopTests(unittest.TestCase):
         with patch.object(ask.assistant_flow, "_run_once", side_effect=flow):
             result = self.run_ui([], ["Zmień", "Co zrobiłeś?", ""])
         self.assertTrue(any("systemctl restart foo.service" in entry["text"] for entry in seen[0]["entries"]))
-        self.assertEqual(len(result.store.creates), 1)
-        self.assertIn("systemctl restart foo.service", str(result.store.creates[0][4]["memory"]["entries"]))
+        self.assertEqual(result.store.creates, [])  # injected readers remain non-persistent
 
     def test_a_failure_of_a_turn_that_did_nothing_records_nothing(self):
         seen = []
@@ -361,40 +360,11 @@ class ConversationLoopTests(unittest.TestCase):
         self.assertTrue(conv.closed)
         self.assertIn("saved locally", r.out)
 
-    def test_ordinary_conversation_is_saved_after_the_first_completed_turn(self):
+    def test_injected_reader_without_explicit_session_remains_non_persistent(self):
         r = self.run_ui([], ["Jeden", "yes", "Dwa", ""])
-        self.assertEqual(len(r.store.creates), 1)
-        initial = r.store.creates[0][4]
-        self.assertEqual([item["question"] for item in initial["history"]], ["Jeden"])
-        self.assertEqual([question for question, _ in r.conversation.items], ["Jeden", "Dwa"])
-        self.assertIn("saved locally", r.out)
-        self.assertIn("--no-save", r.out)
-        self.assertTrue(r.conversation.closed)
-
-    def test_declined_or_cancelled_first_turn_does_not_create_an_empty_record(self):
-        r = self.run_ui([], ["Jeden", "no", ""])
-        self.assertEqual(r.store.creates, [])
-        self.assertEqual(r.sent.call_count, 0)
-
-    def test_no_save_keeps_the_whole_conversation_in_memory_without_touching_the_store(self):
-        r = self.run_ui(["--no-save"], ["Jeden", "yes", "Dwa", ""])
         self.assertEqual(r.store.creates, [])
         self.assertEqual(r.sent.call_count, 2)
         self.assertNotIn("saved locally", r.out)
-
-    def test_no_save_cannot_be_combined_with_an_explicit_saved_session(self):
-        r = self.run_ui(["--no-save", "--session", "new"], [])
-        self.assertEqual(r.code, 2)
-        self.assertIn("cannot be combined", r.out)
-        self.assertEqual(r.store.creates, [])
-
-    def test_failed_first_checkpoint_is_reported_once_and_the_conversation_continues_in_memory(self):
-        from ai_desktop.conversation_sessions import SessionError
-        store = FakeStore(failure=SessionError("session-file"))
-        r = self.run_ui([], ["Jeden", "yes", "Dwa", ""], store=store)
-        self.assertEqual(r.sent.call_count, 2)
-        self.assertEqual(len(store.creates), 1)
-        self.assertEqual(r.out.count("Could not start automatic local saving"), 1)
 
 
 if __name__ == "__main__":

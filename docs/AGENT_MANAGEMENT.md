@@ -96,7 +96,7 @@ Memory gives no permissions. When access to a file is revoked, the answers and m
 
 ## Saved conversations
 
-Interactive `ask` saves locally by default after the first completed turn or completed action. The first checkpoint is published as one complete private record; declining or cancelling before a completed turn creates no empty file. Each later completed turn updates that record atomically. The next `ai-desktop ask` offers conversations of the same agent. Use `--no-save` for a temporary in-memory conversation. `--session new` creates an explicit record, and `--session ID` resumes one (also for `material` and `project`). `--no-save` and `--session` cannot be combined.
+Interactive terminal `ask` saves locally by default after the first completed turn or completed action. One-shot `--question` and non-terminal embedded invocations remain non-persistent unless an explicit session is selected. The first checkpoint is published as one complete private record; declining or cancelling before a completed turn creates no empty file. Each later completed turn updates that record atomically. The next `ai-desktop ask` offers conversations of the same agent. Use `--no-save` for a temporary in-memory conversation. `--session new` creates an explicit record, and `--session ID` resumes one (also for `material` and `project`). `--no-save` and `--session` cannot be combined.
 
 ```fish
 ai-desktop sessions          # menu, a list outside the terminal
