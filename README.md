@@ -36,7 +36,7 @@ See [agent settings, accounts and sessions](docs/AGENT_MANAGEMENT.md), [verified
 
 This is a development version, not a 1.0 release.
 
-The current candidate package is **0.1.0-85** (changes: [CHANGELOG.md](CHANGELOG.md)).
+The current candidate package is **0.1.0-86** (changes: [CHANGELOG.md](CHANGELOG.md)).
 
 Candidate 0.1.0-82 migrates the runtime and package to independent clients, including explicitly registered HOME installations. Its exact-head CachyOS upgrade and isolated offline compatibility checks passed with Claude 2.1.319 and Codex 0.167.0; see [the acceptance record](docs/ROADMAP.md). These checks did not perform login or model inference. Candidate 83 improves the Codex usage card: connect or reconnect its limits session and read percentages and reset times directly in the widget. On CachyOS the new card renders and DMS reports it loaded. The maintainer subsequently completed native quota reconnection on the unchanged candidate 83 and confirmed the widget flow works. The earlier `busy` did not recur; its original cause is not established. PR #20 was merged as `700a609` after host acceptance and five passing CI jobs. Candidate 84 added bounded project-stage and standalone-test approvals and was merged in PR #21 as `9424ce6`; its separate main/push CI passed five jobs. Candidate 85 adds automatic private checkpoints for ordinary interactive `ask` conversations. Its persistence change still requires exact-candidate GitHub CI and CachyOS acceptance before merge.
 

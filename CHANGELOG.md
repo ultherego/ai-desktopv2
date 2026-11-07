@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.0-86: Codex registration imports only files inside the release
+
+- Registering a Codex installation refuses a top-level `codex-package.json`, `codex-path` or `codex-resources` that links outside the release directory. Before, such a link could point at any file the user can read, and the import would publish it to the client. Links nested inside the resource directories were already checked.
+
 ## 0.1.0-85: automatic local conversation checkpoints
 
 - Interactive `ask` creates a private local record only after the first completed turn or completed action, then atomically checkpoints every later completed turn. A declined, cancelled or failed first turn that performed no action leaves no empty conversation behind.

@@ -146,7 +146,7 @@ def preflight():
     if (uid <= 0 or uid != os.getuid() or not os.isatty(0) or not os.isatty(1)
             or Path("/proc/1/comm").read_text().strip() != "systemd"):
         raise ValueError("host")
-    if offline._command(["/usr/bin/pacman", "-Q", "ai-desktop"]) != "ai-desktop 0.1.0-85":
+    if offline._command(["/usr/bin/pacman", "-Q", "ai-desktop"]) != "ai-desktop 0.1.0-86":
         raise ValueError("package")
     installed_matches()
     units = ["ai-desktop-analysis@" + str(uid) + suffix for suffix in (".socket", ".service")]
