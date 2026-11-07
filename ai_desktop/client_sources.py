@@ -251,9 +251,11 @@ class _Scan:
         if self.writer is not None:
             self.writer(entry, fd)
 
-    def file(self, source, destination, *, native=False):
-        _, fd = self.open(source)
+    def file(self, source, destination, *, native=False, within=None):
+        resolved, fd = self.open(source)
         try:
+            if within is not None and not resolved.startswith(within + "/"):
+                raise SourceError("unsupported", "resource-link")
             before = os.fstat(fd)
             if not 0 <= before.st_size <= MAX_FILE_BYTES:
                 raise SourceError("unsupported", "file-limit")
@@ -281,6 +283,9 @@ class _Scan:
             raise SourceError("unsupported", "depth-limit")
         resolved, fd = self.open(source, kind="directory")
         try:
+            # The top-level resource directory itself may be a link too: it must stay inside the release, like its entries.
+            if not resolved.startswith(root + "/"):
+                raise SourceError("unsupported", "resource-link")
             before = os.fstat(fd)
             names = _names(fd, MAX_ENTRIES - len(self.entries))
             self.directories.append((source, _signature(before), tuple(names)))
@@ -416,7 +421,7 @@ def capture(provider, path, *, uid=None, writer=None):
         # shell wrappers, user configuration or arbitrary package-manager data.
         for filename in ("codex-package.json",):
             if scanner.exists(root + "/" + filename):
-                scanner.file(root + "/" + filename, filename)
+                scanner.file(root + "/" + filename, filename, within=root)
         for dirname in ("codex-path", "codex-resources"):
             if scanner.exists(root + "/" + dirname, kind="directory"):
                 scanner.tree(root + "/" + dirname, dirname, root=root)

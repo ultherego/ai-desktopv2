@@ -199,6 +199,47 @@ class ClientSourceTests(unittest.TestCase):
         with patch.object(sources._Scan, "recheck", add_then_check):
             self.assertEqual(sources.discover("codex", str(native)).status, "changed")
 
+    def test_top_level_resources_that_link_outside_the_release_are_refused(self):
+        native = self.bundle(self.root / "release")
+        outside = self.write(self.root / "synthetic-auth.json", b'{"synthetic": "DO NOT IMPORT"}')
+        package = self.root / "release/codex-package.json"
+        if package.exists():
+            package.unlink()
+        package.symlink_to(outside)
+        # Layout detection may refuse it before the import check does; either way nothing outside is imported.
+        found = sources.discover("codex", str(native))
+        self.assertEqual(found.status, "unsupported")
+        self.assertIn(found.detail, ("resource-link", "legacy-layout"))
+        imported = []
+        with self.assertRaises(sources.SourceError):
+            sources.capture("codex", str(native), writer=lambda entry, fd: imported.append(entry.path))
+        self.assertNotIn("codex-package.json", imported)
+        package.unlink()
+        # A whole resource directory that is a link out of the release is refused the same way.
+        elsewhere = self.root / "elsewhere"
+        elsewhere.mkdir()
+        self.write(elsewhere / "secret", b"DO NOT IMPORT")
+        resources = self.root / "release/codex-resources"
+        moved = self.root / "release-resources-original"
+        resources.rename(moved)
+        resources.symlink_to(elsewhere)
+        found = sources.discover("codex", str(native))
+        self.assertEqual(found.status, "unsupported")
+        self.assertIn(found.detail, ("resource-link", "legacy-layout"))
+        resources.unlink()
+        moved.rename(resources)
+
+    def test_top_level_links_inside_the_release_still_work(self):
+        native = self.bundle(self.root / "release")
+        package = self.root / "release/codex-package.json"
+        real = self.root / "release/package-real.json"
+        if package.exists():
+            package.rename(real)
+        else:
+            self.write(real, b"{}")
+        package.symlink_to("package-real.json")
+        self.assertEqual(sources.discover("codex", str(native)).status, "present")
+
     def test_byte_entry_and_depth_budgets_fail_closed(self):
         native = self.bundle(self.root / "release")
         for name, limit in (("MAX_FILE_BYTES", 16), ("MAX_TOTAL_BYTES", 64), ("MAX_ENTRIES", 2), ("MAX_DEPTH", -1)):
