@@ -84,6 +84,8 @@ Notes:
 
 ## First run and permissions
 
+Every setting in one short list: [docs/PERMISSIONS.md](docs/PERMISSIONS.md).
+
 `ai-desktop ask --preview` shows the access without the model and without reading data. Without a `permissions.toml` file only general questions work: no files, systemd, commands, weather or web search.
 
 Example policy (`config/permissions.example.toml` is the full template):
@@ -398,6 +400,7 @@ python3 -B scripts/verify.py --mode local --fail-fast  # additionally real Bubbl
 - [SECURITY.md](SECURITY.md): reporting problems, trust boundaries, what is not guaranteed.
 - [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md): architecture and threats.
 - [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md): known limitations.
+- [docs/PERMISSIONS.md](docs/PERMISSIONS.md): every `permissions.toml` setting and what it does.
 - [docs/AGENT_MANAGEMENT.md](docs/AGENT_MANAGEMENT.md): agents, models, conversations, Codex.
 - [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md): list for release maintainers.
 - [CHANGELOG.md](CHANGELOG.md) and [LICENSE](LICENSE).

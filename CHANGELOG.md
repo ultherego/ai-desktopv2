@@ -5,6 +5,7 @@
 - Commands from `allow` see an empty `/run` apart from the system D-Bus, the resolver's query socket and plain state files that read tools need. Docker, containerd, LACT, the systemd manager's varlink sockets, polkit agents, ssh and greetd are hidden. Before, a read-only file system still let a command connect to any of them.
 - New `[commands] host_sockets` brings back a specific socket, for example `host_sockets = ["/run/docker.sock"]` for `docker` templates. Docker's socket is root-equivalent.
 - The system D-Bus is not filtered yet; see `docs/KNOWN_LIMITATIONS.md`.
+- New `docs/PERMISSIONS.md`: every `permissions.toml` setting with one line on what it does, including common `host_sockets` paths.
 
 ## 0.1.0-88: plain task refusals and changes in the read-back thread
 
