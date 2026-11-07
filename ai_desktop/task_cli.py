@@ -410,7 +410,48 @@ def main(argv=None, *, reader=input):
                            **({"diagnostic": exc.diagnostic} if exc.diagnostic is not None else {})))
     except (EOFError, KeyboardInterrupt):
         print("TASK: CANCELLED; no automatic retry" if args.details else "Cancelled. The task will not be retried automatically.")
-    except (OSError, ValueError, TypeError, KeyError, RuntimeError, RecursionError):
-        print("TASK: REFUSED; check the file selection, model output, test and task status" if args.details
-              else "The task was not finished. Check the file selection and ai-desktop task status.")
+    except (OSError, ValueError, TypeError, KeyError, RuntimeError, RecursionError) as exc:
+        reason = refusal_reason(exc)
+        print("TASK: REFUSED reason=%s" % reason if args.details else refusal_text(reason, args.workspace))
     return 2
+
+
+# Reasons are the program's own short codes, never file contents or paths. A known one says what to do; any other says
+# which code it was, so a report is concrete instead of a guess.
+_REFUSALS = {
+    "tty": "This needs an interactive terminal: run it in a terminal window, not through a pipe or script.",
+    "identity": "Run this as your ordinary user, not as root or through sudo.",
+    "select project": "Choose a project directory, not your whole home directory, and give its path as it is.",
+    "selection": "The selected files do not fit what this task may change. Check the file names and --workspace.",
+    "workspace changed": "The files changed after they were read. Nothing was saved. Run the task again.",
+    "source changed": "The files changed after they were read. Nothing was saved. Run the task again.",
+    "changed target": "A file changed while saving, so it was not overwritten. Check ai-desktop task status.",
+    "changed undo target": "The file changed after the save, so undo kept your newer version. Check it, then try again.",
+    "recovery required": "An earlier task in this directory was interrupted. Finish or undo it first: ai-desktop task status.",
+    "journal directory": "The task journal (.ai-desktop-tasks) in this directory has the wrong owner or permissions, "
+                         "so it is not used. It must belong to you with permissions 700.",
+    "journal privacy": "The task journal (.ai-desktop-tasks) in this directory has the wrong owner or permissions, "
+                       "so it is not used. It must belong to you with permissions 700.",
+    "plan": "Unknown task. Choose one from ai-desktop task status.",
+    "unknown plan": "Unknown task. Choose one from ai-desktop task status.",
+    "expired consent": "The approval expired before the save. Nothing was saved. Run the task again.",
+    "consent": "The save was not approved. Nothing was saved.",
+    "text": "A file is not plain UTF-8 text, or it mixes line endings, so it cannot be changed safely.",
+    "file policy": "A file is a link, has several hard links, is too large or is writable by others, so it is not changed.",
+}
+
+
+def refusal_reason(exc):
+    reason = str(exc.args[0]) if isinstance(exc, ValueError) and exc.args and type(exc.args[0]) is str else ""
+    if reason in _REFUSALS or (reason and len(reason) <= 40 and all(c.isalnum() or c in " -_" for c in reason)):
+        return reason
+    return type(exc).__name__
+
+
+def refusal_text(reason, workspace=None):
+    hint = _REFUSALS.get(reason)
+    if hint is None:
+        hint = "The task was not finished (reason: %s). Check the file selection and ai-desktop task status." % reason
+    if reason in ("journal directory", "journal privacy") and workspace:
+        hint += " Directory: " + terminal_text(workspace)
+    return hint

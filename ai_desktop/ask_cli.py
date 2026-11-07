@@ -473,7 +473,11 @@ def main(argv=None, *, reader=input):
                     if not interactive:
                         return code
                 elif type(answer) is ask_edit.CompletedTask:
-                    note = "[Change task finished; result %d. See the task log for the write and the test.]" % answer.code
+                    # What the controller itself recorded (file names, test, saved or not) reads better in the thread than a
+                    # bare result code, and it is still the program's account, never the model's.
+                    facts = [fact for fact in getattr(sources, "actions", ()) if fact.strip()]
+                    note = ("\n".join("[%s]" % fact for fact in facts) if facts else
+                            "[Change task finished; result %d. See the task log for the write and the test.]" % answer.code)
                     code = answer.code
                     remember(question, note, None, sources)
                     if not interactive:

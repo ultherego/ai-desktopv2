@@ -94,7 +94,7 @@ class TaskCliTests(unittest.TestCase):
         result, output, _, check, _ = self.invoke()
         self.assertEqual(result, 2)
         self.assertNotIn("No change was proposed", output)
-        self.assertIn("The task was not finished.", output)
+        self.assertIn("The task was not finished (reason: not selected).", output)
         check.assert_not_called()
 
     def test_refused_transfer_does_not_start_model_or_test(self):

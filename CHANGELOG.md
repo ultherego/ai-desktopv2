@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.0-88: plain task refusals and changes in the read-back thread
+
+- `ai-desktop task` refusals say what happened and what to do (for example an interrupted earlier task, files changed after reading, a journal with wrong permissions), and otherwise name the program's reason code instead of a generic message. `--v` prints `TASK: REFUSED reason=...`. File contents and paths of the error are never shown.
+- A saved change in a conversation is read back as what the program recorded: the files, the check and whether it was saved, instead of a bare result code.
+
 ## 0.1.0-87: continue the last conversation and read back the whole thread
 
 - `ai-desktop -c` (or `ai-desktop ask -c`) reopens the most recently used saved conversation, with the same checks and consent as choosing it in `ai-desktop sessions`. With no saved conversation it starts a new one.
