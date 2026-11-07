@@ -83,7 +83,7 @@ Ordinary `doctor` and panel status only inspect metadata. Explicit `doctor --cli
 
 **Fail-closed rule:** a missing sandbox, an incompatible client, an exhausted budget, a state change or an unconfirmed session stop end the operation with a refusal. No retries and no fallback.
 
-The next consent design will cover a declared plan, its bounded stages and copy tests with one approval. This must retain the per-request immutable payload, live source/policy checks and budget accounting; it is not blanket consent for later model suggestions. Final diff approval before publication remains separate. The working 0.1.0-79 flow still asks separately for project stages and copy tests.
+Candidate 84 implements this for project analysis stages and a declared task test (see below); combined project-edit scope remains future work. The design covers a declared plan, its bounded stages and copy tests with one approval. This must retain the per-request immutable payload, live source/policy checks and budget accounting; it is not blanket consent for later model suggestions. Final diff approval before publication remains separate. The working 0.1.0-79 flow still asks separately for project stages and copy tests.
 
 The output of `--v`, `doctor` and `status` authorizes nothing. `status` and ordinary `doctor` do not start the client. Explicit `doctor --clients` starts only an offline compatibility probe and does not prove login.
 

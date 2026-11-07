@@ -92,6 +92,7 @@ Working and merged at `dd2daec3045c41662a722f4c6a3485dea14dd196` (PR #18, packag
 | Distinct `pkgrel` for each shipped candidate and consistent package references | done for candidates 79/80; maintain this requirement with every delivery |
 | Working acceptance scripts or their removal (`update_candidate.fish` requires an old version) | to do |
 | Separate unused experiments/fixtures from installed runtime; preserve active `e2_*` boundary helpers | TODO — dependency review before movement, no deletion by prefix |
+| Retire `ask_context.infer`/`prepare` (Polish-only question heuristics no ordinary path calls) after moving its 15 tests of the live weather/systemd collectors (`_weather`, `_systemd`) to the path `assistant_flow` uses | TODO — the tests cover live consent and refusal behaviour, so they move before the code goes |
 | Merging the duplicated `material` and `project` flows, shared text validation and smaller orchestration functions | TODO — preserve the complete task flow and refusal behavior |
 | Codex login/logout false error after a successful operation | TODO — reproduce and distinguish native exit status from verified account state |
 | Keep current documentation aligned with code and archive obsolete acceptance instructions | IN PROGRESS — candidate 82 documents the client runtime, registration, diagnosed failures and successful offline host acceptance in the sole roadmap |
@@ -245,7 +246,7 @@ Distribution references: [CachyOS applications](https://wiki.cachyos.org/cachyos
 
 Each implementation updates this roadmap with its own PR/SHA, tests, CI, remaining limitations and one next step. Add meaningful regressions to the existing `scripts/verify.py` gates and Python 3.12/3.13/3.14 Actions jobs, creating a new stage only for a distinct risk. Synthetic tests must cover success, refusal and failure without OAuth or real model requests. Changes to persistence, isolation, networking, host services and writes require applicable real CachyOS checks and explicit merge approval; Ubuntu CI is not that evidence. Keep documentation-only results separate from implementation acceptance.
 
-**Next step:** complete exact-head CI for candidate 85, then obtain the required CachyOS CI/LOCAL, clean package build/upgrade and installed-file acceptance for its persistence change. Do not repeat accepted candidate-82/83/84 checks that the new slice does not affect.
+**Next step:** maintainer acceptance and merge of the stacked candidates 85 (PR #23), 86 (PR #24), 87 (PR #25) and 88, in that order; then Stage 4 isolation of `allow` commands from host Unix sockets. S0 and S7 remain deferred; accepted candidate-82/83/84 checks need no repeat.
 
 ## Conditions for the 1.0 release
 
@@ -259,6 +260,15 @@ Each implementation updates this roadmap with its own PR/SHA, tests, CI, remaini
 ## Progress log
 
 Earlier dated entries preserve the evidence and status at that point. The latest entry supersedes historical pending/next-step statements.
+
+### 2026-11-07 — E3/E6: plain task refusals and changes in the read-back thread
+
+- **READY FOR TEST**, candidate **0.1.0-88**, branch `fix/readback-and-messages`, stacked on candidate 87. The maintainer accepted candidate 87 on CachyOS (repeated `-c` exits and resumes with the whole thread, create/read/change/delete of a file in one conversation) and noted the bare `[Change task finished; result 0 …]` entry in the thread.
+- `task_cli` maps the program's own refusal codes to plain advice (interrupted earlier task, files changed after reading, journal with wrong owner or permissions with its directory, expired approval, non-text file) and otherwise names the code; `--v` prints `TASK: REFUSED reason=CODE`. Only short code strings of `ValueError` are shown; other exceptions are named by class, so no path or file content reaches the message.
+- A finished change is recorded in the conversation as the controller's own facts (files, check, saved or not) instead of a bare result code; without facts the old text remains.
+- Review cleanup: the README status paragraph and this page's next step now match the stacked candidates. Removing the dead `ask_context.infer`/`prepare` was attempted and reverted, because its 15 tests are the coverage of the live weather/systemd collectors; recorded as a Stage 6 item.
+- Tests: `tests/test_readback_messages.py`, the updated refusal assertion in `tests/test_task_cli.py`; full unit suite, `verify.py --mode ci` and `--mode local` pass.
+- **Next step:** CachyOS acceptance of candidate 88, then merge #23 → #24 → #25 → this branch.
 
 ### 2026-11-07 — E3/E7 / S1–S2: `ai-desktop -c` and the whole read-back thread
 
