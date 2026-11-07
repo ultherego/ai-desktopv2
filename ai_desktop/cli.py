@@ -120,7 +120,7 @@ def build_parser():
 
 SHORT_HELP = """AI Desktop: controlled tools for CachyOS
 
-Run ai-desktop in a terminal to start a conversation.
+Run ai-desktop in a terminal to start a conversation; ai-desktop -c continues the last one.
   ask        Ask a question; optionally attach chosen context
   material   Analyze one local text file (up to 5 MiB)
   project    Work with a project directory: read-only analysis; changes and deletions only after your approval
@@ -175,6 +175,14 @@ def main(argv=None):
     if argv == ["--help-all"]:                        # the complete listing; text only, no host effects
         print(build_parser().format_help(), end="")
         return 0
+    if argv[0] in ("-c", "--continue") or argv[:2] in (["ask", "-c"], ["ask", "--continue"]):
+        rest = argv[1:] if argv[0] in ("-c", "--continue") else argv[2:]
+        if rest:
+            print("-c continues the last conversation with its own settings and takes no other options. "
+                  "To choose a conversation: ai-desktop sessions.", file=sys.stderr)
+            return 2
+        from . import session_cli
+        return session_cli.continue_latest("ask" if argv[0] == "ask" else None, dispatch=main)
     if argv[0] == "agent" and (len(argv) == 1 or argv[1] in ("list", "use", "-h", "--help")):
         from . import agent_panel
         return agent_panel.services(argv[1:] or ["list"])

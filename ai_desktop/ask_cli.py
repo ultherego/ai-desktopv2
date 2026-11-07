@@ -272,7 +272,9 @@ def _turn_context(talk, snapshot, conversation=None):
 
 def _remember(talk, conversation, question, answer, ops, sources, phase, args, *, ensure_conversation=None):
     """Record a finished, approved turn; persist it only after the complete in-memory state exists."""
-    notes = talk.finish(question, answer or "[empty answer]", ops, sources, actions=getattr(sources, "actions", ()))
+    automatic = question.startswith(CONTINUE_PREFIX)
+    notes = talk.finish(question, answer or "[empty answer]", ops, sources, actions=getattr(sources, "actions", ()),
+                        automatic=automatic, shown=question[len(CONTINUE_PREFIX):] if automatic else None)
     created = False
     if conversation is None and ensure_conversation is not None:
         conversation = ensure_conversation(talk)
@@ -340,6 +342,9 @@ def main(argv=None, *, reader=input):
         if args.session not in (None, "new"):
             conversation = load_session(args, "ask", execution_config=current())
             talk = conversation_state.load(conversation.state())
+            if interactive:
+                from .session_cli import print_thread
+                print_thread(talk.transcript, output_format=args.format)
         auto_save = interactive and reader is input and not args.no_save and args.session is None
         auto_save_attempted = False
 

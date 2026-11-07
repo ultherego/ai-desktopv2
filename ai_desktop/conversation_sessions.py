@@ -36,7 +36,9 @@ _FILE_FLAGS = os.O_RDONLY | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK
 _KEYS = {"schema", "id", "revision", "kind", "path", "binding", "execution", "history", "created", "updated"}
 # Optional, written only for `ask` conversations: task memory plus the metadata needed to revoke what depended on a
 # source that is no longer allowed. Older records simply lack them.
-_OPTIONAL = {"memory", "paths", "turns", "meta", "title"}
+_OPTIONAL = {"memory", "paths", "turns", "meta", "title", "transcript"}
+MAX_TRANSCRIPT = 2000            # conversation_state.MAX_TRANSCRIPT: the whole thread shown on resume
+TRANSCRIPT_TEXT_BYTES = 256 * 1024
 MAX_TITLE = 80
 
 
@@ -152,6 +154,25 @@ def _extras(value):
         raise SessionError("session-memory")
     for items in meta["taints"].values():
         indexes(items)
+    thread = value.get("transcript", [])
+    if type(thread) is not list or len(thread) > MAX_TRANSCRIPT:
+        raise SessionError("session-history")
+    for item in thread:
+        if (type(item) is not dict
+                or set(item) != {"n", "question", "answer", "taint", "redacted", "automatic", "window"}
+                or type(item["n"]) is not int or isinstance(item["n"], bool) or not 1 <= item["n"] <= MAX_TURN
+                or type(item["redacted"]) is not bool or type(item["automatic"]) is not bool
+                or type(item["window"]) is not bool):
+            raise SessionError("session-history")
+        if item["window"]:
+            if item["question"] != "" or item["answer"] != "":
+                raise SessionError("session-history")
+        else:
+            _text(item["question"], TRANSCRIPT_TEXT_BYTES)
+            _text(item["answer"], TRANSCRIPT_TEXT_BYTES)
+        indexes(item["taint"])
+        if item["redacted"] and item["taint"]:
+            raise SessionError("session-history")
 
 
 def _pairs(items):
@@ -448,7 +469,7 @@ class Store:
                         first = value["history"][0]["question"] if value["history"] else value["id"]
                         value = {**{key: value[key] for key in ("id", "kind", "execution", "updated")},
                                  "title": value.get("title") or title_of(first),
-                                 "history_count": len(value["history"])}
+                                 "history_count": len(value.get("transcript") or value["history"])}
                     good.append(value)
                 except (SessionError, OSError):
                     bad.append(ident)
@@ -550,9 +571,13 @@ def same_agent(saved, selected):
 
 
 def _fit_ask_record(value):
-    # Keep the task memory and remove the oldest verbatim turns first.
-    while value["history"] and len(json.dumps(value, ensure_ascii=False, separators=(",", ":"),
-                                               sort_keys=True).encode("utf-8")) > MAX_FILE:
+    # Keep the task memory and what the next request needs: the oldest part of the read-back thread goes first, then
+    # the oldest verbatim turns.
+    def size():
+        return len(json.dumps(value, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8"))
+    while value.get("transcript") and size() > MAX_FILE:
+        del value["transcript"][:max(1, len(value["transcript"]) // 8)]
+    while value["history"] and size() > MAX_FILE:
         del value["history"][0]
         del value["turns"][0]
 

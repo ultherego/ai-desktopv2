@@ -36,7 +36,7 @@ See [agent settings, accounts and sessions](docs/AGENT_MANAGEMENT.md), [verified
 
 This is a development version, not a 1.0 release.
 
-The current candidate package is **0.1.0-86** (changes: [CHANGELOG.md](CHANGELOG.md)).
+The current candidate package is **0.1.0-87** (changes: [CHANGELOG.md](CHANGELOG.md)).
 
 Candidate 0.1.0-82 migrates the runtime and package to independent clients, including explicitly registered HOME installations. Its exact-head CachyOS upgrade and isolated offline compatibility checks passed with Claude 2.1.319 and Codex 0.167.0; see [the acceptance record](docs/ROADMAP.md). These checks did not perform login or model inference. Candidate 83 improves the Codex usage card: connect or reconnect its limits session and read percentages and reset times directly in the widget. On CachyOS the new card renders and DMS reports it loaded. The maintainer subsequently completed native quota reconnection on the unchanged candidate 83 and confirmed the widget flow works. The earlier `busy` did not recur; its original cause is not established. PR #20 was merged as `700a609` after host acceptance and five passing CI jobs. Candidate 84 added bounded project-stage and standalone-test approvals and was merged in PR #21 as `9424ce6`; its separate main/push CI passed five jobs. Candidate 85 adds automatic private checkpoints for ordinary interactive `ask` conversations. Its persistence change still requires exact-candidate GitHub CI and CachyOS acceptance before merge.
 
@@ -178,7 +178,7 @@ ai-desktop ask --question "Why does the unit not start?"
 ai-desktop ask --question "What is an inode?" --no-context
 ```
 
-Without `--question` this is one conversation: after each answer `>` comes back. An empty line or two Ctrl-D end the conversation. It is saved locally after each completed turn; `--no-save` keeps it in memory only. Ctrl-C while waiting stops only the current turn. A message can be up to 128 KiB including pastes (a large paste appears as a placeholder).
+Without `--question` this is one conversation: after each answer `>` comes back. An empty line or two Ctrl-D end the conversation. It is saved locally after each completed turn; `--no-save` keeps it in memory only. `ai-desktop -c` (or `ai-desktop ask -c`) reopens the last conversation and first prints the whole thread. Only the newest turns that fit the request limits go to the model. Ctrl-C while waiting stops only the current turn. A message can be up to 128 KiB including pastes (a large paste appears as a placeholder).
 
 How consents work:
 
@@ -297,6 +297,7 @@ ai-desktop settings set --model sonnet --effort high
 ai-desktop agents setup                             # ready-made roles and Skills, does not change yours
 ai-desktop ask --agent reviewer --model opus --effort high
 ai-desktop sessions                                 # saved conversations
+ai-desktop -c                                       # continue the last conversation, showing the whole thread
 ```
 
 Details: [docs/AGENT_MANAGEMENT.md](docs/AGENT_MANAGEMENT.md).

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.0-87: continue the last conversation and read back the whole thread
+
+- `ai-desktop -c` (or `ai-desktop ask -c`) reopens the most recently used saved conversation, with the same checks and consent as choosing it in `ai-desktop sessions`. With no saved conversation it starts a new one.
+- A saved conversation keeps the whole thread, up to 2000 turns, apart from the bounded window sent to the model. Resuming prints it before the prompt, and `ai-desktop sessions show` lists it. Automatic next steps of a task are shown as such instead of the program's internal text.
+- Revoking access also withholds old answers outside the request window. Turns still in the window are stored once.
+
 ## 0.1.0-86: Codex registration imports only files inside the release
 
 - Registering a Codex installation refuses a top-level `codex-package.json`, `codex-path` or `codex-resources` that links outside the release directory. Before, such a link could point at any file the user can read, and the import would publish it to the client. Links nested inside the resource directories were already checked.
