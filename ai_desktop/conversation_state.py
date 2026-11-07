@@ -13,6 +13,8 @@ from . import conversation_memory as memory
 from .execution import HISTORY_ANSWER_BYTES, HISTORY_QUESTION_BYTES, HISTORY_TOTAL_BYTES, MAX_HISTORY
 
 MAX_TURNS = 128                # finished turns kept for revalidation; only the last MAX_HISTORY are sent verbatim
+MAX_TRANSCRIPT = 2000          # the whole thread shown on resume; it is never sent to the model as such
+TRANSCRIPT_TEXT_BYTES = 256 * 1024   # one question or answer in the thread record
 MAX_SOURCE_PATHS = 2048        # one saved conversation's table of sources (conversation_sessions.MAX_PATHS)
 REDACTED = "[answer withheld: its sources cannot be verified under the current permissions]"
 FACT_REDACTED = "Action taken: details removed because access to the source it used was revoked."
@@ -74,6 +76,9 @@ class Turn:
 class Conversation:
     def __init__(self):
         self.turns = []
+        # Every finished turn for the user to read back: separate from `turns`, which bounds what a request carries.
+        # Each entry keeps its own taint, so revoking a source also withholds old answers that left the request window.
+        self.transcript = []
         self.memory = memory.empty()
         self.origins = {}          # entry id -> "user" | "model"; only model-written entries can be revoked
         self.taints = {}           # entry id -> tuple(paths) the entry may depend on
@@ -113,6 +118,11 @@ class Conversation:
         for turn in self.turns:
             if turn.taint and not turn.redacted and not all(allows(path) for path in turn.taint):
                 turn.redacted, removed = True, removed + 1
+        for entry in self.transcript:
+            if entry["taint"] and not entry["redacted"] and not all(allows(path) for path in entry["taint"]):
+                entry["redacted"] = True
+                if not any(turn.n == entry["n"] for turn in self.turns):
+                    removed += 1       # an old answer only the thread still held
         keep = []
         for entry in self.memory["entries"]:
             paths = self.taints.get(entry["id"], ())
@@ -138,7 +148,7 @@ class Conversation:
         return removed
 
     # -- a finished turn -------------------------------------------------------------------------------------------
-    def finish(self, question, answer, ops, sources, actions=()):
+    def finish(self, question, answer, ops, sources, actions=(), automatic=False, shown=None):
         """Record a completed, approved turn. `ops` is the validated memory update or None (then only the user note)."""
         self.number += 1
         n = self.number
@@ -169,6 +179,11 @@ class Conversation:
         self.memory = updated
         self.turns.append(Turn(n, _plain_lines(question), _plain_lines(answer), taint))
         del self.turns[:-MAX_TURNS]
+        self.transcript.append({"n": n, "question": _bounded(_plain_lines(question if shown is None else shown),
+                                                             TRANSCRIPT_TEXT_BYTES),
+                                "answer": _bounded(_plain_lines(answer), TRANSCRIPT_TEXT_BYTES),
+                                "taint": tuple(sorted(taint)), "redacted": False, "automatic": bool(automatic)})
+        del self.transcript[:-MAX_TRANSCRIPT]
         return notes
 
 
@@ -220,8 +235,21 @@ def export(conversation):
     taints = {e["id"]: [index(p) for p in conversation.taints[e["id"]]] for e in kept if conversation.taints.get(e["id"])}
     saved = memory.validate({**conversation.memory, "entries": kept,
                              "dropped": conversation.memory["dropped"] + len(conversation.memory["entries"]) - len(kept)})
+    # The whole thread, newest first while the source table has room; an entry whose sources do not fit is stored
+    # withheld, as above. Oldest entries leave first if the record grows too large (conversation_sessions).
+    # A turn still in the request window with the same words is not written twice: it points at its `history` pair.
+    window = {meta["n"]: pair for meta, pair in zip(meta_turns, history)}
+    thread = []
+    for entry in reversed(conversation.transcript):
+        fits = not entry["redacted"] and len(set(paths) | set(entry["taint"])) <= MAX_SOURCE_PATHS
+        answer = entry["answer"] if fits else REDACTED
+        same = window.get(entry["n"]) == {"question": entry["question"], "answer": answer}
+        thread.append({"n": entry["n"], "question": "" if same else entry["question"], "answer": "" if same else answer,
+                       "taint": [index(p) for p in entry["taint"]] if fits else [],
+                       "redacted": not fits, "automatic": entry["automatic"], "window": same})
+    thread.reverse()
     exported = {"history": history, "memory": saved, "paths": paths, "turns": meta_turns,
-                "meta": {"user": user, "taints": taints}}
+                "meta": {"user": user, "taints": taints}, "transcript": thread}
     if conversation.title is not None:
         # Keep the original title after its verbatim turn leaves the in-memory window.
         exported["title"] = conversation.title
@@ -250,11 +278,25 @@ def load(state):
         for pair, meta in zip(history, state["turns"]):
             conversation.turns.append(Turn(meta["n"], pair["question"], pair["answer"],
                                            tuple(paths[i] for i in meta["taint"]), meta["redacted"]))
-        conversation.number = max([t.n for t in conversation.turns]
+        window = {meta["n"]: pair for meta, pair in zip(state["turns"], history)}
+        conversation.transcript = [{"n": item["n"],
+                                    "question": window[item["n"]]["question"] if item["window"] else item["question"],
+                                    "answer": window[item["n"]]["answer"] if item["window"] else item["answer"],
+                                    "taint": tuple(paths[i] for i in item["taint"]), "redacted": item["redacted"],
+                                    "automatic": item["automatic"]} for item in state.get("transcript", ())
+                                   if not item["window"] or item["n"] in window]
+        if not conversation.transcript:
+            # A record from before the thread existed: its verbatim window is all there is to show.
+            conversation.transcript = [{"n": turn.n, "question": turn.question,
+                                        "answer": REDACTED if turn.redacted else turn.answer, "taint": turn.taint,
+                                        "redacted": turn.redacted, "automatic": False} for turn in conversation.turns]
+        conversation.number = max([t.n for t in conversation.turns] + [e["n"] for e in conversation.transcript]
                                   + [entry["turn"] for entry in conversation.memory["entries"]], default=0)
     else:
         for pair in history:
             # Earlier versions saved the user's words but no evidence of what the answer read.
             conversation.number += 1
             conversation.turns.append(Turn(conversation.number, pair["question"], REDACTED, redacted=True))
+            conversation.transcript.append({"n": conversation.number, "question": pair["question"], "answer": REDACTED,
+                                            "taint": (), "redacted": True, "automatic": False})
     return conversation

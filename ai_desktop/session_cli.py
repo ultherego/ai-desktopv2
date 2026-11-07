@@ -143,6 +143,33 @@ def _pick(title, options):
     return selected
 
 
+def print_thread(entries, *, output_format="auto"):
+    """The whole saved thread, as it was seen, before the conversation continues. Withheld answers stay withheld."""
+    from .analysis_contract import terminal_text
+    from .analysis_terminal import render_answer
+    from .terminal_style import rule
+    if not entries:
+        return
+    print(rule())
+    print("Earlier in this conversation (%d %s):" % (len(entries), "turn" if len(entries) == 1 else "turns"))
+    for entry in entries:
+        if entry.get("automatic"):
+            print("\n↳ Next step of the same task, started automatically")
+        else:
+            print("\n> " + terminal_text(entry["question"]))
+        print(render_answer(entry["answer"], output_format=output_format))
+    print(rule())
+    print()
+
+
+def _thread_of(value):
+    """Readable turns of a record: the whole thread when it was saved, otherwise the request window."""
+    if value.get("transcript"):
+        from .conversation_state import load
+        return load(value).transcript
+    return [dict(item, automatic=False) for item in value["history"]]
+
+
 def _show(value, *, preview=False):
     print("Conversation %s · %s · %s" % (value["id"], value["kind"], recipient_label(value["execution"])))
     if value["path"]:
@@ -151,14 +178,35 @@ def _show(value, *, preview=False):
         selected = value["execution"]
         print("Agent: %s · model: %s · reasoning: %s" % (
             selected["profile"], selected["model"], selected["effort"]))
-    history = value["history"][-1:] if preview else value["history"]
+    thread = _thread_of(value)
+    history = thread[-1:] if preview else thread
     for item in history:
-        print("\n> " + _safe(item["question"], 500 if preview else 2048))
-        print(_safe(item["answer"], 1600 if preview else 8192 + 64))
+        if item["automatic"]:
+            print("\n↳ Next step of the same task, started automatically")
+        else:
+            print("\n> " + _safe(item["question"], 500 if preview else 2048))
+        print(_safe(item["answer"], 1600 if preview else 256 * 1024))
     if not history:
         print("No finished questions.")
     if preview:
         print("Full history: ai-desktop sessions show " + value["id"])
+
+
+def continue_latest(kind=None, *, store=None, dispatch=None):
+    """`ai-desktop -c`: reopen the most recently used saved conversation, like a terminal client's continue. Resuming
+    goes through the same checks as choosing it by hand; nothing about the old run is trusted as authority."""
+    store = store or Store()
+    try:
+        values = [value for value in _values(store) if kind is None or value["kind"] == kind]
+    except (SessionError, OSError):
+        print("Could not read the saved conversations. Check the session directory permissions.")
+        return 2
+    if not values:
+        print("No saved conversation yet. Starting a new one.")
+        if dispatch is None:
+            from .cli import main as dispatch
+        return dispatch(["ask"])
+    return main(["resume", values[0]["id"]], store=store, dispatch=dispatch)
 
 
 def _resume(store, ident, dispatch):

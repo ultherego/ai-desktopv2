@@ -111,8 +111,8 @@ Release boundary: S8 client delivery, S9 task usability and the remaining S2–S
 | Remaining / S3 | E3–E6 / P0 | Large-file analysis, many files, anchored edits and independent test-copy budgets | IN PROGRESS | Existing read/plan/executor; bounded context work from S2 |
 | Remaining / S4 | E3, E6 / P0 | Shared on-demand Skills and documentation loader in every mode | IN PROGRESS | Existing role, source and recipient authorization |
 | Remaining / S5 | E3 / P0 | General Arch/CachyOS procedures and version-aware references | IN PROGRESS | S4 and official documentation |
-| Core / S2 | E3, E6 / P0 | Durable transcript, compaction and streaming beyond the bounded context improvements | TODO | Stable core task flow |
-| Core / S1 | E7, E3 / P1 | Ordinary-chat autosaving; `ai-desktop -c` remains a deferred convenience | IN PROGRESS / shortcut DEFERRED | Candidate 85 implements bounded automatic checkpoints and `--no-save`; GitHub CI, CachyOS acceptance and merge remain open |
+| Core / S2 | E3, E6 / P0 | Durable transcript, compaction and streaming beyond the bounded context improvements | IN PROGRESS | Candidate 87 keeps the whole read-back thread (up to 2000 turns) apart from the bounded request window; compaction, streaming and a durable record of decisions remain |
+| Core / S1 | E7, E3 / P1 | Ordinary-chat autosaving and `ai-desktop -c` | IN PROGRESS | Candidate 85: automatic checkpoints and `--no-save` (maintainer acceptance passed on candidate 86); candidate 87: `-c` for the newest conversation, at the maintainer's request. Merge, a persistent saving setting and `-c` across kinds with workspace binding remain |
 | Later / S0 | E7 / P1 | One universal package with managed environment-specific Skills | DEFERRED | Stable core and shared loader |
 | Later / S6 | E4–E7 / P1 | Six CachyOS Hello integrations with explicit state and controls | TODO | S5, typed host operations and host acceptance |
 | Later / S7 | E7, R4 / P2 | Project launch actions, crash entry point, OCR/dictation and terminal layouts | DEFERRED | Stable core and environment adapters |
@@ -259,6 +259,16 @@ Each implementation updates this roadmap with its own PR/SHA, tests, CI, remaini
 ## Progress log
 
 Earlier dated entries preserve the evidence and status at that point. The latest entry supersedes historical pending/next-step statements.
+
+### 2026-11-07 — E3/E7 / S1–S2: `ai-desktop -c` and the whole read-back thread
+
+- **READY FOR TEST**, candidate **0.1.0-87**, branch `feature/continue-and-transcript`, stacked on candidate 86. The maintainer accepted candidate 86 on CachyOS (SHA-pinned runner: CI, LOCAL, build, upgrade and offline client probes all 0; autosave visible in an ordinary conversation) and asked for `-c` like a terminal client and a resume that restores the whole thread.
+- `ai-desktop -c` and `ai-desktop ask -c` reopen the most recently updated saved conversation through the ordinary `sessions resume` path, so binding, active-process, policy and consent checks are unchanged. With nothing saved, a new conversation starts. Extra options are refused.
+- The record gains an optional `transcript`: up to 2000 turns, 256 KiB per question or answer, each with its own source taint. It is local read-back only and never goes to the model; the request window and its byte limits are unchanged. Entries still in the window point at their `history` pair instead of repeating it. When the 16 MiB record limit is reached, the oldest read-back turns leave first, then the oldest window turns.
+- Revocation withholds transcript answers too, including ones outside the request window, and the redacted checkpoint is written at once (candidate 85). Automatic continuation turns store the user's task and a flag, so read-back no longer shows the program's internal continuation text as the user's question.
+- Tests: `tests/test_conversation_thread.py` (200-turn save/reload with a bounded window, revocation outside the window, automatic-step display, legacy records, malformed thread refusal, size trimming, single storage of window turns, `-c` routing/newest/none, resumed `ask` printing the thread). Full unit suite, `verify.py --mode ci` and `--mode local` pass.
+- Not finished: compaction, streaming, a durable decision record beyond task memory, a persistent saving setting, and `-c` for `material`/`project` with their workspace binding (they resume through the same path when newest, but have no read-back thread).
+- **Next step:** CachyOS acceptance of candidate 87 (SHA-pinned runner plus `-c` in an ordinary conversation), then merge #23 → #24 → this branch in order.
 
 ### 2026-11-07 — E2/E7 / S8: release-root check for top-level Codex resources
 
