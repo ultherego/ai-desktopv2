@@ -36,9 +36,9 @@ See [agent settings, accounts and sessions](docs/AGENT_MANAGEMENT.md), [verified
 
 This is a development version, not a 1.0 release.
 
-The current candidate package is **0.1.0-84** (changes: [CHANGELOG.md](CHANGELOG.md)).
+The current candidate package is **0.1.0-85** (changes: [CHANGELOG.md](CHANGELOG.md)).
 
-Candidate 0.1.0-82 migrates the runtime and package to independent clients, including explicitly registered HOME installations. Its exact-head CachyOS upgrade and isolated offline compatibility checks passed with Claude 2.1.319 and Codex 0.167.0; see [the acceptance record](docs/ROADMAP.md). These checks did not perform login or model inference. Candidate 83 improves the Codex usage card: connect or reconnect its limits session and read percentages and reset times directly in the widget. On CachyOS the new card renders and DMS reports it loaded. The maintainer subsequently completed native quota reconnection on the unchanged candidate 83 and confirmed the widget flow works. The earlier `busy` did not recur; its original cause is not established. PR #20 was merged as `700a609` after host acceptance and five passing CI jobs. Candidate 84 adds the bounded task approvals described below. Its pinned CachyOS CI/LOCAL, build, upgrade and installed-file checks passed on `457118d`, including the real Python copy-test/write/rollback flow with a synthetic provider. This is offline acceptance; PR #21 awaits explicit merge approval.
+Candidate 0.1.0-82 migrates the runtime and package to independent clients, including explicitly registered HOME installations. Its exact-head CachyOS upgrade and isolated offline compatibility checks passed with Claude 2.1.319 and Codex 0.167.0; see [the acceptance record](docs/ROADMAP.md). These checks did not perform login or model inference. Candidate 83 improves the Codex usage card: connect or reconnect its limits session and read percentages and reset times directly in the widget. On CachyOS the new card renders and DMS reports it loaded. The maintainer subsequently completed native quota reconnection on the unchanged candidate 83 and confirmed the widget flow works. The earlier `busy` did not recur; its original cause is not established. PR #20 was merged as `700a609` after host acceptance and five passing CI jobs. Candidate 84 added bounded project-stage and standalone-test approvals and was merged in PR #21 as `9424ce6`; its separate main/push CI passed five jobs. Candidate 85 adds automatic private checkpoints for ordinary interactive `ask` conversations. Its persistence change still requires exact-candidate GitHub CI and CachyOS acceptance before merge.
 
 `ai-desktop doctor` and `doctor --v` inspect metadata without executing a client. `doctor --clients` explicitly probes the selected cloud client offline, without login, network or a model request. A successful probe checks adapter prerequisites; it does not certify the vendor or prove that authentication and inference work.
 
@@ -178,7 +178,7 @@ ai-desktop ask --question "Why does the unit not start?"
 ai-desktop ask --question "What is an inode?" --no-context
 ```
 
-Without `--question` this is one conversation: after each answer `>` comes back. An empty line or two Ctrl-D end the conversation, and the program asks whether to save it. Ctrl-C while waiting stops only the current turn. A message can be up to 128 KiB including pastes (a large paste appears as a placeholder).
+Without `--question` this is one conversation: after each answer `>` comes back. An empty line or two Ctrl-D end the conversation. It is saved locally after each completed turn; `--no-save` keeps it in memory only. Ctrl-C while waiting stops only the current turn. A message can be up to 128 KiB including pastes (a large paste appears as a placeholder).
 
 How consents work:
 
@@ -195,7 +195,7 @@ In a normal conversation, ask to run the current project's tests or type `/test 
 
 The check on the copy comes from a list: `python-unittest`, `pytest`, `go-test`, `npm-test`, `python-syntax`, `json`, `toml`, `bash-syntax`, `fish-syntax`, `text`. The `text` check only confirms valid UTF-8 text: **syntax and behaviour are not checked**. No check proves the project is correct.
 
-A conversation sends up to 64 recent exchanges within a 512 KiB history budget, with up to 32 KiB per answer, and up to 96 structured task notes within 64 KiB. The in-memory window is 128 turns; saved records keep the recent 64 and bounded notes in at most 16 MiB. This is bounded working context, not an unlimited transcript or automatic semantic compaction. A long history uses up the service limit, because it goes with every question. If you revoke access to a file, the answers that depend on it disappear from memory before the next question. In interactive `ask`, a timeout or service limit returns you to the conversation without retrying the question; earlier context stays in memory. Unsaved context is still lost if the process exits.
+A conversation sends up to 64 recent exchanges within a 512 KiB history budget, with up to 32 KiB per answer, and up to 96 structured task notes within 64 KiB. The in-memory window is 128 turns; saved records keep the recent 64 and bounded notes in at most 16 MiB. This is bounded working context, not an unlimited transcript or automatic semantic compaction. A long history uses up the service limit, because it goes with every question. If you revoke access to a file, the answers that depend on it disappear from memory before the next question. Interactive terminal `ask` creates a private local record after the first completed turn or completed action and atomically checkpoints later completed turns. A declined or cancelled first turn creates nothing. One-shot `--question` and non-terminal embedded invocations are not saved implicitly. Use `--no-save` for a temporary in-memory conversation. If local storage cannot accept a checkpoint, the answer remains visible and the conversation continues in memory with a warning; only the last successfully stored checkpoint survives process or terminal failure.
 
 You turn on web search with `web = true`. It is a separate request: only your question, without files or local data. Weather (`weather = true`) reveals the place name and your IP address to the Open-Meteo service, and the result goes to the model.
 
@@ -241,7 +241,7 @@ ai-desktop task run "Fix the addition in calc.py" --workspace /path/to/project \
 
 ### Task approval scope and remaining work
 
-Candidate 84 implements one bounded approval for project analysis stages and combines standalone task preparation with its declared test. It does not turn ordinary conversation consent into permission to execute project tests. The combined project-edit/data-transfer/copy-test flow, ordinary-chat persistence and shared task continuation remain S9/S1/S2 work. All final writes and deletion/undo operations retain their separate decisions; saved conversations never restore these process-local grants.
+Candidate 84 implements one bounded approval for project analysis stages and combines standalone task preparation with its declared test. It does not turn ordinary conversation consent into permission to execute project tests. Candidate 85 adds bounded ordinary-chat checkpoints, but the combined project-edit/data-transfer/copy-test flow, complete durable transcript, compaction, streaming and shared task continuation remain S9/S2 work. All final writes and deletion/undo operations retain their separate decisions; saved conversations never restore these process-local grants.
 
 ### Undo and restore
 
@@ -360,7 +360,7 @@ The program has no "remove everything" command. You remove this data yourself an
 The provider receives: your question, the instructions of the program and the agent, assigned Skill metadata and the procedures/references actually loaded, the `read` and `write` patterns and command templates, names from discovery, the content and **absolute paths** of files read, command output, systemd and weather data and the conversation memory. `deny` rules are not sent. The official client adds its own technical context, so `--v` is not a record of all traffic. The full list: [SECURITY.md](SECURITY.md).
 
 - Data that was sent cannot be withdrawn: neither stopping, nor undo, nor uninstalling removes it from the provider.
-- A conversation is saved locally only after your `y` at the end or with `--session new`, in private files. An answer may quote files it read.
+- Interactive `ask` saves a private bounded checkpoint after the first completed turn and later completed turns unless you use `--no-save`. `--session new` still creates an explicit record. An answer may quote files it read; saved records contain no OAuth credentials or reusable approvals.
 - The terminal may keep the scrollback, and `--question` goes to the shell history. Do not attach `--v` output to public reports.
 
 ## When something does not work

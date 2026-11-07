@@ -14,6 +14,12 @@ A public issue is visible to everyone, so **do not put sensitive details in it**
 the content of private files, `--v` output, a working exploit or data about your computer. Describe the package version, the general symptom and the
 fixed error message.
 
+## Local conversation records
+
+Interactive `ask` writes a private bounded checkpoint after the first completed turn or completed action unless `--no-save` is selected. A declined or cancelled first turn publishes no record. The first checkpoint is assembled and validated in memory, then published once through the existing no-follow, owner/mode, lock, temporary-file, `fsync` and no-replace checks; later checkpoints use revision comparison and atomic replacement. A failed publication leaves no partial JSON record and does not hide the answer or stop the in-memory conversation.
+
+The record contains bounded recent questions, answers, task notes and source-provenance metadata. It never contains OAuth credentials, a native-client session, process-local consent grants, write approvals or restored file permissions. Opening it is local; every later provider transfer and source use still checks the current recipient, policy, source identities and fresh conversation consent. Same-UID hostile writers and power loss remain outside the guarantee.
+
 ## Changing recipients
 
 A transfer through `/provider` names the new recipient and requires an explicit decision about the bounded conversation history and task notes. File access is re-evaluated for the request. Old saved answers whose source permissions cannot be verified are withheld. Named cloud account slots use a validated local alias and the authenticated desktop UID; the panel reads account metadata and quota observations, never tokens.

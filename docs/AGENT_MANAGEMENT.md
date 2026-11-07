@@ -96,7 +96,7 @@ Memory gives no permissions. When access to a file is revoked, the answers and m
 
 ## Saved conversations
 
-By default nothing is saved. At the end of an `ask` conversation the program asks whether to keep it; only `y` or `yes` creates a local save. The next `ai-desktop ask` offers conversations of the same agent. `--session new` saves from the start, `--session ID` resumes (also `material`, `project`).
+Interactive terminal `ask` saves locally by default after the first completed turn or completed action. One-shot `--question` and non-terminal embedded invocations remain non-persistent unless an explicit session is selected. The first checkpoint is published as one complete private record; declining or cancelling before a completed turn creates no empty file. Each later completed turn updates that record atomically. The next `ai-desktop ask` offers conversations of the same agent. Use `--no-save` for a temporary in-memory conversation. `--session new` creates an explicit record, and `--session ID` resumes one (also for `material` and `project`). `--no-save` and `--session` cannot be combined.
 
 ```fish
 ai-desktop sessions          # menu, a list outside the terminal
@@ -106,7 +106,7 @@ ai-desktop sessions resume ID
 ai-desktop sessions remove ID
 ```
 
-The save is in `~/.local/state/ai-desktop/conversations` (directory `0700`, files `0600`, up to 16 MiB per file, 128 conversations). It contains the limited text of the conversation, memory and metadata, not whole materials, although an answer may quote a file. Resuming re-checks the policy, the file or project and the agent's configuration. Consents, write authorizations and the login session are not restored. A conversation open in another process will not be removed. `ai-desktop stop` concerns the temporary client session, not saved conversations.
+The save is in `~/.local/state/ai-desktop/conversations` (directory `0700`, files `0600`, up to 16 MiB per file, 128 conversations). It contains bounded recent text, task memory and source-provenance metadata, not whole materials, although an answer may quote a file. It contains no OAuth credentials, reusable grants, write authorizations or native-client session. Resuming re-checks the policy, the file or project, recipient and agent configuration. A storage or integrity failure leaves the current answer on screen and the conversation in memory; only the last successful checkpoint survives exit. A conversation open in another process will not be removed. `ai-desktop stop` concerns the temporary client session, not saved conversations.
 
 ## Commands and changes on the live system
 

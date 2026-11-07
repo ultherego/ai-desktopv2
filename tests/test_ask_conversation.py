@@ -1,4 +1,4 @@
-"""Interactive `ask` loop: in-memory continuity, a fresh consent per turn, no persistence by default."""
+"""Interactive `ask` loop: continuity, one scoped consent and durable local checkpoints by default."""
 import os as _os
 _os.environ.setdefault("AI_DESKTOP_MODEL_CATALOG", "off")
 from contextlib import ExitStack, nullcontext, redirect_stdout
@@ -37,10 +37,25 @@ class FakeConversation:
         self.closed = True
 
 
+class FakeStore:
+    def __init__(self, conversation=None, failure=None):
+        self.conversation = conversation or FakeConversation()
+        self.failure = failure
+        self.creates = []
+
+    def create(self, kind, path="", binding="", execution_config=None, *, initial_state=None):
+        self.creates.append((kind, path, binding, execution_config, initial_state))
+        if self.failure is not None:
+            raise self.failure
+        self.conversation.saved = initial_state
+        return self.conversation
+
+
 class ConversationLoopTests(unittest.TestCase):
-    def run_ui(self, argv, replies, *, conversation=None, accesses=None):
+    def run_ui(self, argv, replies, *, conversation=None, accesses=None, store=None):
         """`replies` is the exact reader script; an exception class is raised instead of returned."""
         out, histories, prompts, queue = io.StringIO(), [], [], list(replies)
+        store = store or FakeStore(conversation)
         out.isatty = lambda: True
 
         def reader(prompt):
@@ -68,12 +83,14 @@ class ConversationLoopTests(unittest.TestCase):
             stack.enter_context(patch.object(assistant_flow, "capture_access", side_effect=capture))
             stack.enter_context(patch.object(ask, "managed_session", side_effect=lambda **_: nullcontext()))
             sent = stack.enter_context(patch.object(ask, "send_once", side_effect=send))
+            stack.enter_context(patch("ai_desktop.conversation_sessions.Store", return_value=store))
             if conversation is not None:
                 stack.enter_context(patch("ai_desktop.conversation_sessions.load_session", return_value=conversation))
             stack.enter_context(redirect_stdout(out))
             code = ask.main(argv, reader=reader)
         self.assertEqual(queue, [], "unused replies")
-        return SimpleNamespace(code=code, out=out.getvalue(), sent=sent, histories=histories, prompts=prompts)
+        return SimpleNamespace(code=code, out=out.getvalue(), sent=sent, histories=histories, prompts=prompts,
+                               store=store, conversation=store.conversation)
 
     def test_local_project_test_before_the_first_question_keeps_the_same_thread(self):
         from ai_desktop import project_checks
@@ -184,8 +201,9 @@ class ConversationLoopTests(unittest.TestCase):
             seen.append(execution.current_memory())
             return "Odpowiedź"
         with patch.object(ask.assistant_flow, "_run_once", side_effect=flow):
-            self.run_ui([], ["Zmień", "Co zrobiłeś?", ""])
+            result = self.run_ui([], ["Zmień", "Co zrobiłeś?", ""])
         self.assertTrue(any("systemctl restart foo.service" in entry["text"] for entry in seen[0]["entries"]))
+        self.assertEqual(result.store.creates, [])  # injected readers remain non-persistent
 
     def test_a_failure_of_a_turn_that_did_nothing_records_nothing(self):
         seen = []
@@ -342,11 +360,11 @@ class ConversationLoopTests(unittest.TestCase):
         self.assertTrue(conv.closed)
         self.assertIn("saved locally", r.out)
 
-    def test_no_session_means_nothing_is_persisted(self):
-        with patch("ai_desktop.conversation_sessions.Store") as store:
-            r = self.run_ui([], ["Jeden", "yes", "Dwa", ""])
-        store.assert_not_called()
+    def test_injected_reader_without_explicit_session_remains_non_persistent(self):
+        r = self.run_ui([], ["Jeden", "yes", "Dwa", ""])
+        self.assertEqual(r.store.creates, [])
         self.assertEqual(r.sent.call_count, 2)
+        self.assertNotIn("saved locally", r.out)
 
 
 if __name__ == "__main__":

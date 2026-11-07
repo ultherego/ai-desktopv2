@@ -55,6 +55,8 @@ def build_parser():
     parser.add_argument("--v", "--verbose", "-v", "--details", dest="details", action="store_true",
                         help="Show details, full data and diagnostics")
     parser.add_argument("--preview", action="store_true", help="Offline preview, with no model and no Internet access")
+    parser.add_argument("--no-save", action="store_true",
+                        help="Do not create or update a local saved conversation")
     parser.add_argument("--format", choices=("auto", "plain", "markdown"), default="auto")
     add_arguments(parser, session=True)
     return parser
@@ -149,21 +151,27 @@ def _choose_thread():
         return ("new", None)
 
 
-def _offer_save(talk, phase):
-    """Ask once whether to keep this conversation. Nothing is written without a yes."""
-    from .conversation_sessions import SessionError, Store
+def _start_auto_save(talk, phase):
+    """Atomically publish the first completed turn; a failed save never hides the answer or stops the conversation."""
+    from .conversation_sessions import MAX_SESSIONS, SessionError, Store
     from .execution import current
-    from .terminal_consent import confirm
     try:
-        if not confirm("save-thread"):
-            return None
         phase("session-save")
-        saved = Store().create("ask", "", "", current())
-        saved.save_state(conversation_state.export(talk))
-        print("Conversation saved locally. You can return to it the next time you run ai-desktop ask.")
+        saved = Store().create("ask", "", "", current(), initial_state=conversation_state.export(talk))
+        print("Conversation: %s · saved locally (use --no-save for a temporary conversation)" % saved.session_id)
         return saved
-    except (SessionError, OSError, ValueError):
-        print("Could not save the conversation. Nothing was saved.")
+    except SessionError as exc:
+        if str(exc) == "session-limit":
+            print("Not saved: you already have %d saved conversations, the most allowed. Delete old ones with "
+                  "ai-desktop sessions, and new conversations are saved again. This one continues in memory until you exit."
+                  % MAX_SESSIONS)
+        else:
+            print("Could not start automatic local saving: local storage may be full, unavailable or unsafe. "
+                  "The conversation continues in memory until you exit.")
+        return None
+    except (OSError, ValueError):
+        print("Could not start automatic local saving: local storage may be full, unavailable or unsafe. "
+              "The conversation continues in memory until you exit.")
         return None
 
 
@@ -241,7 +249,7 @@ def _read_message(session, followup):
 
 
 @contextmanager
-def _turn_context(talk, snapshot):
+def _turn_context(talk, snapshot, conversation=None):
     """Filter history and memory with the policy that authorizes this exact attempt."""
     from .execution import using_history, using_memory
     policy = snapshot.policy
@@ -249,20 +257,31 @@ def _turn_context(talk, snapshot):
     if removed:
         print("Access to a source used earlier in this conversation was revoked: the answers and model notes "
               "that depended on it were removed from the conversation memory (%d)." % removed)
+        if conversation is not None:
+            # The saved copy must lose that content now, not at the next completed turn: this turn may fail or the user may
+            # exit right after it, and the file would keep what the policy no longer allows.
+            from .conversation_sessions import SessionError
+            try:
+                conversation.save_state(conversation_state.export(talk))
+            except (SessionError, ValueError, OSError):
+                print("Could not remove it from the saved conversation on disk. Delete the conversation with "
+                      "ai-desktop sessions if it must not stay there.")
     with using_history(talk.history()), using_memory(talk.task_memory()):
         yield
 
 
-def _remember(talk, conversation, question, answer, ops, sources, phase, args):
-    """Record a finished, approved turn; the task memory is updated from the FULL answer before any shortening."""
+def _remember(talk, conversation, question, answer, ops, sources, phase, args, *, ensure_conversation=None):
+    """Record a finished, approved turn; persist it only after the complete in-memory state exists."""
     notes = talk.finish(question, answer or "[empty answer]", ops, sources, actions=getattr(sources, "actions", ()))
-    if getattr(args, "presence", None) is not None:
-        args.presence.update(talk.number, conversation.session_id if conversation is not None else None)
+    created = False
+    if conversation is None and ensure_conversation is not None:
+        conversation = ensure_conversation(talk)
+        created = conversation is not None
     if "trimmed" in notes:
         print("The task memory reached its limit: the oldest, less important entries were left out (the memory keeps count).")
     if args.details and "no-update" in notes:
         print("Task memory: the model sent no valid update; only your message was recorded.")
-    if conversation is not None:
+    if conversation is not None and not created:
         phase("session-save")
         from .conversation_sessions import SessionError
         try:
@@ -270,11 +289,15 @@ def _remember(talk, conversation, question, answer, ops, sources, phase, args):
         except (SessionError, ValueError, OSError):
             # A turn that cannot be stored must not end the conversation or lose the answer on the screen.
             print("Could not save this turn to disk; the conversation continues and the turn stays in memory until you exit.")
+    if getattr(args, "presence", None) is not None:
+        args.presence.update(talk.number, conversation.session_id if conversation is not None else None)
+    return conversation
 
 
 @configured
 def main(argv=None, *, reader=input):
     args = build_parser().parse_args(argv)
+    interactive = args.question is None and not args.preview
     state = {"submitted": False, "execution": UNSET, "phase": "input"}
     def phase(value):
         state["phase"] = value if type(value) is str and value in PREPARATION_PHASES else "internal"
@@ -285,6 +308,9 @@ def main(argv=None, *, reader=input):
             raise AnalysisDenied("identity")
         if args.no_context and any((args.systemd, args.systemd_state, args.weather)):
             raise ValueError("conflicting context selection")
+        if args.no_save and args.session is not None:
+            print("--no-save cannot be combined with --session. Choose a temporary or a saved conversation.")
+            return 2
         if (not args.preview or args.question is None) and not (sys.stdin.isatty() and sys.stdout.isatty()):
             raise AnalysisDenied("consent")
         if args.question is None and not args.preview and reader is input:
@@ -298,7 +324,7 @@ def main(argv=None, *, reader=input):
         if args.preview and args.session:
             print("Preview does not save or resume a conversation. Remove --session or --preview.")
             return 2
-        if question is None and not args.preview and args.session is None and reader is input:
+        if question is None and not args.preview and not args.no_save and args.session is None and reader is input:
             # The saved threads are offered BEFORE the first message, so a new question never has to be typed twice.
             phase("session")
             chosen = _choose_thread()
@@ -314,6 +340,22 @@ def main(argv=None, *, reader=input):
         if args.session not in (None, "new"):
             conversation = load_session(args, "ask", execution_config=current())
             talk = conversation_state.load(conversation.state())
+        auto_save = interactive and reader is input and not args.no_save and args.session is None
+        auto_save_attempted = False
+
+        def ensure_conversation(current_talk):
+            nonlocal conversation, auto_save_attempted
+            if conversation is None and auto_save and not auto_save_attempted:
+                auto_save_attempted = True
+                conversation = _start_auto_save(current_talk, phase)
+            return conversation
+
+        def remember(turn_question, answer, ops, sources):
+            nonlocal conversation
+            conversation = _remember(
+                talk, conversation, turn_question, answer, ops, sources, phase, args,
+                ensure_conversation=ensure_conversation if auto_save else None)
+
         def local_test(recipe):
             nonlocal conversation
             if args.preview or args.no_context:
@@ -326,7 +368,7 @@ def main(argv=None, *, reader=input):
                 with conversation_state.recording() as recorded:
                     conversation_state.note_sources(result.sources)
                     conversation_state.note_action(result.summary)
-                _remember(talk, conversation, "/test " + recipe, result.summary, None, recorded, phase, args)
+                remember("/test " + recipe, result.summary, None, recorded)
 
         def control(line):
             result = controls.handle(line, conversation, talk=talk, consent=consent, reader=reader, run_test=local_test)
@@ -364,14 +406,6 @@ def main(argv=None, *, reader=input):
         # Interactive loop only without --question/--preview. Every turn below is a fresh question under one yes for the
         # conversation; the conversation state is local data, never authority, and is re-validated against the CURRENT
         # policy before each turn (a revoked source takes what depended on it out of the next request).
-        interactive = args.question is None and not args.preview
-
-        def leave(result):
-            """End of a conversation: offer (once, with consent) to keep it as a thread to return to."""
-            nonlocal conversation
-            if conversation is None and interactive and reader is input and talk.turns:
-                conversation = _offer_save(talk, phase)
-            return result
         if args.presence is not None:
             args.presence.update(talk.number, conversation.session_id if conversation is not None else None)
         idle, code, steps = 0, 0, 0
@@ -381,8 +415,7 @@ def main(argv=None, *, reader=input):
             """A turn that fails after the program acted: what it really did must not be forgotten, or the model may
             propose the same change again. Nothing is recorded for a turn that did nothing."""
             if interactive and getattr(sources, "actions", None):
-                _remember(talk, conversation, question, "[The model's answer did not arrive. The actions taken are recorded.]",
-                          None, sources, phase, args)
+                remember(question, "[The model's answer did not arrive. The actions taken are recorded.]", None, sources)
         while True:
             finished = False
             try:
@@ -390,7 +423,7 @@ def main(argv=None, *, reader=input):
                     answer = assistant_flow.run(question, args, reader,
                         lambda *values, **kwargs: request(*values, **kwargs, state=state), phase=phase,
                         conversation_consent=consent, skills=controls.load_skill,
-                        turn_context=lambda snapshot: _turn_context(talk, snapshot))
+                        turn_context=lambda snapshot: _turn_context(talk, snapshot, conversation))
                 finished = True
             except assistant_flow.Declined:
                 if not interactive:
@@ -431,13 +464,13 @@ def main(argv=None, *, reader=input):
                 if isinstance(answer, project_checks.Result):
                     code = answer.code
                     if answer.summary:
-                        _remember(talk, conversation, question, answer.summary, None, sources, phase, args)
+                        remember(question, answer.summary, None, sources)
                     if not interactive:
                         return code
                 elif type(answer) is ask_edit.CompletedTask:
                     note = "[Change task finished; result %d. See the task log for the write and the test.]" % answer.code
                     code = answer.code
-                    _remember(talk, conversation, question, note, None, sources, phase, args)
+                    remember(question, note, None, sources)
                     if not interactive:
                         return code
                     if code == 0:
@@ -457,7 +490,7 @@ def main(argv=None, *, reader=input):
                     if visible.strip():
                         print(render_answer(visible, output_format=args.format))
                     print("\n" + rule() + "\n")
-                    _remember(talk, conversation, question, visible, ops, sources, phase, args)
+                    remember(question, visible, ops, sources)
                     if not interactive:
                         if args.details:
                             print("ASK: PASS")
@@ -475,22 +508,22 @@ def main(argv=None, *, reader=input):
                     idle += 1
                     if idle >= 2:
                         print()
-                        return leave(code)
+                        return code
                     print("\nPress Ctrl-D again (or send an empty line) to end the conversation.")
                     continue
                 except KeyboardInterrupt:
                     print()
-                    return leave(code)
+                    return code
                 idle = 0
                 validate_question(question, MAX_MESSAGE_BYTES)
                 local = control(question)
                 if local == ask_commands.EXIT:
-                    return leave(code)
+                    return code
                 if local:
                     continue
                 break
             if not question.strip():
-                return leave(code)
+                return code
             print()
     except assistant_flow.Declined:
         return 2
