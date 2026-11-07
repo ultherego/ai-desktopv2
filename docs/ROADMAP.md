@@ -69,7 +69,7 @@ Working and merged at `dd2daec3045c41662a722f4c6a3485dea14dd196` (PR #18, packag
 
 | Task | Status |
 |---|---|
-| `allow` commands without access to the host's Unix sockets (D-Bus, Docker) | to do |
+| `allow` commands without access to the host's Unix sockets (D-Bus, Docker) | in progress — candidate 89 hides daemon sockets under `/run` (opt-in `host_sockets`); a D-Bus method filter remains |
 | General system call filter for the client | to do |
 | Matching `change` template limits in the policy and the contract | done |
 | Checking the template parser for option arguments | done |
@@ -246,7 +246,7 @@ Distribution references: [CachyOS applications](https://wiki.cachyos.org/cachyos
 
 Each implementation updates this roadmap with its own PR/SHA, tests, CI, remaining limitations and one next step. Add meaningful regressions to the existing `scripts/verify.py` gates and Python 3.12/3.13/3.14 Actions jobs, creating a new stage only for a distinct risk. Synthetic tests must cover success, refusal and failure without OAuth or real model requests. Changes to persistence, isolation, networking, host services and writes require applicable real CachyOS checks and explicit merge approval; Ubuntu CI is not that evidence. Keep documentation-only results separate from implementation acceptance.
 
-**Next step:** maintainer acceptance and merge of the stacked candidates 85 (PR #23), 86 (PR #24), 87 (PR #25) and 88, in that order; then Stage 4 isolation of `allow` commands from host Unix sockets. S0 and S7 remain deferred; accepted candidate-82/83/84 checks need no repeat.
+**Next step:** CachyOS acceptance of candidate 89 (hidden `/run` daemon sockets), then a D-Bus method filter for `allow` commands. S0 and S7 remain deferred.
 
 ## Conditions for the 1.0 release
 
@@ -260,6 +260,16 @@ Each implementation updates this roadmap with its own PR/SHA, tests, CI, remaini
 ## Progress log
 
 Earlier dated entries preserve the evidence and status at that point. The latest entry supersedes historical pending/next-step statements.
+
+### 2026-11-07 — Stage 4: `allow` commands no longer reach daemon sockets under `/run`
+
+- **READY FOR TEST**, candidate **0.1.0-89**, branch `feature/allow-host-sockets`, based on merged `main` `93cb23b` (candidates 85–88 merged as PRs #23–#26 after maintainer acceptance and green CI on each head).
+- A read-only bind does not stop `connect()` on a Unix socket, so every socket under the host `/run` was reachable from the read sandbox: Docker and containerd (root-equivalent), LACT, the systemd manager and other varlink sockets, the resolver, polkit agents, ssh and greetd. `/run` is now an empty tmpfs with a fixed list bound back read-only: the system D-Bus socket, the resolver query socket, journals, systemd/login state, udev data, mounts, `utmp` and NetworkManager state. `/run/user` stays hidden.
+- New `[commands] host_sockets` (at most 8 paths under `/run`, not `/run/user`) lets the owner opt specific sockets back in, for example `/run/docker.sock` for `docker` templates. An invalid entry refuses the policy; a malformed value at run time yields no sandbox rather than a wider one.
+- Maintainer-host comparison of exit codes only (outputs discarded), old versus new sandbox, for 25 typical read commands: identical for `systemctl`, `journalctl`, `who`, `last`, `lsblk`, `lsusb`, `findmnt`, `nmcli`, `timedatectl`, `hostnamectl`, `localectl`, `powerprofilesctl`, `upower`, `networkctl`, `systemd-analyze`, `bluetoothctl`, `ip`, `ss`, `sensors` and `resolvectl` (after keeping the resolver socket); `docker ps` and `lact` fail without opt-in and work with it, as intended.
+- Not done: the system D-Bus has no method filter, so state changes polkit allows without a prompt and DNS lookups through the resolver remain possible from `allow` commands; recorded in `KNOWN_LIMITATIONS.md` and T21.
+- Tests: `tests/test_command_sockets.py` (bwrap argument order, fixed list, opt-in, invalid opt-in yields no sandbox, policy parsing, flow wiring, and a real-bwrap listing of `/run`); the earlier hidden-path test now checks `/run`. Full unit suite, `verify.py --mode ci` and `--mode local` pass.
+- **Next step:** CachyOS acceptance; the maintainer adds `host_sockets` for the existing `docker` and `lact` templates.
 
 ### 2026-11-07 — E3/E6: plain task refusals and changes in the read-back thread
 

@@ -220,7 +220,9 @@ class ReviewFindingsTests(unittest.TestCase):
         command = ops.sandbox_command("/usr/bin/uname", ["uname", "-s"])
         if command is None:
             self.skipTest("bubblewrap is not available")
-        for hidden in ("/home", "/root", "/run/user"):
+        for hidden in ("/home", "/root", "/run"):
             index = command.index(hidden)
             self.assertEqual(command[index - 1], "--tmpfs")
+        # /run is empty apart from the fixed list, so the user runtime dir and its session bus are not there at all.
+        self.assertFalse(any(item.startswith("/run/user") for item in command))
         self.assertNotIn("XDG_RUNTIME_DIR", command)

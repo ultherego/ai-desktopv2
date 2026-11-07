@@ -635,6 +635,7 @@ class Policy:
     _share_processes: bool = False
     _local: bool = False
     local_port: int = 8080
+    _host_sockets: tuple = ()
 
     def fingerprint(self):
         """Identifies the exact permissions.toml this policy came from, including what `access()` does not list."""
@@ -696,6 +697,10 @@ class Policy:
     def share_processes(self):
         """Owner opt-in: read-only commands see the host's processes (and their command lines)."""
         return self._share_processes
+
+    def host_sockets(self):
+        """Owner opt-in: extra /run sockets read commands may reach, e.g. /run/docker.sock for docker templates."""
+        return self._host_sockets
 
     def scopes(self):
         """Configuration metadata only: does not stat or enumerate targets."""
@@ -989,8 +994,8 @@ def load_policy(*, optional=False):
             raise _SettingError("part_size") from None
         limits = parse_limits(value["files"])
         section = value.get("commands", {})
-        if type(section) is not dict or set(section) - {"allow", "change", "share_processes"}:
-            raise _Problem("[commands] only accepts the keys allow, change, share_processes.")
+        if type(section) is not dict or set(section) - {"allow", "change", "share_processes", "host_sockets"}:
+            raise _Problem("[commands] only accepts the keys allow, change, share_processes, host_sockets.")
         from .command_ops import MAX_TEMPLATES, parse_template, parse_templates
         parsed_lists = {}
         for key in ("allow", "change"):
@@ -1015,10 +1020,20 @@ def load_policy(*, optional=False):
         share = section.get("share_processes", False)
         if type(share) is not bool:
             raise _Problem("commands.share_processes must be true or false.")
+        from .command_ops import MAX_HOST_SOCKETS, valid_host_socket
+        sockets = section.get("host_sockets", [])
+        if type(sockets) is not list or len(sockets) > MAX_HOST_SOCKETS:
+            raise _Problem("commands.host_sockets must be a list of at most %d paths." % MAX_HOST_SOCKETS)
+        for item in sockets:
+            if not valid_host_socket(item):
+                raise _Problem("commands.host_sockets accepts only paths under /run (not /run/user), e.g. "
+                               "\"/run/docker.sock\": " + _shown(str(item)))
+        if len(set(sockets)) != len(sockets):
+            raise _Problem("commands.host_sockets lists the same path twice.")
         policy = Policy(uid, home, raw, identity, *rules,
                         network.get("claude", False), network.get("weather", False), tuple(systemd), value["version"],
                         network.get("web", False), file_size, part_size, network.get("codex", False), limits, commands, changes, share,
-                        network.get("local", False), local.get("port", DEFAULT_LOCAL_PORT))
+                        network.get("local", False), local.get("port", DEFAULT_LOCAL_PORT), _host_sockets=tuple(sockets))
         for template in (*commands, *changes):
             for token in template[1:]:
                 if token[:1] == "/":        # templates carry absolute literal paths only (`~` is refused by the parser)

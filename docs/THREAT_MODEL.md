@@ -95,11 +95,11 @@ The output of `--v`, `doctor` and `status` authorizes nothing. `status` and ordi
 
 **Matching:** the model's proposal is a list of words, never text for a shell. Comparison is token by token, placeholders have their own pattern. The program is resolved in fixed system directories: the file and all directories must be owned by root and must not be writable by others.
 
-**Execution:** without asking, without a shell or input, with a clean environment and limits on time and output. Sandbox: `/` read-only, tmpfs on `/home`, `/root`, `/run/user`, `/tmp`, no network, IPC or capabilities, separate PIDs (unless `share_processes = true`, in which case host processes and their command lines are visible). The output is cleaned and goes to the model as untrusted data.
+**Execution:** without asking, without a shell or input, with a clean environment and limits on time and output. Sandbox: `/` read-only, tmpfs on `/home`, `/root`, `/tmp`, an empty `/run` apart from a fixed list (the system D-Bus socket, the resolver's query socket, journals, systemd and login state, udev data, mounts, `utmp`, NetworkManager state), sockets the owner lists in `host_sockets`, no network, IPC or capabilities, separate PIDs (unless `share_processes = true`, in which case host processes and their command lines are visible). The output is cleaned and goes to the model as untrusted data.
 
 **Budgets:** 16 commands in a plan, `command_rounds` per question, a shared `discovery_bytes` limit. No `bwrap` means no execution.
 
-**What this boundary does not give:** the sandbox does not isolate the host's Unix sockets (D-Bus, Docker), so a command from the list can change state without asking. The sandbox does not hide the rest of the file system (for example `/etc`). `deny` does not filter output: journals and process lists can contain sensitive data. Responsibility for the list rests with the user.
+**What this boundary does not give:** daemon sockets under `/run` (Docker, containerd, LACT, systemd varlink, polkit agents, ssh, greetd) are hidden unless the owner lists them in `host_sockets`, but the system D-Bus stays reachable without a method filter: a command from the list can still change state through D-Bus where polkit allows the user without a prompt, and can make DNS lookups through the resolver. An opted-in socket such as Docker's gives whatever that daemon grants, which for Docker is root-equivalent. The sandbox does not hide the rest of the file system (for example `/etc`). `deny` does not filter output: journals and process lists can contain sensitive data. Responsibility for the list rests with the user.
 
 ### `[commands] change`
 
@@ -141,7 +141,7 @@ A provider, account slot and local port, where applicable, are part of the recip
 | T18 | Model proposes a command outside the list or with a different argument | Exact match, otherwise it does not run |
 | T19 | Model picks a dangerous subcommand through a placeholder | A placeholder cannot stand before a subcommand |
 | T20 | Replaced program in a user directory | Only root's files in root's directories |
-| T21 | A command from `allow` changes state through a Unix socket | **Not blocked.** The user is responsible for the list |
+| T21 | A command from `allow` changes state through a Unix socket | **Partly blocked.** Daemon sockets under `/run` are hidden unless listed in `host_sockets`; the system D-Bus and the resolver remain reachable until a D-Bus method filter exists. The user is responsible for the list |
 | T22 | Command output carries data out to the provider | **Intended.** The boundary is the list and the output limit, `deny` does not filter output |
 | T23 | Injection urges a live change | A change only from the `change` list, after `yes`. There is no default list |
 | T24 | Change without a test or undo, a test that changes state | Refusal before execution |

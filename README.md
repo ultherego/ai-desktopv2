@@ -36,9 +36,9 @@ See [agent settings, accounts and sessions](docs/AGENT_MANAGEMENT.md), [verified
 
 This is a development version, not a 1.0 release.
 
-The current candidate package is **0.1.0-88** (changes: [CHANGELOG.md](CHANGELOG.md)).
+The current candidate package is **0.1.0-89** (changes: [CHANGELOG.md](CHANGELOG.md)).
 
-Recent candidates: 82–83 run independently installed Claude and Codex clients through a reviewed, root-owned copy of your native installation, with Codex limits in the DMS widget; 84 asks once for a bounded multi-stage project analysis or a declared task test; 85 saves conversations automatically; 86 tightens Codex registration; 87 adds `ai-desktop -c` and the whole read-back thread; 88 makes task refusals say why. Every candidate's evidence and open items are in [docs/ROADMAP.md](docs/ROADMAP.md). None of these checks performed a real login or model request unless stated there.
+Recent candidates: 82–83 run independently installed Claude and Codex clients through a reviewed, root-owned copy of your native installation, with Codex limits in the DMS widget; 84 asks once for a bounded multi-stage project analysis or a declared task test; 85 saves conversations automatically; 86 tightens Codex registration; 87 adds `ai-desktop -c` and the whole read-back thread; 88 makes task refusals say why; 89 hides daemon sockets from read commands. Every candidate's evidence and open items are in [docs/ROADMAP.md](docs/ROADMAP.md). None of these checks performed a real login or model request unless stated there.
 
 `ai-desktop doctor` and `doctor --v` inspect metadata without executing a client. `doctor --clients` explicitly probes the selected cloud client offline, without login, network or a model request. A successful probe checks adapter prerequisites; it does not certify the vendor or prove that authentication and inference work.
 
@@ -83,6 +83,8 @@ Notes:
 - **Host acceptance.** Fresh installation, registration/refresh and upgrade through the new client paths remain release gates; automated CI is not a substitute for CachyOS testing.
 
 ## First run and permissions
+
+Every setting in one short list: [docs/PERMISSIONS.md](docs/PERMISSIONS.md).
 
 `ai-desktop ask --preview` shows the access without the model and without reading data. Without a `permissions.toml` file only general questions work: no files, systemd, commands, weather or web search.
 
@@ -140,6 +142,7 @@ The fields below are optional. Add them in the given section when you want to ch
 | `[files] command_output` | `"8KiB"` | `"128KiB"` | bytes of the output of one command |
 | `[files] command_timeout` | 20 | 60 | seconds per command |
 | `[commands] share_processes` | `false` | | `true`: commands see host processes and their command lines |
+| `[commands] host_sockets` | `[]` | 8 | extra sockets under `/run` that commands may reach, e.g. `"/run/docker.sock"` for `docker` templates |
 | `[commands] change` | none | | change templates: they run on the live system and require `yes`, a test from `allow` and an undo |
 
 `read_file_size` must not exceed `read_total_size`; the same rule applies to the two test-copy byte settings. Existing explicitly configured smaller values remain in force. The wire ceiling is 34 MiB of serialized context and 36 MiB for a complete request, including JSON escaping. These local ceilings do not guarantee that a selected model accepts that much text. Prefer content search and range reads for large files; selected excerpts carry source hashes and coverage. Up to 64 files can change in one proposal, bounded by 8 MiB per resulting file and 16 MiB combined. Anchored replacements let the model change a small part of a large file without generating its entire replacement. Test-copy-only files are never attached to the model request.
@@ -148,11 +151,11 @@ The fields below are optional. Add them in the given section when you want to ch
 
 By default the model runs nothing. `allow` is a list of exact templates, without a shell. `<unit>` means one systemd unit name, `<int>` a number up to 99999, and `<word>` one simple word. Templates starting with a shell, an interpreter, `sudo`, a network client or a writing program (`rm`, `tee`, `git`, `find`, `sed` and similar) are rejected when the policy is loaded.
 
-For Docker, Btrfs and nmcli, give the complete command path before a placeholder, for example `docker container inspect <word>`. Spell out unknown subcommands and plugin arguments literally. Host Unix sockets may still be reachable, so review the operation itself before adding it to `allow`.
+For Docker, Btrfs and nmcli, give the complete command path before a placeholder, for example `docker container inspect <word>`. Spell out unknown subcommands and plugin arguments literally. Docker and similar daemons are reachable only after you list their socket in `host_sockets`, for example `host_sockets = ["/run/docker.sock"]`; review the operation itself before adding it to `allow`, because the Docker socket is root-equivalent.
 
 **Commands from `allow` run without asking, and their output goes to the model.** Remove from the list what you do not want to share, including any extra `journalctl`, `ps aux` or `docker ps` rules you add. `deny` does not filter command output.
 
-Commands from `allow` run in a sandbox: read-only file system, hidden `/home`, `/root` and `/run/user`, no network and no input. It does not isolate host Unix sockets, so only list commands that change nothing. Some programs will not see the host state (e.g. `ip`, `wpctl`, `glxinfo`).
+Commands from `allow` run in a sandbox: read-only file system, hidden `/home` and `/root`, an empty `/run` apart from the system D-Bus and plain state files, no network and no input. The system D-Bus is not filtered, so only list commands that change nothing. Some programs will not see the host state (e.g. `ip`, `wpctl`, `glxinfo`).
 
 A placeholder must not stand where a tool's command could be. Write an option that takes a value together with it (`--output=json`) or give the command further on: `systemctl -H host restart <unit>` is valid, and `systemctl -H host <word>` is not.
 
@@ -397,6 +400,7 @@ python3 -B scripts/verify.py --mode local --fail-fast  # additionally real Bubbl
 - [SECURITY.md](SECURITY.md): reporting problems, trust boundaries, what is not guaranteed.
 - [docs/THREAT_MODEL.md](docs/THREAT_MODEL.md): architecture and threats.
 - [docs/KNOWN_LIMITATIONS.md](docs/KNOWN_LIMITATIONS.md): known limitations.
+- [docs/PERMISSIONS.md](docs/PERMISSIONS.md): every `permissions.toml` setting and what it does.
 - [docs/AGENT_MANAGEMENT.md](docs/AGENT_MANAGEMENT.md): agents, models, conversations, Codex.
 - [docs/RELEASE_CHECKLIST.md](docs/RELEASE_CHECKLIST.md): list for release maintainers.
 - [CHANGELOG.md](CHANGELOG.md) and [LICENSE](LICENSE).

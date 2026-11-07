@@ -224,7 +224,25 @@ def sanitize(raw, limit):
     return encoded[:limit].decode("utf-8", "ignore"), True
 
 
-def sandbox_command(path, argv, *, share_processes=False):
+# What a read command still sees of /run, which is otherwise an empty tmpfs. A read-only bind does not stop connect() on a
+# Unix socket, so every daemon socket under /run (Docker, containerd, LACT, systemd varlink, the DNS resolver, greetd,
+# ssh, polkit agents) would be reachable. Kept: the system D-Bus socket (polkit still guards changes), the resolver's
+# query socket for resolvectl (the same lookups are reachable through D-Bus until a D-Bus filter exists, see
+# docs/KNOWN_LIMITATIONS.md) and plain state files that read-only tools need. Missing entries are skipped.
+RUN_VISIBLE = ("/run/dbus/system_bus_socket", "/run/systemd/resolve/io.systemd.Resolve", "/run/systemd/system", "/run/systemd/sessions", "/run/systemd/seats",
+               "/run/systemd/users", "/run/systemd/netif", "/run/systemd/timesync", "/run/log", "/run/udev/data",
+               "/run/udev/tags", "/run/mount", "/run/utmp", "/run/NetworkManager")
+_HOST_SOCKET = re.compile(r"/run/(?!user/)[A-Za-z0-9._-]+(?:/[A-Za-z0-9._-]+){0,3}\Z")
+MAX_HOST_SOCKETS = 8
+
+
+def valid_host_socket(value):
+    """An extra socket the owner chose to share with read commands (for example /run/docker.sock)."""
+    return (type(value) is str and bool(_HOST_SOCKET.fullmatch(value))
+            and not any(part in (".", "..") for part in value.split("/")))
+
+
+def sandbox_command(path, argv, *, share_processes=False, host_sockets=()):
     """Read-only, network-less view of the system for ONE command; no shell, clean environment.
     share_processes (owner opt-in) keeps the host's process table visible: the read-only bind of / already carries the
     host /proc, so the private PID namespace and its own /proc are simply not created."""
@@ -232,8 +250,13 @@ def sandbox_command(path, argv, *, share_processes=False):
     if bwrap is None:
         return None
     isolation = [] if share_processes else ["--proc", "/proc"]
+    if any(not valid_host_socket(item) for item in host_sockets):
+        return None
+    run = ["--tmpfs", "/run"]
+    for item in (*RUN_VISIBLE, *host_sockets):
+        run += ["--ro-bind-try", item, item]
     return [bwrap, "--ro-bind", "/", "/", *isolation, "--dev", "/dev", "--tmpfs", "/tmp",
-            "--tmpfs", "/home", "--tmpfs", "/root", "--tmpfs", "/run/user",
+            "--tmpfs", "/home", "--tmpfs", "/root", *run,
             "--unshare-net", "--unshare-ipc", *([] if share_processes else ["--unshare-pid"]),
             "--unshare-uts", "--die-with-parent", "--new-session",
             "--cap-drop", "ALL", "--clearenv", "--setenv", "PATH", "/usr/bin:/bin", "--setenv", "LANG", "C.UTF-8",
