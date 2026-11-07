@@ -260,6 +260,13 @@ Each implementation updates this roadmap with its own PR/SHA, tests, CI, remaini
 
 Earlier dated entries preserve the evidence and status at that point. The latest entry supersedes historical pending/next-step statements.
 
+### 2026-11-07 — E2/E7 / S8: release-root check for top-level Codex resources
+
+- **READY FOR TEST**, candidate **0.1.0-86**, branch `fix/codex-bundle-links`, stacked on candidate 85 (PR #23). Independent review of the S8 delta found that only links nested inside `codex-path` and `codex-resources` were compared with the release root. A top-level `codex-package.json`, `codex-path` or `codex-resources` link was followed anywhere a user-owned file is trusted, and `client_registration` publishes captured files read-only to the client namespace.
+- `client_sources` now applies the release-root check to the top-level entries as well; links that stay inside the release keep working. The privileged importer uses the same `capture`, so it refuses too. A regression in `tests/test_client_sources.py` fails without the change (verified) and passes with it; it also covers a whole resource directory linked out of the release and an inside-release link.
+- Not changed: there is still no vendor or provenance check of a registered binary; registration and refresh rely on the administrator's approval, as `KNOWN_LIMITATIONS.md` states. Probes running the unverified client as the desktop user, not the service, remain to be assessed (session keyring reach is unverified).
+- **Next step:** CI on the exact head, then the CachyOS client-registration acceptance (`scripts/accept_system_clients_candidate.fish`) with a real Codex refresh before merge.
+
 ### 2026-11-06 — E3/E6/E7 / S1: automatic bounded conversation checkpoints
 
 - **IN PROGRESS — implementation and focused local validation complete; corrected exact-head CI and CachyOS acceptance pending**, candidate **0.1.0-85**, [PR #23](https://github.com/ultherego/ai-desktopv2/pull/23), branch `feature/conversation-autosave`, based on verified merged `main` `9424ce604683e56bacf183bc4ee54a94edfcc786`. This closes only the automatic-checkpoint slice, not full S1/S2.
