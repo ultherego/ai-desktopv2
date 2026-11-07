@@ -59,7 +59,7 @@ Ordinary `doctor` and panel status remain metadata-only. `doctor --clients` expl
 | Proxy | service, outside the client sandbox | Passes only TLS on port 443 to `api.anthropic.com`, `claude.ai`, `platform.claude.com`, to public addresses. |
 | Local model server | your configured loopback service | Receives the approved prompt, history and authorized material. The user who operates the service controls its logging. |
 | Model | at the provider | Returns text and proposals. This is untrusted data. |
-| Commands from `allow` | your user, in a separate sandbox | Read-only file system, hidden `/home`, `/root`, `/run/user`, no network. Host Unix sockets are not isolated. |
+| Commands from `allow` | your user, in a separate sandbox | Read-only file system, hidden `/home` and `/root`, an empty `/run` apart from the system D-Bus and plain state files, no network. Other daemon sockets (Docker, LACT) only when listed in `host_sockets`. |
 | Commands from `change` | your user, **without a sandbox** | Run on the live system after you type `yes`. |
 | Tests on a copy | your user, in a sandbox | A copy in memory, without network, home directory or access to the project. |
 
@@ -144,7 +144,7 @@ Data that was sent cannot be withdrawn.
 - **Protection against another process of the same user**, root, a compromised kernel or a malicious system.
 - **Protection of the client token against the client itself.** The official client has access to its own login profile. A compromised client could send it to an allowed
   host. The proxy does not see TLS content and does not filter paths or data. There is no general system call filter for the client.
-- **Safety of the `allow` list.** The sandbox does not isolate host Unix sockets, so a command able to change state through D-Bus or Docker is not stopped,
+- **Safety of the `allow` list.** The sandbox hides daemon sockets under `/run` unless you list them in `host_sockets`, but the system D-Bus stays reachable, so a command able to change state through D-Bus (or through a socket you opted in, such as Docker's) is not stopped,
   and it runs without asking. List only read-only commands here.
 - **Recognition of secrets.** In `version = 2` there is no hidden name filter or private key scanner. A secret in an allowed tree without `deny` can go to the provider.
 - **Vendor authenticity or a frozen operating system.** Client snapshots bind the checked executable and supported private resources to an operation. They do not certify the package vendor, snapshot system runtime libraries or protect against a hostile administrator. Metadata-only discovery does not authorize execution.

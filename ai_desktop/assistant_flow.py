@@ -310,8 +310,10 @@ def _run_command(snapshot, ledger, plan, permit, args, reader):
         if args.details:
             print("%s %s sandbox: read-only, no network" % (path, symbol("dot")))
         extra = {}
-        if policy.share_processes():          # owner opt-in; the default call is exactly what it always was
-            extra["command"] = lambda program, words: command_ops.sandbox_command(program, words, share_processes=True)
+        share, sockets = policy.share_processes(), policy.host_sockets()
+        if share or sockets:                  # owner opt-ins; the default call is exactly what it always was
+            extra["command"] = lambda program, words: command_ops.sandbox_command(
+                program, words, share_processes=share, host_sockets=sockets)
         step = command_ops.execute(path, argv, output_limit=room, timeout=policy.limits().command_timeout, **extra)
         permit.check()
         step = add(argv, "read", step["status"], step["exit"], step["output"], step["truncated"])
