@@ -153,14 +153,23 @@ def _choose_thread():
 
 def _start_auto_save(talk, phase):
     """Atomically publish the first completed turn; a failed save never hides the answer or stops the conversation."""
-    from .conversation_sessions import SessionError, Store
+    from .conversation_sessions import MAX_SESSIONS, SessionError, Store
     from .execution import current
     try:
         phase("session-save")
         saved = Store().create("ask", "", "", current(), initial_state=conversation_state.export(talk))
         print("Conversation: %s · saved locally (use --no-save for a temporary conversation)" % saved.session_id)
         return saved
-    except (SessionError, OSError, ValueError):
+    except SessionError as exc:
+        if str(exc) == "session-limit":
+            print("Not saved: you already have %d saved conversations, the most allowed. Delete old ones with "
+                  "ai-desktop sessions, and new conversations are saved again. This one continues in memory until you exit."
+                  % MAX_SESSIONS)
+        else:
+            print("Could not start automatic local saving: local storage may be full, unavailable or unsafe. "
+                  "The conversation continues in memory until you exit.")
+        return None
+    except (OSError, ValueError):
         print("Could not start automatic local saving: local storage may be full, unavailable or unsafe. "
               "The conversation continues in memory until you exit.")
         return None
@@ -240,7 +249,7 @@ def _read_message(session, followup):
 
 
 @contextmanager
-def _turn_context(talk, snapshot):
+def _turn_context(talk, snapshot, conversation=None):
     """Filter history and memory with the policy that authorizes this exact attempt."""
     from .execution import using_history, using_memory
     policy = snapshot.policy
@@ -248,6 +257,15 @@ def _turn_context(talk, snapshot):
     if removed:
         print("Access to a source used earlier in this conversation was revoked: the answers and model notes "
               "that depended on it were removed from the conversation memory (%d)." % removed)
+        if conversation is not None:
+            # The saved copy must lose that content now, not at the next completed turn: this turn may fail or the user may
+            # exit right after it, and the file would keep what the policy no longer allows.
+            from .conversation_sessions import SessionError
+            try:
+                conversation.save_state(conversation_state.export(talk))
+            except (SessionError, ValueError, OSError):
+                print("Could not remove it from the saved conversation on disk. Delete the conversation with "
+                      "ai-desktop sessions if it must not stay there.")
     with using_history(talk.history()), using_memory(talk.task_memory()):
         yield
 
@@ -405,7 +423,7 @@ def main(argv=None, *, reader=input):
                     answer = assistant_flow.run(question, args, reader,
                         lambda *values, **kwargs: request(*values, **kwargs, state=state), phase=phase,
                         conversation_consent=consent, skills=controls.load_skill,
-                        turn_context=lambda snapshot: _turn_context(talk, snapshot))
+                        turn_context=lambda snapshot: _turn_context(talk, snapshot, conversation))
                 finished = True
             except assistant_flow.Declined:
                 if not interactive:

@@ -167,9 +167,15 @@ class Conversation:
             for ident in [ident for ident in table if ident not in alive]:
                 del table[ident]
         self.memory = updated
-        self.turns.append(Turn(n, question, answer, taint))
+        self.turns.append(Turn(n, _plain_lines(question), _plain_lines(answer), taint))
         del self.turns[:-MAX_TURNS]
         return notes
+
+
+def _plain_lines(text):
+    """Unicode line and paragraph separators become ordinary newlines. A saved record refuses them, and one such character
+    in an answer would otherwise stop every save of the conversation while that turn is kept."""
+    return text.replace("\u2028", "\n").replace("\u2029", "\n") if type(text) is str else text
 
 
 def title_of(text):

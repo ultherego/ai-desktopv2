@@ -226,6 +226,7 @@ class Store:
             fcntl.flock(fd, fcntl.LOCK_EX)
             if not _same(info, os.stat(".sessions.lock", dir_fd=root, follow_symlinks=False)):
                 raise SessionError("session-conflict")
+            self._sweep(root)
             yield
         finally:
             os.close(fd)
@@ -284,6 +285,22 @@ class Store:
                 os.unlink(temporary, dir_fd=root)
             except FileNotFoundError:
                 pass
+
+    def _sweep(self, root):
+        """Remove publication leftovers of a writer that was killed. Every writer holds the store lock while its temporary
+        file exists, and this runs under that lock, so any `.new-*` name here is stale: either never published (its
+        content must not linger) or already linked to its record, which then counts two links until it is removed."""
+        with os.scandir(root) as entries:
+            stale = [entry.name for entry in entries if entry.name.startswith(".new-")]
+        for name in stale[:3 * MAX_SESSIONS + 8]:
+            try:
+                info = os.stat(name, dir_fd=root, follow_symlinks=False)
+                if info.st_uid == os.geteuid() and (stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode)):
+                    os.unlink(name, dir_fd=root)
+            except FileNotFoundError:
+                pass
+        if stale:
+            os.fsync(root)
 
     def _lease(self, root, ident, *, create=True):
         flags = os.O_RDWR | os.O_NOFOLLOW | os.O_CLOEXEC | os.O_NONBLOCK

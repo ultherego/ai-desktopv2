@@ -55,6 +55,36 @@ class AtomicFirstCheckpointTests(unittest.TestCase):
         self.assertEqual(self.store.list(), [])
 
 
+class CheckpointContentTests(AtomicFirstCheckpointTests):
+    def test_line_and_paragraph_separators_do_not_stop_saving(self):
+        exported = self.exported("Question\u2028second line", "Answer\u2029next paragraph")
+        conversation = self.store.create("ask", execution_config=PROFILE, initial_state=exported)
+        self.addCleanup(conversation.close)
+        record = self.store.read(conversation.session_id)
+        self.assertEqual(record["history"], [{"question": "Question\nsecond line", "answer": "Answer\nnext paragraph"}])
+
+    def test_leftovers_of_a_killed_writer_are_removed_on_the_next_save(self):
+        conversation = self.store.create("ask", execution_config=PROFILE, initial_state=self.exported())
+        self.addCleanup(conversation.close)
+        root = Path(self.store.path)
+        record = root / (conversation.session_id + ".json")
+        # Killed before publishing: private content in a temporary file. Killed between link and unlink: a second link.
+        unpublished = root / ".new-0123456789abcdef0123456789abcdef"
+        unpublished.write_text('{"history":[{"question":"SYNTHETIC SECRET"}]}')
+        unpublished.chmod(0o600)
+        linked = root / ".new-fedcba9876543210fedcba9876543210"
+        os.link(record, linked)
+        self.assertEqual(record.stat().st_nlink, 2)
+        talk = conversation_state.Conversation()
+        talk.finish("First question", "First answer", None, ())
+        talk.finish("Second question", "Second answer", None, ())
+        conversation.save_state(conversation_state.export(talk))
+        self.assertEqual(sorted(path.name for path in root.iterdir() if path.name.startswith(".new-")), [])
+        self.assertEqual(record.stat().st_nlink, 1)
+        self.assertEqual(len(self.store.read(conversation.session_id)["history"]), 2)
+        self.assertEqual(self.store.damaged(), [])
+
+
 class FakeConversation:
     def __init__(self, state):
         self.session_id = "a" * 24
@@ -163,6 +193,34 @@ class AutomaticAskSaveTests(unittest.TestCase):
         self.assertEqual(flow.call_count, 2)
         self.assertEqual(len(store.calls), 1)
         self.assertEqual(output.count("Could not start automatic local saving"), 1)
+
+    def test_the_session_limit_says_how_to_make_room(self):
+        store = FakeStore(sessions.SessionError("session-limit"))
+        code, output, store, _, _, flow, _ = self.run_ask([], ["First", ""], ["Answer one"], store=store)
+        self.assertEqual(code, 0, output)
+        self.assertIn("you already have %d saved conversations" % sessions.MAX_SESSIONS, output)
+        self.assertIn("ai-desktop sessions", output)
+        self.assertNotIn("may be full", output)
+
+    def test_revoked_content_leaves_the_saved_copy_before_the_next_request(self):
+        talk = conversation_state.Conversation()
+        talk.finish("Read the file", "SYNTHETIC FILE CONTENT", None, ("/home/example/notes.txt",))
+        conversation = FakeConversation(conversation_state.export(talk))
+        snapshot = Mock(policy=Mock(allows=lambda path: False))
+        with redirect_stdout(io.StringIO()) as output, ask._turn_context(talk, snapshot, conversation):
+            # The checkpoint is written before anything is sent, so a failed turn or an exit cannot keep it on disk.
+            self.assertEqual(conversation.save_calls, 1)
+        self.assertNotIn("SYNTHETIC FILE CONTENT", str(conversation.saved))
+        self.assertIn("revoked", output.getvalue())
+
+    def test_a_failed_redaction_save_tells_how_to_remove_the_copy(self):
+        talk = conversation_state.Conversation()
+        talk.finish("Read the file", "SYNTHETIC FILE CONTENT", None, ("/home/example/notes.txt",))
+        conversation = Mock(save_state=Mock(side_effect=sessions.SessionError("session-file")))
+        snapshot = Mock(policy=Mock(allows=lambda path: False))
+        with redirect_stdout(io.StringIO()) as output, ask._turn_context(talk, snapshot, conversation):
+            pass
+        self.assertIn("Could not remove it from the saved conversation", output.getvalue())
 
     def test_actions_completed_before_a_service_failure_are_checkpointed(self):
         def fail_after_action(*unused_args, **unused_kwargs):
